@@ -26,6 +26,11 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      
+      - name: Materialize the private company list
+        env:
+          COMPANIES: ${{ vars.COMPANIES_CSV }}  
+        run: printf '%s' "$COMPANIES" > config/companies.csv
 
       - name: Ingest -> BigQuery raw
         env:
