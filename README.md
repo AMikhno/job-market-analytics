@@ -39,7 +39,7 @@ docs/        ARCHITECTURE.md, decisions/ (ADRs)
 
 ## Stack
 
-Python 3.12 + Pydantic v2 · dbt-core with dbt-duckdb (dev) and dbt-bigquery (prod) ·
+Python 3.14 + Pydantic v2 · dbt-core with dbt-duckdb (dev) and dbt-bigquery (prod) ·
 GitHub Actions (twice-daily ingest, freshness gate, Slack-on-failure).
 
 ## Status
