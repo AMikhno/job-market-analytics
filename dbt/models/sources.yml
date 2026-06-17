@@ -1,0 +1,18 @@
+version: 2
+
+sources:
+  - name: jobs_raw
+    description: Raw landings from the Python ingestion, one table per ATS.
+    # dev (DuckDB) lands in the default 'main' schema; prod (BigQuery) uses the jobs_raw dataset.
+    schema: "{{ 'main' if target.type == 'duckdb' else 'jobs_raw' }}"
+    tables:
+      - name: raw_greenhouse_jobs
+        loaded_at_field: "cast(ingested_at as timestamp)"
+        freshness:                      # a stale/empty board fails the scheduled run
+          warn_after: { count: 12, period: hour }
+          error_after: { count: 30, period: hour }
+      - name: raw_lever_jobs
+        loaded_at_field: "cast(ingested_at as timestamp)"
+        freshness:
+          warn_after: { count: 12, period: hour }
+          error_after: { count: 30, period: hour }

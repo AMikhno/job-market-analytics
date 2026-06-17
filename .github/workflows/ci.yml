@@ -1,0 +1,43 @@
+name: CI
+
+# Runs on every PR and push. DuckDB dev target only — NO secrets, so it runs
+# safely on fork PRs in a public repo, and never touches the private company list.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --extra dev
+
+      - name: Lint (ruff, black, mypy, sqlfluff)
+        run: make lint
+
+      - name: Python tests (coverage gate enforced)
+        run: make test            # fails if coverage < 85% or any test fails
+
+      - name: Write a dev (DuckDB) dbt profile
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml <<'YAML'
+          job_pipeline:
+            target: dev
+            outputs:
+              dev:
+                type: duckdb
+                path: ../data/jobs.duckdb
+                threads: 4
+          YAML
+
+      - name: Build + test dbt on DuckDB (uses the committed example company list)
+        run: |
+          make ensure-raw                       # empty raw tables so models can build
+          cd dbt
+          uv run dbt deps
+          uv run dbt seed --target dev          # deal_breaker_tech, allowed_locations
+          uv run dbt build --target dev

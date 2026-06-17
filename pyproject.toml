@@ -1,0 +1,55 @@
+[project]
+name = "job-search-pipeline"
+version = "0.1.0"
+description = "Automated job-matching pipeline (V1: ingestion + dbt transformations)."
+requires-python = ">=3.14"
+dependencies = [
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "requests>=2.32",
+    "duckdb>=1.0",
+    "dbt-core>=1.8",
+    "dbt-duckdb>=1.8",
+    "dbt-bigquery>=1.8",
+    "google-cloud-bigquery>=3.25",
+    "mashumaro[msgpack]>=3.17",   # newer build is needed for Python 3.14
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-cov>=5.0",
+    "responses>=0.25",
+    "ruff>=0.5",
+    "black>=24.4",
+    "mypy>=1.10",
+    "sqlfluff>=3.0",
+    "pre-commit>=3.7",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["google.cloud.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+addopts = "--cov=shared --cov=ingest --cov-report=term-missing --cov-fail-under=85"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true

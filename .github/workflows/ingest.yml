@@ -1,0 +1,64 @@
+name: Ingest
+
+# Twice daily, ~09:30 and ~15:00 America/Toronto. GitHub cron is UTC and ignores
+# DST, so these drift one hour earlier in winter (harmless for a job digest).
+on:
+  schedule:
+    - cron: "30 13 * * *"   # 09:30 EDT / 08:30 EST
+    - cron: "0 19 * * *"    # 15:00 EDT / 14:00 EST
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write           # required for Workload Identity Federation (no stored key)
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    environment: production  # scopes the secrets below
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --extra dev
+
+      - name: Authenticate to Google Cloud (WIF — no service-account key)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Ingest -> BigQuery raw
+        env:
+          PIPELINE_TARGET: prod
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+          BQ_DATASET: jobs
+          BQ_LOCATION: northamerica-northeast2
+          HTTP_USER_AGENT: ${{ vars.HTTP_USER_AGENT }}
+        run: make ingest
+
+      - name: Warn on low volume (non-failing)
+        if: success()
+        run: |
+          warns=$(jq -r '.warnings | join(", ")' ingest_summary.json)
+          if [ -n "$warns" ]; then
+            curl -sf -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\":warning: Low/zero volume from: $warns (run ${{ github.run_id }})\"}" \
+              "${{ secrets.SLACK_WEBHOOK_URL }}"
+          fi
+
+      - name: Transform (bronze -> silver -> gold) on BigQuery
+        env:
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+        run: make dbt-prod
+
+      - name: Freshness gate (fails the run if a source is stale or empty)
+        env:
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+        run: make freshness
+
+      - name: Notify Slack on failure
+        if: failure()
+        run: |
+          curl -sf -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\":rotating_light: Ingest run failed: ${{ github.run_id }}\"}" \
+            "${{ secrets.SLACK_WEBHOOK_URL }}"

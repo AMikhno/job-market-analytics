@@ -1,0 +1,14 @@
+version: 2
+models:
+  - name: stg_greenhouse__jobs
+    columns:
+      - name: external_id
+        data_tests: [not_null]
+      - name: url
+        data_tests: [not_null]
+  - name: stg_lever__jobs
+    columns:
+      - name: external_id
+        data_tests: [not_null]
+      - name: url
+        data_tests: [not_null]

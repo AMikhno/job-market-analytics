@@ -1,0 +1,12 @@
+{
+  "jobs": [
+    {
+      "id": 1234567,
+      "title": "Analytics Engineer",
+      "updated_at": "2026-06-01T12:00:00Z",
+      "location": { "name": "Ottawa, ON, Canada" },
+      "content": "<p>Build dbt models and dashboards.</p>",
+      "absolute_url": "https://boards.greenhouse.io/example/jobs/1234567"
+    }
+  ]
+}

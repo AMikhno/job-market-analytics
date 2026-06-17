@@ -1,0 +1,6 @@
+version: 2
+seeds:
+  - name: deal_breaker_tech
+    description: Technologies whose presence disqualifies a posting (V1 keyword rule).
+  - name: allowed_locations
+    description: Location substrings that pass the V1 location filter.

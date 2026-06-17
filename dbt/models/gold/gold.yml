@@ -1,0 +1,9 @@
+version: 2
+models:
+  - name: fct_job_postings
+    description: Curated, deduplicated, rule-filtered postings. The V1 output.
+    columns:
+      - name: job_key
+        data_tests: [not_null, unique]
+      - name: url
+        data_tests: [not_null]

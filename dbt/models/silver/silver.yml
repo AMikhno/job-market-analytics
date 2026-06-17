@@ -1,0 +1,15 @@
+version: 2
+models:
+  - name: int_jobs__unioned
+    columns:
+      - name: job_key
+        data_tests: [not_null]
+      - name: content_hash
+        data_tests: [not_null]
+  - name: silver_jobs
+    description: Deduplicated, rule-filtered postings ready for V1 delivery / V2 AI.
+    columns:
+      - name: job_key
+        data_tests: [not_null, unique]
+      - name: url
+        data_tests: [not_null]

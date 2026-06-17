@@ -1,0 +1,21 @@
+name: job_pipeline
+version: "0.1.0"
+config-version: 2
+profile: job_pipeline
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+
+# Three medallion zones = dbt staging -> intermediate -> marts.
+# Folder defaults below; per-model overrides live in-model:
+#   - int_jobs__unioned        -> ephemeral  (inlined into silver_jobs)
+#   - int_jobs_structured/scored (V2) -> incremental (never recompute LLM calls)
+models:
+  job_pipeline:
+    bronze:                       # staging
+      +materialized: view
+    silver:                       # intermediate zone (several int_ models)
+      +materialized: table
+    gold:                         # marts
+      +materialized: table

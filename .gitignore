@@ -1,0 +1,33 @@
+# Secrets / private config — never commit values
+.env
+config/companies.csv
+*.key
+*.pem
+**/keyfile*.json
+~/.gcp/
+
+# Data artifacts
+*.duckdb
+*.duckdb.wal
+*.parquet
+/data/
+
+# OS / runtime artifacts
+.DS_Store
+ingest_summary.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+profiles.yml

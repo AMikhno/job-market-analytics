@@ -1,0 +1,31 @@
+# Fast formatters/linters on commit; the full test suite on push.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+  - repo: https://github.com/psf/black
+    rev: 24.4.2
+    hooks: [{ id: black }]
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks: [{ id: gitleaks }]            # hard backstop against committed secrets
+  - repo: local
+    hooks:
+      # Run mypy in the project venv (sees pydantic-settings, duckdb, etc.) and
+      # only on shipped code — tests aren't held to --strict. Matches `make lint`.
+      - id: mypy
+        name: mypy (shared + ingest)
+        entry: uv run mypy shared ingest
+        language: system
+        pass_filenames: false
+        types: [python]
+      # Every push must have passing, covered tests.
+      - id: pytest
+        name: pytest (with coverage gate)
+        entry: uv run pytest
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

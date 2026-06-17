@@ -1,0 +1,51 @@
+# Job Search Pipeline
+
+Automated pipeline that ingests job postings, deduplicates and rule-filters them, and
+(in V2) ranks them against a personal profile using an LLM. **V1 is ingestion + dbt
+transformations only**, against **Greenhouse and Lever**.
+
+## Why
+
+- **Practical** — surface relevant Analytics Engineer / BI / Data roles in Ottawa or
+  Canada-remote quickly, filtering out Data-Engineer-flavored roles (Kafka/Spark/etc.).
+- **Portfolio** — an end-to-end Analytics Engineering project: typed Python ingestion,
+  a dual-target dbt project (DuckDB dev / BigQuery prod), tests + CI, and a clear V2 path
+  to LLM-in-warehouse scoring and embeddings.
+
+## Quickstart
+
+```bash
+make install                  # uv venv + pre-commit hooks
+cp .env.example .env          # ingestion needs no secrets; fill BQ vars only for prod
+cp config/companies.example.csv config/companies.csv   # your PRIVATE company list (gitignored)
+cp dbt/profiles.yml.example ~/.dbt/profiles.yml
+
+make ingest                   # Python -> raw tables (DuckDB by default)
+make dbt-dev                  # bronze -> silver -> gold on DuckDB
+make test && make dbt-test
+```
+
+## Structure
+
+```
+ingest/      Greenhouse + Lever adapters, source registry, pipeline entrypoint
+shared/      config (Pydantic Settings), models, http, storage
+config/      private company list (config/companies.csv, gitignored; .example committed)
+dbt/         one dual-target project: models/{bronze,silver,gold}, seeds, macros
+tests/       pytest suite + sanitized fixtures
+docs/        ARCHITECTURE.md, decisions/ (ADRs)
+.github/     ci.yml (DuckDB, no secrets) + ingest.yml (scheduled, WIF)
+```
+
+## Stack
+
+Python 3.12 + Pydantic v2 · dbt-core with dbt-duckdb (dev) and dbt-bigquery (prod) ·
+GitHub Actions (twice-daily ingest, freshness gate, Slack-on-failure).
+
+## Status
+
+Pre-V1 scaffold. See `ARCHITECTURE.md` §6 for the roadmap.
+
+## License
+
+Personal project. Not currently licensed for redistribution.

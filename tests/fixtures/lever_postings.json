@@ -1,0 +1,13 @@
+[
+  {
+    "id": "abc-123",
+    "text": "Data Engineer",
+    "categories": { "location": "Remote - Canada", "commitment": "Full-time", "department": "Data" },
+    "workplaceType": "remote",
+    "hostedUrl": "https://jobs.lever.co/example/abc-123",
+    "createdAt": 1748779200000,
+    "description": "<p>Own the data platform.</p>",
+    "lists": [ { "text": "Requirements", "content": "<li>Kafka and Spark experience</li>" } ],
+    "additional": "<p>Nice to have: Airflow.</p>"
+  }
+]
