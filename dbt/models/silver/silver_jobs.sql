@@ -4,8 +4,15 @@
 with deduped as (
     select *
     from {{ ref('int_jobs__unioned') }}
+    -- `where true` keeps BigQuery's parser happy: QUALIFY historically requires a
+    -- WHERE / GROUP BY / HAVING clause alongside it.
+    where true
+    -- The raw landing is append-only, so "most recently ingested" is the current
+    -- version of a posting. posted_or_updated_at can't order this: Lever only
+    -- exposes createdAt, which never changes, so every re-ingest would tie.
     qualify row_number() over (
-        partition by job_key order by posted_or_updated_at desc nulls last
+        partition by job_key
+        order by ingested_at desc, posted_or_updated_at desc nulls last
     ) = 1
 ),
 
