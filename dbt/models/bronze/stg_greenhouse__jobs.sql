@@ -5,7 +5,7 @@ select
     external_id,
     title,
     location,
-    cast(null as varchar)            as remote_policy,
+    remote_policy,
     department,
     employment_type,
     url,
