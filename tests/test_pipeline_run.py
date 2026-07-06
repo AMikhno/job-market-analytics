@@ -7,9 +7,17 @@ from ingest.adapters.lever import URL_TEMPLATE as LEVER_URL
 
 
 def _env(monkeypatch, tmp_path):
+    # Pin a controlled company list so tests never read a developer's real
+    # (gitignored) config/companies.csv. Distinct filename to avoid clashing
+    # with tests that write their own tmp_path/"companies.csv".
+    default = tmp_path / "default_companies.csv"
+    default.write_text(
+        "company_name,source,company_slug,active,tier,notes\n" "Lever demo,lever,lever,true,1,\n"
+    )
     monkeypatch.setenv("PIPELINE_TARGET", "dev")
     monkeypatch.setenv("DUCKDB_PATH", str(tmp_path / "j.duckdb"))
     monkeypatch.setenv("SUMMARY_PATH", str(tmp_path / "summary.json"))
+    monkeypatch.setenv("COMPANIES_CSV", str(default))
 
 
 @responses.activate
