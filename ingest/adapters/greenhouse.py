@@ -6,6 +6,7 @@ One board token = one company. Only `updated_at` is exposed (no original post da
 
 from __future__ import annotations
 
+import html
 from datetime import datetime
 from typing import Any
 
@@ -35,7 +36,9 @@ class GreenhouseAdapter:
             location=location,
             remote_policy=None,  # Greenhouse board API doesn't expose this in V1
             url=item["absolute_url"],
-            description_html=item.get("content", ""),
+            # The boards API returns `content` HTML-escaped (&lt;p&gt;…); unescape once
+            # so description_html is real HTML like every other source.
+            description_html=html.unescape(item.get("content", "")),
             posted_or_updated_at=_parse_dt(item.get("updated_at")),
             raw=item,
         )
