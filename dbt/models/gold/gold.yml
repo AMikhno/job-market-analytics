@@ -1,9 +1,13 @@
 version: 2
 models:
   - name: fct_job_postings
-    description: Curated, deduplicated, rule-filtered postings. The V1 output.
+    description: >
+      Curated, deduplicated, rule-filtered postings still live on their boards.
+      The V1 output: recency-ranked links to apply to.
     columns:
       - name: job_key
         data_tests: [not_null, unique]
       - name: url
         data_tests: [not_null]
+      - name: recency_rank
+        data_tests: [not_null, unique]
