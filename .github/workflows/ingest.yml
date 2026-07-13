@@ -51,6 +51,13 @@ jobs:
               "${{ secrets.SLACK_WEBHOOK_URL }}"
           fi
 
+      - name: Fail fast on BigQuery dialect errors (compile, no mutations)
+        env:
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+        run: |
+          make dbt-deps
+          cd dbt && uv run dbt compile --target prod
+
       - name: Transform (bronze -> silver -> gold) on BigQuery
         env:
           GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
