@@ -21,3 +21,103 @@ models:
         data_tests: [not_null]
       - name: is_active
         data_tests: [not_null]
+
+unit_tests:
+  - name: dedup_keeps_the_most_recently_ingested_row
+    description: >
+      Lever re-ingests tie on posted_or_updated_at (createdAt never changes);
+      ingested_at must break the tie so an edited posting surfaces.
+    model: silver_jobs
+    given:
+      - input: ref('int_jobs__unioned')
+        rows:
+          - {job_key: k1, source: lever, company: acme, title: old title, clean_text: "",
+             location: Ottawa, ingested_at: 2026-07-01 10:00:00, posted_or_updated_at: 2026-06-01 00:00:00}
+          - {job_key: k1, source: lever, company: acme, title: new title, clean_text: "",
+             location: Ottawa, ingested_at: 2026-07-02 10:00:00, posted_or_updated_at: 2026-06-01 00:00:00}
+      - input: ref('deal_breaker_tech')
+        rows: []
+      - input: ref('allowed_locations')
+        rows: [{pattern: Ottawa}]
+      - input: ref('blocked_locations')
+        rows: []
+    expect:
+      rows:
+        - {job_key: k1, title: new title}
+
+  - name: deal_breaker_matches_words_not_substrings
+    description: '"Kafka a plus" disqualifies; "Kafkaesque" does not. Case-insensitive.'
+    model: silver_jobs
+    given:
+      - input: ref('int_jobs__unioned')
+        rows:
+          - {job_key: k1, source: lever, company: acme, title: a, clean_text: We use Kafka daily,
+             location: Ottawa, ingested_at: 2026-07-02 10:00:00}
+          - {job_key: k2, source: lever, company: acme, title: b, clean_text: Kafkaesque bureaucracy,
+             location: Ottawa, ingested_at: 2026-07-02 10:00:00}
+          - {job_key: k3, source: lever, company: acme, title: c, clean_text: knows kafka a plus,
+             location: Ottawa, ingested_at: 2026-07-02 10:00:00}
+      - input: ref('deal_breaker_tech')
+        rows: [{tech: Kafka}]
+      - input: ref('allowed_locations')
+        rows: [{pattern: Ottawa}]
+      - input: ref('blocked_locations')
+        rows: []
+    expect:
+      rows:
+        - {job_key: k2}
+
+  - name: location_gate_allows_canada_blocks_us_markers
+    description: >
+      Allowed substrings pass (or null location); blocked word-markers veto even
+      when "Remote" matched — the "Remote — US only" case.
+    model: silver_jobs
+    given:
+      - input: ref('int_jobs__unioned')
+        rows:
+          - {job_key: k1, source: lever, company: acme, title: a, clean_text: "",
+             location: "Ottawa, ON, Canada", ingested_at: 2026-07-02 10:00:00}
+          - {job_key: k2, source: lever, company: acme, title: b, clean_text: "",
+             location: Remote - US only, ingested_at: 2026-07-02 10:00:00}
+          - {job_key: k3, source: lever, company: acme, title: c, clean_text: "",
+             location: "Berlin, Germany", ingested_at: 2026-07-02 10:00:00}
+          - {job_key: k4, source: lever, company: acme, title: d, clean_text: "",
+             location: null, ingested_at: 2026-07-02 10:00:00}
+          - {job_key: k5, source: lever, company: acme, title: e, clean_text: "",
+             location: Remote, ingested_at: 2026-07-02 10:00:00}
+      - input: ref('deal_breaker_tech')
+        rows: []
+      - input: ref('allowed_locations')
+        rows: [{pattern: Ottawa}, {pattern: Canada}, {pattern: Remote}]
+      - input: ref('blocked_locations')
+        rows: [{pattern: United States}, {pattern: USA}, {pattern: US only}]
+    expect:
+      rows:
+        - {job_key: k1}
+        - {job_key: k4}
+        - {job_key: k5}
+
+  - name: posting_missing_from_latest_board_ingest_is_inactive
+    description: >
+      k2 was seen on 07-01 but not in the board's 07-02 ingest — it was taken
+      down. It stays in silver (history) but is_active must be false.
+    model: silver_jobs
+    given:
+      - input: ref('int_jobs__unioned')
+        rows:
+          - {job_key: k1, source: lever, company: acme, title: live, clean_text: "",
+             location: Ottawa, ingested_at: 2026-07-01 10:00:00}
+          - {job_key: k1, source: lever, company: acme, title: live, clean_text: "",
+             location: Ottawa, ingested_at: 2026-07-02 10:00:00}
+          - {job_key: k2, source: lever, company: acme, title: gone, clean_text: "",
+             location: Ottawa, ingested_at: 2026-07-01 10:00:00}
+      - input: ref('deal_breaker_tech')
+        rows: []
+      - input: ref('allowed_locations')
+        rows: [{pattern: Ottawa}]
+      - input: ref('blocked_locations')
+        rows: []
+    expect:
+      rows:
+        - {job_key: k1, is_active: true}
+        - {job_key: k2, is_active: false}

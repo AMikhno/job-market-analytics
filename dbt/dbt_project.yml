@@ -9,7 +9,7 @@ macro-paths: ["macros"]
 
 # Three medallion zones = dbt staging -> intermediate -> marts.
 # Folder defaults below; per-model overrides live in-model:
-#   - int_jobs__unioned        -> ephemeral  (inlined into silver_jobs)
+#   - int_jobs__unioned        -> view  (free; ephemeral would block unit tests)
 #   - int_jobs_structured/scored (V2) -> incremental (never recompute LLM calls)
 models:
   job_pipeline:
