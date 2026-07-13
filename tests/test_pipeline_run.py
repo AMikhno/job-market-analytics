@@ -3,7 +3,9 @@ import json
 import responses
 
 from ingest import pipeline
-from ingest.adapters.lever import URL_TEMPLATE as LEVER_URL
+from ingest.sources import LeverSource
+
+LEVER_URL = LeverSource(name="lever").url_template
 
 
 def _env(monkeypatch, tmp_path):
@@ -12,7 +14,7 @@ def _env(monkeypatch, tmp_path):
     # with tests that write their own tmp_path/"companies.csv".
     default = tmp_path / "default_companies.csv"
     default.write_text(
-        "company_name,source,company_slug,active,tier,notes\n" "Lever demo,lever,lever,true,1,\n"
+        "company_name,source,board_ref,active,tier,notes\n" "Lever demo,lever,lever,true,1,\n"
     )
     monkeypatch.setenv("PIPELINE_TARGET", "dev")
     monkeypatch.setenv("DUCKDB_PATH", str(tmp_path / "j.duckdb"))
@@ -23,7 +25,7 @@ def _env(monkeypatch, tmp_path):
 @responses.activate
 def test_run_happy_path_lands_rows_and_ops(tmp_path, monkeypatch, lever_payload) -> None:
     _env(monkeypatch, tmp_path)
-    responses.add(responses.GET, LEVER_URL.format(slug="lever"), json=lever_payload)
+    responses.add(responses.GET, LEVER_URL.format(board_ref="lever"), json=lever_payload)
 
     assert pipeline.run() == 0
 
@@ -45,7 +47,7 @@ def test_run_happy_path_lands_rows_and_ops(tmp_path, monkeypatch, lever_payload)
 @responses.activate
 def test_zero_rows_warns_but_does_not_fail(tmp_path, monkeypatch) -> None:
     _env(monkeypatch, tmp_path)
-    responses.add(responses.GET, LEVER_URL.format(slug="lever"), json=[])  # empty board
+    responses.add(responses.GET, LEVER_URL.format(board_ref="lever"), json=[])  # empty board
 
     rc = pipeline.run()
 
@@ -58,7 +60,7 @@ def test_zero_rows_warns_but_does_not_fail(tmp_path, monkeypatch) -> None:
 @responses.activate
 def test_error_source_hard_fails(tmp_path, monkeypatch) -> None:
     _env(monkeypatch, tmp_path)
-    responses.add(responses.GET, LEVER_URL.format(slug="lever"), status=404)
+    responses.add(responses.GET, LEVER_URL.format(board_ref="lever"), status=404)
 
     rc = pipeline.run()
 
@@ -68,17 +70,17 @@ def test_error_source_hard_fails(tmp_path, monkeypatch) -> None:
 
 
 @responses.activate
-def test_one_bad_slug_skips_but_keeps_the_good_one(tmp_path, monkeypatch, lever_payload) -> None:
+def test_one_bad_board_skips_but_keeps_the_good_one(tmp_path, monkeypatch, lever_payload) -> None:
     companies = tmp_path / "companies.csv"
     companies.write_text(
-        "company_name,source,company_slug,active,tier,notes\n"
+        "company_name,source,board_ref,active,tier,notes\n"
         "GoodCo,lever,goodco,true,1,\n"
         "BadCo,lever,badco,true,1,\n"
     )
     _env(monkeypatch, tmp_path)
     monkeypatch.setenv("COMPANIES_CSV", str(companies))
-    responses.add(responses.GET, LEVER_URL.format(slug="goodco"), json=lever_payload)
-    responses.add(responses.GET, LEVER_URL.format(slug="badco"), status=404)
+    responses.add(responses.GET, LEVER_URL.format(board_ref="goodco"), json=lever_payload)
+    responses.add(responses.GET, LEVER_URL.format(board_ref="badco"), status=404)
 
     rc = pipeline.run()
 

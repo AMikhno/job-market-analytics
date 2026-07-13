@@ -3,6 +3,7 @@
 GET https://api.lever.co/v0/postings/{site}?mode=json
 The body is split across description + lists[] + additional; we concatenate it
 here (in tested Python) so dbt never has to flatten a JSON array cross-dialect.
+The URL template is owned by the source registry (ingest/sources.py).
 """
 
 from __future__ import annotations
@@ -15,21 +16,24 @@ import requests
 from shared.http import get_json
 from shared.models import RawPosting
 
-URL_TEMPLATE = "https://api.lever.co/v0/postings/{slug}?mode=json"
-
 
 class LeverAdapter:
     source = "lever"
 
-    def fetch(self, session: requests.Session, slug: str) -> list[RawPosting]:
-        items: list[dict[str, Any]] = get_json(session, URL_TEMPLATE.format(slug=slug))
-        return [self._map(item, slug) for item in items]
+    def __init__(self, url_template: str) -> None:
+        self.url_template = url_template
 
-    def _map(self, item: dict[str, Any], slug: str) -> RawPosting:
+    def fetch(self, session: requests.Session, board_ref: str) -> list[RawPosting]:
+        items: list[dict[str, Any]] = get_json(
+            session, self.url_template.format(board_ref=board_ref)
+        )
+        return [self._map(item, board_ref) for item in items]
+
+    def _map(self, item: dict[str, Any], board_ref: str) -> RawPosting:
         cats = item.get("categories") or {}
         return RawPosting(
             source=self.source,
-            company=slug,
+            company=board_ref,
             external_id=str(item["id"]),
             title=item["text"],
             location=cats.get("location"),

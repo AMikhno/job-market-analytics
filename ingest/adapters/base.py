@@ -10,8 +10,13 @@ from shared.models import RawPosting
 
 
 class SourceAdapter(Protocol):
-    """Fetch postings for one company slug and return them in the common schema."""
+    """Fetch postings for one company's board and return the common schema.
+
+    `board_ref` is the ATS-specific path fragment from the company list; each
+    adapter owns its interpretation (bare token for Greenhouse/Lever, richer
+    multi-segment forms for future ATS like Workday).
+    """
 
     source: str
 
-    def fetch(self, session: requests.Session, slug: str) -> list[RawPosting]: ...
+    def fetch(self, session: requests.Session, board_ref: str) -> list[RawPosting]: ...
