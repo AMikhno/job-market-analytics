@@ -7,11 +7,23 @@ stable — refer to items as FR-1 … FR-18.
 Suggested order: **Phase 1** (data correctness), **Phase 2** (prod path), **Phase 3**
 (daily-use gaps), **Phase 4** (dbt modernization), **Phase 5** (doc sweep, one commit).
 
+## Status (updated 2026-07-14)
+
+**Done — FR-1 … FR-12** (Phases 1–3 + dbt unit tests), plus a whitespace-strip fix
+for the company-list CSV found while verifying against the real list. Verified
+end-to-end: real ingest (507 rows), `dbt build` 35/35 (incl. 5 unit tests), source
+freshness PASS on both sources, lineage resolves to `fct_job_postings`.
+
+**Remaining — FR-13, FR-14, FR-15 (partial), FR-16, FR-17, FR-18** (contracts,
+sqlfluff, remaining dbt polish, the doc sweep, company-list secret, toolchain
+alignment). FR-15's `recency_rank` and the redundant CI `dbt seed` are already done;
+column descriptions + `persist_docs` remain.
+
 ---
 
 ## Phase 1 — Data correctness (already ingesting wrong)
 
-- [ ] **FR-1. Greenhouse `content` is HTML-escaped; adapter assumes raw HTML.**
+- [x] **FR-1. Greenhouse `content` is HTML-escaped; adapter assumes raw HTML.**
   Verified against the live API: `content` arrives as `&lt;p&gt;…`, not `<p>…`.
   `strip_html` therefore strips nothing for Greenhouse, `clean_text` is entity soup, and
   V2 prompts would inherit it. Fix: `html.unescape()` in
@@ -19,7 +31,7 @@ Suggested order: **Phase 1** (data correctness), **Phase 2** (prod path), **Phas
   `tests/fixtures/greenhouse_jobs.json` from a real (sanitized) response so the fixture
   matches the actual API shape.
 
-- [ ] **FR-2. Dedup order breaks for edited Lever postings.**
+- [x] **FR-2. Dedup order breaks for edited Lever postings.**
   `silver_jobs.sql` dedups by `posted_or_updated_at desc`, but Lever's timestamp is
   `createdAt` (never changes) → every re-ingest ties and the surviving row is arbitrary;
   an edited posting may never surface. Fix: order by `ingested_at desc` (append-only
@@ -27,32 +39,32 @@ Suggested order: **Phase 1** (data correctness), **Phase 2** (prod path), **Phas
 
 ## Phase 2 — Prod (BigQuery) path: first scheduled run currently fails twice
 
-- [ ] **FR-3. `cast(null as varchar)` in `stg_greenhouse__jobs.sql` errors on BigQuery**
+- [x] **FR-3. `cast(null as varchar)` in `stg_greenhouse__jobs.sql` errors on BigQuery**
   (no `VARCHAR` type). The cast is also unnecessary — the raw table has a
   `remote_policy` column; select it like `stg_lever__jobs` does.
 
-- [ ] **FR-4. `ingest.yml` provisions no dbt profile** — `make dbt-prod` / `make freshness`
+- [x] **FR-4. `ingest.yml` provisions no dbt profile** — `make dbt-prod` / `make freshness`
   fail with "Could not find profile". Fix: commit the env-var-driven profile as
   `dbt/profiles.yml` (it contains no secrets; dbt finds it in the project dir), drop the
   write-a-profile step from `ci.yml`, and remove `profiles.yml` from `.gitignore`.
 
-- [ ] **FR-5. CI never exercises the BigQuery dialect**, so prod-only SQL errors (FR-3)
+- [x] **FR-5. CI never exercises the BigQuery dialect**, so prod-only SQL errors (FR-3)
   surface first in the scheduled run. Add at least a `dbt compile --target prod` CI job
   (env vars faked), and/or sqlfluff with the BigQuery dialect (see FR-13).
 
-- [ ] **FR-6. Defensive `where true` above `qualify` in `silver_jobs.sql`** — BigQuery's
+- [x] **FR-6. Defensive `where true` above `qualify` in `silver_jobs.sql`** — BigQuery's
   parser has historically rejected `QUALIFY` without a WHERE/GROUP BY/HAVING clause;
   behavior is inconsistent across versions. Costs nothing; verify on first prod run.
 
 ## Phase 3 — Architectural gaps for daily use
 
-- [ ] **FR-7. Closed postings never leave gold.** Raw is append-only and silver keeps
+- [x] **FR-7. Closed postings never leave gold.** Raw is append-only and silver keeps
   "latest per `job_key`", so taken-down jobs sit in `fct_job_postings` forever. Add
   `last_seen_at = max(ingested_at) per job_key` and
   `is_active = (last_seen_at = latest successful ingest for that company)`; gold filters
   or flags. Document the removal story in ARCHITECTURE.
 
-- [ ] **FR-8. Company identifier must be a path fragment, not a bare slug.**
+- [x] **FR-8. Company identifier must be a path fragment, not a bare slug.**
   `companies.csv` stores `company_slug` and each adapter formats a single-token URL
   template. That works for Greenhouse/Lever but not for ATS like **Workday**, whose
   boards need multiple parameters (tenant, instance, site — e.g.
@@ -63,26 +75,26 @@ Suggested order: **Phase 1** (data correctness), **Phase 2** (prod path), **Phas
   ARCHITECTURE §4 ("the slug is the last path segment") and
   `config/companies.example.csv` accordingly. Prerequisite for "more sources" in V2.
 
-- [ ] **FR-9. Location gate passes US-remote jobs.** Seed pattern `Remote` substring-matches
+- [x] **FR-9. Location gate passes US-remote jobs.** Seed pattern `Remote` substring-matches
   "Remote — US only", and `location IS NULL` passes unconditionally while Greenhouse
   `remote_policy` is always null. Tighten the seed (e.g. `Remote - Canada` variants, drop
   bare `Remote`) or consciously accept the noise and document it.
 
-- [ ] **FR-10. BigQuery side is hand-provisioned and streaming-priced.** Datasets/tables
+- [x] **FR-10. BigQuery side is hand-provisioned and streaming-priced.** Datasets/tables
   are created manually ("during cloud setup") with no committed DDL; `insert_rows_json`
   is a paid streaming insert not counted in the §5.5 cost analysis; the documented
   partition-expiry mitigation is implemented nowhere. Fix: make `ensure_raw_tables`
   work in prod too (create dataset + partitioned table with expiry, idempotent) and
   switch to free batch `load_table_from_json`.
 
-- [ ] **FR-11. `ingest/sources.py` half dead.** Per-source `url_template` is never used
+- [x] **FR-11. `ingest/sources.py` half dead.** Per-source `url_template` is never used
   (adapters hardcode their own), `tier` is unused, and the docstring still says slugs
   come from `dbt/seeds/companies.csv`. Single source of truth for URLs (fold into FR-8),
   delete dead fields, fix the docstring.
 
 ## Phase 4 — dbt modernization (portfolio leverage)
 
-- [ ] **FR-12. Add dbt unit tests (dbt-core 1.8+ `unit_tests:`).** The V1 core logic —
+- [x] **FR-12. Add dbt unit tests (dbt-core 1.8+ `unit_tests:`).** The V1 core logic —
   dedup, word-boundary tech matching, location gate — has no logic tests, only
   `not_null`/`unique`. Mock rows should pin: "Kafka a plus" matches, "Kafkaesque"
   doesn't, "Remote — US only" behavior, null location, tie-breaking (FR-2).
