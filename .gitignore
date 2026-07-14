@@ -26,8 +26,8 @@ __pycache__/
 htmlcov/
 .coverage
 
-# dbt
+# dbt (dbt/profiles.yml is committed — it is env-var driven, no secret values)
 dbt/target/
 dbt/dbt_packages/
 dbt/logs/
-profiles.yml
+dbt/.user.yml

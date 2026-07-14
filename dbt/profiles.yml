@@ -1,0 +1,20 @@
+# Committed on purpose: this profile is entirely env-var driven and contains no
+# secret values (see docs/decisions/0007). dbt picks it up from the project
+# directory, so CI and the scheduled ingest need no profile-writing step.
+# Dual-target: DuckDB for dev (free, fast, no cloud), BigQuery for prod.
+job_pipeline:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Relative to this directory (dbt commands run from dbt/). Matches the
+      # Python default DUCKDB_PATH=./data/jobs.duckdb resolved from the repo root.
+      path: ../data/jobs.duckdb
+      threads: 4
+    prod:
+      type: bigquery
+      method: oauth # CI uses Workload Identity Federation; locally use gcloud ADC
+      project: "{{ env_var('GCP_PROJECT', '') }}"
+      dataset: "{{ env_var('BQ_DATASET', 'jobs') }}"
+      location: "{{ env_var('BQ_LOCATION', 'northamerica-northeast2') }}"
+      threads: 4
