@@ -27,6 +27,14 @@ class Company(BaseModel):
     tier: int = 1
     notes: str = ""
 
+    @field_validator("*", mode="before")
+    @classmethod
+    def _strip_csv_whitespace(cls, value: object) -> object:
+        # Hand-maintained CSVs pick up stray spaces (", lever, shyftlabs", " true");
+        # an unstripped source/board_ref silently never matches or builds a bad URL,
+        # and " true"/" 1" would fail bool/int parsing. Strip every string cell first.
+        return value.strip() if isinstance(value, str) else value
+
     @field_validator("active", "tier", "notes", mode="before")
     @classmethod
     def _blank_csv_cell_means_default(cls, value: object, info: Any) -> object:

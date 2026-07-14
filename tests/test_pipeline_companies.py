@@ -59,6 +59,24 @@ def test_multi_segment_board_ref_passes_through_untouched(tmp_path: Path, monkey
     assert c.tier == 2
 
 
+def test_whitespace_in_csv_cells_is_stripped(tmp_path: Path, monkeypatch) -> None:
+    # Hand-maintained lists pick up stray spaces; an unstripped source would
+    # silently never match its adapter and the row would vanish without error.
+    spaced = tmp_path / "companies.csv"
+    spaced.write_text(
+        "company_name,source,board_ref,active,tier,notes\n"
+        "Shyftlabs, lever, shyftlabs, true, 1, \n"
+    )
+    _use(monkeypatch, str(spaced))
+
+    (c,) = pipeline.load_companies("lever")
+
+    assert c.source == "lever"
+    assert c.board_ref == "shyftlabs"
+    assert c.active is True
+    assert c.tier == 1
+
+
 def test_malformed_row_fails_loudly_before_fetching(tmp_path: Path, monkeypatch) -> None:
     # A row missing its board_ref is a config error, not something to skip silently.
     bad = tmp_path / "companies.csv"
