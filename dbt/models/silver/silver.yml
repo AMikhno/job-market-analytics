@@ -14,18 +14,60 @@ models:
       Deduplicated, rule-filtered postings ready for V1 delivery / V2 AI, with
       lifecycle columns (last_seen_at / is_active) so taken-down postings are
       distinguishable from live ones.
+    # Contract enforced on the DuckDB dev target — CI builds it on every PR, so
+    # column drift and type regressions (e.g. the old cast-null-as-varchar) fail
+    # fast. Declared types are DuckDB's; the BigQuery build reports STRING/BOOL/
+    # INT64, so enforcement is dev-scoped rather than breaking prod on type names.
+    config:
+      contract:
+        enforced: "{{ target.type == 'duckdb' }}"
     columns:
       - name: job_key
         description: Stable posting identity; silver keeps the latest row per key.
+        data_type: varchar
         data_tests: [not_null, unique]
+      - name: content_hash
+        description: Change-detection hash of (title, clean_text); V2 reprocessing key.
+        data_type: varchar
+      - name: source
+        description: ATS the posting came from ("greenhouse" | "lever").
+        data_type: varchar
+      - name: company
+        description: The board_ref the posting was fetched from.
+        data_type: varchar
+      - name: external_id
+        description: Source-native posting id, as text.
+        data_type: varchar
+      - name: title
+        data_type: varchar
+      - name: location
+        data_type: varchar
+      - name: remote_policy
+        data_type: varchar
+      - name: department
+        data_type: varchar
+      - name: employment_type
+        data_type: varchar
       - name: url
         description: Link to the live posting.
+        data_type: varchar
         data_tests: [not_null]
+      - name: description_html
+        data_type: varchar
+      - name: clean_text
+        description: Tag-stripped posting text used by the keyword filter.
+        data_type: varchar
+      - name: posted_or_updated_at
+        data_type: timestamp
+      - name: ingested_at
+        data_type: timestamp
       - name: last_seen_at
         description: Most recent ingest timestamp that still contained this posting.
+        data_type: timestamp
         data_tests: [not_null]
       - name: is_active
         description: True while the posting is present in its board's latest ingest.
+        data_type: boolean
         data_tests: [not_null]
 
 unit_tests:

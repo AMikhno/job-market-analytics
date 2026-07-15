@@ -4,15 +4,40 @@ models:
     description: >
       Curated, deduplicated, rule-filtered postings still live on their boards.
       The V1 output: recency-ranked links to apply to.
+    # Contract enforced on the DuckDB dev target (see silver_jobs for the rationale).
+    config:
+      contract:
+        enforced: "{{ target.type == 'duckdb' }}"
     columns:
       - name: job_key
         description: Stable posting identity (one row per posting).
+        data_type: varchar
         data_tests: [not_null, unique]
+      - name: content_hash
+        data_type: varchar
+      - name: source
+        data_type: varchar
+      - name: company
+        data_type: varchar
+      - name: title
+        data_type: varchar
+      - name: location
+        data_type: varchar
+      - name: remote_policy
+        data_type: varchar
       - name: url
         description: Link out to the original posting.
+        data_type: varchar
         data_tests: [not_null]
+      - name: posted_or_updated_at
+        data_type: timestamp
+      - name: ingested_at
+        data_type: timestamp
+      - name: last_seen_at
+        data_type: timestamp
       - name: recency_rank
         description: 1 = most recent by posted_or_updated_at; dense unique ordering for the digest.
+        data_type: bigint
         data_tests: [not_null, unique]
 
 unit_tests:
