@@ -28,9 +28,11 @@ AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
   boundaries (the one entry point — API JSON — is parsed into a `RawPosting` in the adapter).
 - **One adapter per access method, one scraper per genuinely unique site.**
 - **Source definitions** live in `ingest/sources.py` (Pydantic registry), NOT YAML.
-- **The company list is private config**, treated like `.env`: real list in `config/companies.csv`
-  (**gitignored**), committed only as `config/companies.example.csv`. One row per company per board;
-  put companies on unsupported ATS in with `active=false`. Never commit the real list.
+- **The company list is private config** (gitignored locally): real list in `config/companies.csv`,
+  committed only as `config/companies.example.csv`. It targets public job boards, so in CI it is a
+  GitHub Actions **variable** (`COMPANIES_CSV_CONTENT`), *not* a secret — only credentials (BigQuery,
+  Slack) are secrets. One row per company per board; put companies on unsupported ATS in with
+  `active=false`. Never commit the real list.
 - **Filter rules are data**: deal-breaker tech and allowed locations live in dbt seeds.
 - **Cross-warehouse SQL**: models must run on both DuckDB (dev) and BigQuery (prod);
   dialect-specific logic goes in an `adapter.dispatch` macro (see `macros/cross_db.sql`).

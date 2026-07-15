@@ -27,10 +27,13 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
       
+      # The company list targets public job boards, so it's a GitHub Actions
+      # *variable* (not a secret). Named COMPANIES_CSV_CONTENT to avoid colliding
+      # with the COMPANIES_CSV env var that holds a file *path* (shared/config.py).
       - name: Materialize the private company list
         env:
-          COMPANIES: ${{ vars.COMPANIES_CSV }}  
-        run: printf '%s' "$COMPANIES" > config/companies.csv
+          COMPANIES_CSV_CONTENT: ${{ vars.COMPANIES_CSV_CONTENT }}
+        run: printf '%s' "$COMPANIES_CSV_CONTENT" > config/companies.csv
 
       - name: Ingest -> BigQuery raw
         env:
