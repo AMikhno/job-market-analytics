@@ -1,4 +1,5 @@
-company_name,source,company_slug,active,tier,notes
+company_name,source,board_ref,active,tier,notes
 Lever (demo board),lever,lever,true,1,verified public board — smoke test
 ExampleGreenhouseCo,greenhouse,REPLACE_WITH_GH_TOKEN,false,1,placeholder — copy this file to config/companies.csv and edit
+ExampleWorkdayCo,workday,examplewd/wd5/External,false,2,unsupported ATS in V1 — board_ref carries tenant/instance/site for multi-parameter boards
 ExampleAshbyCo,ashby,exampleashby,false,2,unsupported ATS in V1 — light up when adapter exists

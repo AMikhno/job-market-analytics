@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     gcp_project: str = Field(default="")
     bq_dataset: str = Field(default="jobs")
     bq_location: str = Field(default="northamerica-northeast2")
+    # Raw landings are append-only and would grow forever; ingestion-time
+    # partitions older than this are dropped (keeps storage under the free tier).
+    bq_raw_partition_expiry_days: int = Field(default=400)
 
     slack_webhook_url: str = Field(default="")
     http_user_agent: str = Field(default="job-search-pipeline/0.1")

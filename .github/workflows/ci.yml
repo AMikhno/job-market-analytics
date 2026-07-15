@@ -21,23 +21,15 @@ jobs:
       - name: Python tests (coverage gate enforced)
         run: make test            # fails if coverage < 85% or any test fails
 
-      - name: Write a dev (DuckDB) dbt profile
-        run: |
-          mkdir -p ~/.dbt
-          cat > ~/.dbt/profiles.yml <<'YAML'
-          job_pipeline:
-            target: dev
-            outputs:
-              dev:
-                type: duckdb
-                path: ../data/jobs.duckdb
-                threads: 4
-          YAML
-
-      - name: Build + test dbt on DuckDB (uses the committed example company list)
+      - name: Build + test dbt on DuckDB (profile is committed in dbt/)
         run: |
           make ensure-raw                       # empty raw tables so models can build
-          cd dbt
-          uv run dbt deps
-          uv run dbt seed --target dev          # deal_breaker_tech, allowed_locations
-          uv run dbt build --target dev
+          make dbt-dev                          # dbt deps + dbt build (seeds included)
+
+      # No secrets in this workflow, so the BigQuery target can only be *parsed*
+      # (config/contracts/jinja per-target). Full dialect validation happens in
+      # ingest.yml, which compiles the prod target before building it.
+      - name: Parse the prod (BigQuery) target — no connection needed
+        env:
+          GCP_PROJECT: ci-fake-project
+        run: cd dbt && uv run dbt parse --target prod

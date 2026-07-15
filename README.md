@@ -18,7 +18,7 @@ transformations only**, against **Greenhouse and Lever**.
 make install                  # uv venv + pre-commit hooks
 cp .env.example .env          # ingestion needs no secrets; fill BQ vars only for prod
 cp config/companies.example.csv config/companies.csv   # your PRIVATE company list (gitignored)
-cp dbt/profiles.yml.example ~/.dbt/profiles.yml
+# dbt/profiles.yml is committed (env-var driven, no secrets) — nothing to copy
 
 make ingest                   # Python -> raw tables (DuckDB by default)
 make dbt-dev                  # bronze -> silver -> gold on DuckDB

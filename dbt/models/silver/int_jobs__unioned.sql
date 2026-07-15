@@ -1,4 +1,6 @@
-{{ config(materialized='ephemeral') }}
+-- View, not ephemeral: dbt unit tests introspect input columns from the
+-- warehouse, and an ephemeral model has no relation to introspect (ADR-0010).
+{{ config(materialized='view') }}
 
 -- Union every source into one shape, then derive the identity key, the
 -- change-detection hash, and the cleaned text used by the keyword filter.

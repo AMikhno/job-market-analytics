@@ -2,10 +2,12 @@
 
 GET https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true
 One board token = one company. Only `updated_at` is exposed (no original post date).
+The URL template is owned by the source registry (ingest/sources.py).
 """
 
 from __future__ import annotations
 
+import html
 from datetime import datetime
 from typing import Any
 
@@ -14,28 +16,31 @@ import requests
 from shared.http import get_json
 from shared.models import RawPosting
 
-URL_TEMPLATE = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true"
-
 
 class GreenhouseAdapter:
     source = "greenhouse"
 
-    def fetch(self, session: requests.Session, slug: str) -> list[RawPosting]:
-        data = get_json(session, URL_TEMPLATE.format(slug=slug))
-        jobs: list[dict[str, Any]] = data.get("jobs", [])
-        return [self._map(item, slug) for item in jobs]
+    def __init__(self, url_template: str) -> None:
+        self.url_template = url_template
 
-    def _map(self, item: dict[str, Any], slug: str) -> RawPosting:
+    def fetch(self, session: requests.Session, board_ref: str) -> list[RawPosting]:
+        data = get_json(session, self.url_template.format(board_ref=board_ref))
+        jobs: list[dict[str, Any]] = data.get("jobs", [])
+        return [self._map(item, board_ref) for item in jobs]
+
+    def _map(self, item: dict[str, Any], board_ref: str) -> RawPosting:
         location = (item.get("location") or {}).get("name")
         return RawPosting(
             source=self.source,
-            company=slug,
+            company=board_ref,
             external_id=str(item["id"]),
             title=item["title"],
             location=location,
             remote_policy=None,  # Greenhouse board API doesn't expose this in V1
             url=item["absolute_url"],
-            description_html=item.get("content", ""),
+            # The boards API returns `content` HTML-escaped (&lt;p&gt;…); unescape once
+            # so description_html is real HTML like every other source.
+            description_html=html.unescape(item.get("content", "")),
             posted_or_updated_at=_parse_dt(item.get("updated_at")),
             raw=item,
         )

@@ -2,9 +2,9 @@
 
 Fetches every active source's companies, lands raw rows, and records one
 ops.ingest_runs row per source. Failure model:
-  * a bad/unreachable slug (e.g. 404) is a per-company WARNING — it is skipped
+  * a bad/unreachable board (e.g. 404) is a per-company WARNING — it is skipped
     and the other companies still run;
-  * a source whose *every* slug failed is a HARD failure (non-zero exit);
+  * a source whose *every* board failed is a HARD failure (non-zero exit);
   * an unexpected error anywhere is caught at the top, logged with a traceback,
     turned into a non-zero exit, and recorded in a failure summary;
   * a source returning < low_volume_threshold rows is a (non-failing) WARNING;
@@ -18,7 +18,7 @@ import json
 import logging
 import sys
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -29,14 +29,19 @@ from ingest.sources import SOURCES
 from shared import storage
 from shared.config import Settings, get_settings
 from shared.http import build_session
-from shared.models import IngestRun
+from shared.models import Company, IngestRun
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("ingest")
 
+# Adapters are constructed from the registry so the URL templates have exactly
+# one home (ingest/sources.py).
+_ADAPTER_FACTORIES: dict[str, Callable[[str], SourceAdapter]] = {
+    GreenhouseAdapter.source: GreenhouseAdapter,
+    LeverAdapter.source: LeverAdapter,
+}
 ADAPTERS: dict[str, SourceAdapter] = {
-    "greenhouse": GreenhouseAdapter(),
-    "lever": LeverAdapter(),
+    s.adapter: _ADAPTER_FACTORIES[s.adapter](s.url_template) for s in SOURCES
 }
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_COMPANIES = ROOT / "config" / "companies.example.csv"
@@ -63,15 +68,16 @@ def _companies_path(settings: Settings) -> Path:
     raise FileNotFoundError(f"no company list at {p} or {EXAMPLE_COMPANIES}")
 
 
-def load_slugs(source: str, settings: Settings | None = None) -> list[str]:
-    """Read active company slugs for a source from the (private) company list."""
+def load_companies(source: str, settings: Settings | None = None) -> list[Company]:
+    """Read the active companies for one source from the (private) company list.
+
+    Every row is validated into a typed Company (a malformed list fails loudly,
+    before anything is fetched); the legacy `company_slug` header still parses.
+    """
     settings = settings or get_settings()
-    with _companies_path(settings).open() as fh:
-        return [
-            row["company_slug"]
-            for row in csv.DictReader(fh)
-            if row["source"] == source and row["active"].lower() == "true"
-        ]
+    with _companies_path(settings).open(newline="") as fh:
+        rows = [Company.model_validate(row) for row in csv.DictReader(fh)]
+    return [c for c in rows if c.source == source and c.active]
 
 
 def run() -> int:
@@ -92,34 +98,40 @@ def _run(settings: Settings) -> int:
     storage.ensure_raw_tables(settings)  # so dbt can build even for empty sources
 
     for source in (s for s in SOURCES if s.active):
-        slugs = load_slugs(source.adapter, settings)
-        if not slugs:
+        companies = load_companies(source.adapter, settings)
+        if not companies:
             log.info("source=%s has no active companies; skipping", source.adapter)
             continue
         adapter = ADAPTERS[source.adapter]
         started = datetime.now(UTC)
         rows = 0
-        failed_slugs: list[str] = []
-        for slug in slugs:
+        failed_boards: list[str] = []
+        for company in companies:
             try:
-                postings = adapter.fetch(session, slug)
+                postings = adapter.fetch(session, company.board_ref)
                 rows += storage.land(
                     postings, source=source.adapter, run_id=run_id, settings=settings
                 )
             except Exception as exc:  # noqa: BLE001 - per-company; skip and keep going
-                failed_slugs.append(slug)
-                log.warning("source=%s slug=%s failed: %s", source.adapter, slug, exc)
+                failed_boards.append(company.board_ref)
+                log.warning(
+                    "source=%s company=%s board_ref=%s failed: %s",
+                    source.adapter,
+                    company.company_name,
+                    company.board_ref,
+                    exc,
+                )
 
         status, error = "ok", None
-        if failed_slugs and len(failed_slugs) == len(slugs):
-            status, error = "error", f"all slugs failed: {failed_slugs}"
-        elif failed_slugs:
-            error = f"skipped slugs: {failed_slugs}"  # status stays 'ok'
+        if failed_boards and len(failed_boards) == len(companies):
+            status, error = "error", f"all boards failed: {failed_boards}"
+        elif failed_boards:
+            error = f"skipped boards: {failed_boards}"  # status stays 'ok'
         runs.append(
             IngestRun(
                 run_id=run_id,
                 source=source.adapter,
-                company_count=len(slugs),
+                company_count=len(companies),
                 rows_fetched=rows,
                 status=status,
                 started_at=started,
@@ -130,9 +142,9 @@ def _run(settings: Settings) -> int:
         log.info(
             "source=%s companies=%d ok=%d failed=%d rows=%d status=%s",
             source.adapter,
-            len(slugs),
-            len(slugs) - len(failed_slugs),
-            len(failed_slugs),
+            len(companies),
+            len(companies) - len(failed_boards),
+            len(failed_boards),
             rows,
             status,
         )
