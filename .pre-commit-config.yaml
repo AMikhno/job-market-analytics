@@ -1,14 +1,11 @@
 # Fast formatters/linters on commit; the full test suite on push.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.5.0
+    rev: v0.15.17
     hooks:
       - id: ruff
         args: [--fix]
-      - id: ruff-format
-  - repo: https://github.com/psf/black
-    rev: 24.4.2
-    hooks: [{ id: black }]
+      - id: ruff-format            # single formatter (black removed)
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.18.4
     hooks: [{ id: gitleaks }]            # hard backstop against committed secrets

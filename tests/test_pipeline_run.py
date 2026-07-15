@@ -14,7 +14,7 @@ def _env(monkeypatch, tmp_path):
     # with tests that write their own tmp_path/"companies.csv".
     default = tmp_path / "default_companies.csv"
     default.write_text(
-        "company_name,source,board_ref,active,tier,notes\n" "Lever demo,lever,lever,true,1,\n"
+        "company_name,source,board_ref,active,tier,notes\nLever demo,lever,lever,true,1,\n"
     )
     monkeypatch.setenv("PIPELINE_TARGET", "dev")
     monkeypatch.setenv("DUCKDB_PATH", str(tmp_path / "j.duckdb"))

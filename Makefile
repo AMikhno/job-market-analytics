@@ -30,18 +30,18 @@ freshness:        ## Assert raw sources are fresh (fails the run if stale/empty)
 test:             ## Run the Python test suite with coverage gate
 	uv run pytest
 
-lint: sql-lint    ## ruff + black --check + mypy + sqlfluff
+lint: sql-lint    ## ruff (check + format) + mypy + sqlfluff
 	uv run ruff check .
-	uv run black --check .
+	uv run ruff format --check .
 	uv run mypy shared ingest
 
 sql-lint: dbt-deps ## Lint dbt SQL (dbt templater, DuckDB dialect; run from dbt/)
 	mkdir -p data                         # DuckDB path the profile resolves to
 	cd dbt && uv run sqlfluff lint models
 
-format:           ## Auto-fix with ruff, black, and sqlfluff
+format:           ## Auto-fix with ruff (lint + format) and sqlfluff
 	uv run ruff check --fix .
-	uv run black .
+	uv run ruff format .
 	cd dbt && uv run sqlfluff fix models
 
 check: lint test  ## Everything CI runs locally

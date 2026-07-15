@@ -32,7 +32,7 @@ queryable `gold` table built entirely from ingestion + SQL.
 └────────┘   └─────────┘   │  (intermediate zone — several     │   └──────┘   (links)
  GH + Lever   staging      │   int_ models, not one layer)     │    marts
  public APIs  stg_*(views) │                                   │    fct_job_postings
- 1 table/src               │  int_jobs__unioned  (ephemeral)   │    (table)
+ 1 table/src               │  int_jobs__unioned  (view)        │    (table)
  + run meta                │  silver_jobs        (table)       │
                            │  ┄ V2 int_jobs_structured         │
                            │  ┄    → int_jobs_scored            │
@@ -59,11 +59,11 @@ are incremental tables that are never recomputed).
 |------------------------|-------|----------|--------------|------|
 | Ingest (Python)        | V1 | `raw_*_jobs`, `ops.ingest_runs` | — | Normalize, land, record run metadata. |
 | **Bronze** / staging   | V1 | `stg_greenhouse__jobs`, `stg_lever__jobs` | **view** | Cast/standardize the typed landing, per source. |
-| **Silver** / intermediate | V1 | `int_jobs__unioned` | **ephemeral** | Union + `job_key` + `content_hash` + `clean_text`. |
-|                        | V1 | `silver_jobs` | **table** | Dedup (latest per `job_key`) + seed-driven keyword/location filter. |
+| **Silver** / intermediate | V1 | `int_jobs__unioned` | **view** | Union + `job_key` + `content_hash` + `clean_text`. |
+|                        | V1 | `silver_jobs` | **table** | Dedup (latest per `job_key`) + tech/location filter + lifecycle (`last_seen_at`/`is_active`). |
 |                        | V2 | `int_jobs_structured` | **incremental** | `AI.GENERATE`: typed fields + requirement text. |
 |                        | V2 | `int_jobs_scored` | **incremental** | `AI.GENERATE_INT`: fit score against the trimmed artifact. |
-| **Gold** / marts       | V1 | `fct_job_postings` | **table** | One row per posting, recency-ranked, with the link. |
+| **Gold** / marts       | V1 | `fct_job_postings` | **table** | One row per *active* posting, recency-ranked, with the link. |
 | Deliver (Python/SQL)   | V2 | — | — | Read scored gold, send **links** to relevant postings. |
 
 ---
@@ -87,12 +87,15 @@ Both adapters output the common `RawPosting` schema: `source`, `company`, `exter
 ### Sourcing & the company seed
 
 These APIs have no cross-company or location search — you query one company's board at a
-time by its token, and filter location/title yourself (which is what silver does). The
-curated company list therefore lives in `dbt/seeds/companies.csv` (read by both the Python
-ingest and dbt): `company_name, source, company_slug, active, tier, notes`. The slug is the
-last path segment of the careers URL (`boards.greenhouse.io/<slug>`, `jobs.lever.co/<slug>`).
-Companies on ATS without an adapter yet (Ashby, Workable, …) are kept as `active=false` so the
-inventory stays complete. No automated discovery pipeline in V1 — there's no API for it.
+time by its board reference, and filter location/title yourself (which is what silver does). The
+curated company list is **private config** in `config/companies.csv` (gitignored; committed only
+as `config/companies.example.csv`), read by the **Python ingest** — it is *not* a dbt seed (see
+ADR-0011). Columns: `company_name, source, board_ref, active, tier, notes`. `board_ref` is the
+ATS-specific path fragment the adapter interprets — a bare token for Greenhouse/Lever
+(`boards.greenhouse.io/<board_ref>`, `jobs.lever.co/<board_ref>`), but multi-segment for boards
+that need it (e.g. Workday's tenant/instance/site); see ADR-0012. Companies on ATS without an
+adapter yet (Ashby, Workday, …) are kept as `active=false` so the inventory stays complete. No
+automated discovery pipeline in V1 — there's no API for it.
 
 ### Keys and dedup
 
@@ -104,10 +107,15 @@ inventory stays complete. No automated discovery pipeline in V1 — there's no A
 ### V1 filtering — and its honest limit
 
 Deal-breaker tech (Kafka, Spark, …) and allowed locations live in **dbt seeds**, matched in
-silver — tech via a case-insensitive word-boundary regex (so "Kafka a plus" is matched on the
-word, and the list is curated to unambiguous disqualifiers). What V1 **cannot** do without the
-LLM: tell required from nice-to-have, or infer seniority. Those move to a post-extraction
-filter in V2.
+silver via a case-insensitive word-boundary regex (so "Kafka a plus" matches on the word). The
+location rule is deliberately coarse: keep a posting whose location is null, is bare "Remote", or
+word-matches an allowed Canadian marker (`Canada`, `Ontario`, `ON`, `Ottawa`, `Toronto`,
+`Montreal`); drop the rest (so "Remote - United Kingdom" is dropped). No country blocklist.
+
+Silver also derives **lifecycle** columns: `last_seen_at` (latest ingest that still contained the
+posting) and `is_active` (present in its board's most recent ingest) — so gold delivers only live
+postings and taken-down ones drop out. What V1 **cannot** do without the LLM: tell required from
+nice-to-have, infer seniority, or judge true location eligibility. Those move to V2.
 
 ---
 

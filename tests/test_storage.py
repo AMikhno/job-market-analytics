@@ -101,7 +101,7 @@ class _FakeLoadJob:
 class _FakeBQClient:
     """Captures provisioning + load calls; asserts happen in the tests."""
 
-    instances: list["_FakeBQClient"] = []
+    instances: list[_FakeBQClient] = []
 
     def __init__(self, project: str | None = None, location: str | None = None) -> None:
         self.project = project

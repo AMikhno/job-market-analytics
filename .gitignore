@@ -12,8 +12,9 @@ config/companies.csv
 *.parquet
 /data/
 
-# OS / runtime artifacts
+# OS / editor / runtime artifacts
 .DS_Store
+.vscode/
 ingest_summary.json
 
 # Python
