@@ -15,7 +15,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
       - run: uv sync --extra dev
 
-      - name: Lint (ruff, black, mypy, sqlfluff)
+      - name: Lint (ruff, mypy, sqlfluff)
         run: make lint
 
       - name: Python tests (coverage gate enforced)

@@ -23,7 +23,7 @@ AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
 
 ## Conventions
 
-- **Python 3.12+**, full type hints; `mypy --strict` must pass. No untyped defs.
+- **Python 3.14+**, full type hints; `mypy --strict` must pass. No untyped defs.
 - **Pydantic v2** for all configs and data models. No raw dicts crossing module
   boundaries (the one entry point — API JSON — is parsed into a `RawPosting` in the adapter).
 - **One adapter per access method, one scraper per genuinely unique site.**
@@ -81,7 +81,7 @@ must be sanitized before they are committed.
 - [ ] Tests added for the change and the full suite passes (`make test`).
 - [ ] Coverage gate still met; gate not lowered.
 - [ ] dbt schema tests added for new models/columns; `make dbt-test` passes.
-- [ ] `make lint` passes (ruff, black, mypy --strict, sqlfluff).
+- [ ] `make lint` passes (ruff check, ruff format, mypy --strict, sqlfluff).
 - [ ] No swallowed exceptions; no TODO/placeholder values left behind.
 - [ ] No secret values, no real PII, no unredacted fixtures.
 - [ ] Change matches the scope discussed.
