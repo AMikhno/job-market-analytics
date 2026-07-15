@@ -33,7 +33,7 @@ shared/      config (Pydantic Settings), models, http, storage
 config/      private company list (config/companies.csv, gitignored; .example committed)
 dbt/         one dual-target project: models/{bronze,silver,gold}, seeds, macros
 tests/       pytest suite + sanitized fixtures
-docs/        ARCHITECTURE.md, decisions/ (ADRs)
+docs/        decisions/ (ADRs), build-plan.md, fix-roadmap.md  (ARCHITECTURE.md is at repo root)
 .github/     ci.yml (DuckDB, no secrets) + ingest.yml (scheduled, WIF)
 ```
 
@@ -44,7 +44,8 @@ GitHub Actions (twice-daily ingest, freshness gate, Slack-on-failure).
 
 ## Status
 
-Pre-V1 scaffold. See `ARCHITECTURE.md` §6 for the roadmap.
+V1 built — ingestion + dbt (bronze → silver → gold), tests + CI. AI scoring/embeddings
+are V2; see `ARCHITECTURE.md` §9 for the roadmap.
 
 ## License
 

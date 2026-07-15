@@ -1,14 +1,14 @@
 # Build Plan
 
-## V1 — MVP: ingestion + dbt transformations (current)
-- [ ] `shared/` config, models, http, storage (DuckDB + BigQuery landing)
-- [ ] Greenhouse + Lever adapters + source registry + pipeline entrypoint
-- [ ] dbt: sources + freshness, bronze stg per source, silver (dedup, rule-filter), gold
-- [ ] Seeds: companies, deal_breaker_tech, allowed_locations
-- [ ] Tests: adapters vs fixtures, config, pipeline; dbt schema tests
-- [ ] CI (DuckDB, no secrets) + scheduled ingest (WIF, freshness, Slack-on-failure)
-- [ ] SQL linting via sqlfluff + the dbt templater (deferred — needs ref/source/macro resolution)
-- [ ] `ops.ingest_runs` run-metadata table + zero-rows-is-failure check
+## V1 — MVP: ingestion + dbt transformations (built)
+- [x] `shared/` config, models, http, storage (DuckDB + BigQuery landing)
+- [x] Greenhouse + Lever adapters + source registry + pipeline entrypoint
+- [x] dbt: sources + freshness, bronze stg per source, silver (dedup, rule-filter, lifecycle), gold
+- [x] Seeds: deal_breaker_tech, allowed_locations (company list is `config/companies.csv`, not a seed — ADR-0011)
+- [x] Tests: adapters vs fixtures, config, pipeline; dbt schema tests + unit tests; model contracts
+- [x] CI (DuckDB, no secrets) + scheduled ingest (WIF, freshness, Slack-on-failure)
+- [x] SQL linting via sqlfluff + the dbt templater
+- [x] `ops.ingest_runs` run-metadata table + low-volume **warning** (warn-only; zero rows never fails the run — sustained staleness fails via dbt source freshness)
 
 ## V2 — Relevance via AI, inside dbt
 - [ ] `models/silver/int_jobs_structured` (`AI.GENERATE` + `output_schema`): typed fields + requirement_text

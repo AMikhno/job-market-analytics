@@ -7,17 +7,23 @@ stable — refer to items as FR-1 … FR-18.
 Suggested order: **Phase 1** (data correctness), **Phase 2** (prod path), **Phase 3**
 (daily-use gaps), **Phase 4** (dbt modernization), **Phase 5** (doc sweep, one commit).
 
-## Status (updated 2026-07-14)
+## Status (updated 2026-07-15)
 
-**Done — FR-1 … FR-12** (Phases 1–3 + dbt unit tests), plus a whitespace-strip fix
-for the company-list CSV found while verifying against the real list. Verified
-end-to-end: real ingest (507 rows), `dbt build` 35/35 (incl. 5 unit tests), source
-freshness PASS on both sources, lineage resolves to `fct_job_postings`.
+**All 18 items done.** FR-1…FR-12 merged to `main`; FR-13…FR-18 plus a whitespace-strip
+fix and a reworked FR-9 location rule on the follow-up branch. Notable deviations from the
+original notes, per user direction:
 
-**Remaining — FR-13, FR-14, FR-15 (partial), FR-16, FR-17, FR-18** (contracts,
-sqlfluff, remaining dbt polish, the doc sweep, company-list secret, toolchain
-alignment). FR-15's `recency_rank` and the redundant CI `dbt seed` are already done;
-column descriptions + `persist_docs` remain.
+- **FR-9** was reworked twice. The foreign-country *blocklist* was rejected (unbounded,
+  and it dropped Canada-alongside-foreign postings). Final rule: keep a posting whose
+  location is null, is bare "Remote", or **word-matches** a Canadian marker (`Canada`,
+  `Ontario`, `ON`, `Ottawa`, `Toronto`, `Montreal`); drop the rest. Word-matched so "ON"
+  hits "Ottawa, ON" but not "London". `blocked_locations` seed removed.
+- **FR-17** — the company list **stays a GitHub variable** (never a secret); only the
+  name collision was fixed (renamed to `COMPANIES_CSV_CONTENT`). Credentials are secrets.
+
+Verified end-to-end: real ingest (507 rows), `make lint` (ruff + mypy + sqlfluff),
+`dbt build` (models + schema tests + 6 unit tests + enforced contracts), source freshness
+PASS, lineage resolves to `fct_job_postings`.
 
 ---
 
@@ -99,22 +105,22 @@ column descriptions + `persist_docs` remain.
   `not_null`/`unique`. Mock rows should pin: "Kafka a plus" matches, "Kafkaesque"
   doesn't, "Remote — US only" behavior, null location, tie-breaking (FR-2).
 
-- [ ] **FR-13. Enforce model contracts** (`contract: {enforced: true}` + `data_type`) on
+- [x] **FR-13. Enforce model contracts** (`contract: {enforced: true}` + `data_type`) on
   `silver_jobs` and `fct_job_postings`. Would have caught FR-3 at parse time; also
   de-risks the position-based `union all` in `int_jobs__unioned`.
 
-- [ ] **FR-14. Implement sqlfluff or stop claiming it.** CLAUDE.md's checklist and the CI
+- [x] **FR-14. Implement sqlfluff or stop claiming it.** CLAUDE.md's checklist and the CI
   step name say lint includes sqlfluff; the Makefile never runs it and there is no
   `.sqlfluff`. Implementing it with the dbt templater + BigQuery dialect also helps FR-5.
 
-- [ ] **FR-15. Small dbt cleanups.** Drop the no-op trailing `order by` in
+- [x] **FR-15. Small dbt cleanups.** Drop the no-op trailing `order by` in
   `fct_job_postings.sql` (table materializations don't store order) or add a
   `recency_rank` column; add column descriptions + `persist_docs`; drop the redundant
   `dbt seed` step in `ci.yml` (`dbt build` seeds).
 
 ## Phase 5 — Docs & config sweep (one commit)
 
-- [ ] **FR-16. Doc/impl contradictions.**
+- [x] **FR-16. Doc/impl contradictions.**
   - ARCHITECTURE §4 still says the company list is `dbt/seeds/companies.csv` "read by
     both Python and dbt" — contradicts ADR-0011, CLAUDE.md, and the code
     (`config/companies.csv`, Python-only, gitignored).
@@ -126,12 +132,12 @@ column descriptions + `persist_docs` remain.
     it). Docs say `ops.ingest_runs`; reality is `jobs_ops.ingest_runs` (BQ) /
     `ops_ingest_runs` (DuckDB) — pick one notation.
 
-- [ ] **FR-17. Company list secrecy + naming.** CLAUDE.md says treat the list like `.env`,
+- [x] **FR-17. Company list secrecy + naming.** CLAUDE.md says treat the list like `.env`,
   but `ingest.yml` reads it from a plaintext GitHub Actions **variable**. Move to an
   encrypted secret, and rename to avoid colliding with the `COMPANIES_CSV` env var that
   holds a *path* (e.g. `COMPANIES_CSV_CONTENT`).
 
-- [ ] **FR-18. Toolchain version alignment.** CLAUDE.md says "Python 3.12+" vs
+- [x] **FR-18. Toolchain version alignment.** CLAUDE.md says "Python 3.12+" vs
   `requires-python >= 3.14`; black/ruff `target-version = py312` vs mypy 3.14. Pre-commit
   runs both `ruff-format` and black (pick one formatter) and pins ruff v0.5.0 while the
   venv floats `ruff>=0.5` — align versions. Add `.vscode/` to `.gitignore`.
