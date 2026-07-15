@@ -14,7 +14,7 @@ select
     ingested_at,
     last_seen_at,
     row_number() over (
-        order by posted_or_updated_at desc nulls last, job_key
+        order by posted_or_updated_at desc nulls last, job_key asc
     ) as recency_rank
 from {{ ref('silver_jobs') }}
 -- postings that disappeared from their board are closed — not deliverable
