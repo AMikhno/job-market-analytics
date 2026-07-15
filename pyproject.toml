@@ -25,6 +25,7 @@ dev = [
     "mypy>=1.10",
     "sqlfluff>=3.0",
     "pre-commit>=3.7",
+    "sqlfluff-templater-dbt>=3.0",
 ]
 
 [tool.black]

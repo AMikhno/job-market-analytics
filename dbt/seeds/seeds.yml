@@ -7,15 +7,13 @@ seeds:
         description: Word-matched, case-insensitive; keep entries regex-metacharacter-free.
         data_tests: [not_null, unique]
   - name: allowed_locations
-    description: Location substrings that pass the V1 location filter.
-    columns:
-      - name: pattern
-        data_tests: [not_null, unique]
-  - name: blocked_locations
     description: >
-      Location markers that veto a posting even when an allowed pattern matched
-      (e.g. "Remote — US only" passes via "Remote" but is not applyable from
-      Canada). Word-matched, case-insensitive; keep entries regex-metacharacter-free.
+      Positive Canadian location markers for the V1 filter (word-matched,
+      case-insensitive). A posting is kept if its location is null, is bare
+      "Remote", or word-matches one of these markers (Canada, Ontario, ON,
+      Ottawa, Toronto, Montreal). Word-matched so "ON" hits "Ottawa, ON" but not
+      "London"; keep entries regex-metacharacter-free. No country blocklist;
+      V2's LLM does true location eligibility.
     columns:
       - name: pattern
         data_tests: [not_null, unique]

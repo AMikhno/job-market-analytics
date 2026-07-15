@@ -13,9 +13,20 @@ macro-paths: ["macros"]
 #   - int_jobs_structured/scored (V2) -> incremental (never recompute LLM calls)
 models:
   job_pipeline:
+    # Push model + column descriptions into the warehouse so BigQuery tables/views
+    # are self-documenting (no-op on DuckDB dev, harmless).
+    +persist_docs:
+      relation: true
+      columns: true
     bronze:                       # staging
       +materialized: view
     silver:                       # intermediate zone (several int_ models)
       +materialized: table
     gold:                         # marts
       +materialized: table
+
+seeds:
+  job_pipeline:
+    +persist_docs:
+      relation: true
+      columns: true

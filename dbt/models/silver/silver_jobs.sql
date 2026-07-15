@@ -1,7 +1,7 @@
 -- Dedup to the current row per posting, derive its lifecycle (is it still on the
 -- board?), then drop hard deal-breakers using only structured + keyword signals
--- (no LLM in V1). Deal-breaker tech and location rules are seed-driven, so the
--- rules are data, not hardcoded SQL.
+-- (no LLM in V1). Deal-breaker tech and the Canada location marker are seed-driven,
+-- so the rules are data, not hardcoded SQL.
 with lifecycle as (
     select
         *,
@@ -36,24 +36,22 @@ tech_hits as (
     group by d.job_key
 ),
 
--- a posting passes the location gate if it matches ANY allowed pattern (or is null)
+-- Location rule (V1, deliberately coarse): keep a posting whose location is
+-- unknown (null), is bare "Remote", or word-matches an allowed Canadian marker
+-- (Canada / Ontario / ON / Ottawa / Toronto / Montreal — seeded). Word-matched,
+-- not substring, so "ON" hits "Ottawa, ON" but not "London". No country blocklist.
+-- So "Remote - United Kingdom" is dropped while "Remote, Canada" is kept; V2's
+-- LLM does true location eligibility.
 location_ok as (
     select d.job_key
     from deduped d
     left join {{ ref('allowed_locations') }} a
-        on lower(coalesce(d.location, '')) like '%' || lower(a.pattern) || '%'
+        on {{ regexp_word_ci('d.location', 'a.pattern') }}
     group by d.job_key
-    having count(a.pattern) > 0 or max(d.location) is null
-),
-
--- ... unless a blocked marker vetoes it ("Remote — US only" passes the allowed
--- gate via "Remote" but must not survive; word match, so "Wausau" isn't "USA")
-location_blocked as (
-    select d.job_key
-    from deduped d
-    cross join {{ ref('blocked_locations') }} b
-    where {{ regexp_word_ci('d.location', 'b.pattern') }}
-    group by d.job_key
+    having
+        max(d.location) is null
+        or lower(trim(max(d.location))) = 'remote'
+        or count(a.pattern) > 0
 )
 
 select
@@ -76,6 +74,6 @@ select
     -- still on the board as of that board's latest ingest
     d.last_seen_at >= d.board_last_ingested_at as is_active
 from deduped d
-where d.job_key not in (select job_key from tech_hits)
-  and d.job_key in (select job_key from location_ok)
-  and d.job_key not in (select job_key from location_blocked)
+where
+    d.job_key not in (select tech_hits.job_key from tech_hits)
+    and d.job_key in (select location_ok.job_key from location_ok)

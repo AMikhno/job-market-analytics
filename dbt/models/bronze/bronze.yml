@@ -1,14 +1,20 @@
 version: 2
 models:
   - name: stg_greenhouse__jobs
+    description: Typed staging over the Greenhouse raw landing — one row per posting.
     columns:
       - name: external_id
+        description: Greenhouse job id, as text; unique within the board.
         data_tests: [not_null]
       - name: url
+        description: Canonical absolute_url to the live posting.
         data_tests: [not_null]
   - name: stg_lever__jobs
+    description: Typed staging over the Lever raw landing — one row per posting.
     columns:
       - name: external_id
+        description: Lever posting id, as text; unique within the board.
         data_tests: [not_null]
       - name: url
+        description: Canonical hostedUrl to the live posting.
         data_tests: [not_null]

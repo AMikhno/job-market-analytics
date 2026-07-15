@@ -1,4 +1,4 @@
-.PHONY: install ingest dbt-dev dbt-prod dbt-test freshness test lint format check
+.PHONY: install ingest dbt-deps ensure-raw dbt-dev dbt-prod dbt-test freshness test lint sql-lint format check
 
 install:          ## Set up the uv venv, dbt packages, and pre-commit hooks
 	uv sync --extra dev
@@ -30,13 +30,18 @@ freshness:        ## Assert raw sources are fresh (fails the run if stale/empty)
 test:             ## Run the Python test suite with coverage gate
 	uv run pytest
 
-lint:             ## ruff + black --check + mypy
+lint: sql-lint    ## ruff + black --check + mypy + sqlfluff
 	uv run ruff check .
 	uv run black --check .
 	uv run mypy shared ingest
 
-format:           ## Auto-fix with ruff and black
+sql-lint: dbt-deps ## Lint dbt SQL (dbt templater, DuckDB dialect; run from dbt/)
+	mkdir -p data                         # DuckDB path the profile resolves to
+	cd dbt && uv run sqlfluff lint models
+
+format:           ## Auto-fix with ruff, black, and sqlfluff
 	uv run ruff check --fix .
 	uv run black .
+	cd dbt && uv run sqlfluff fix models
 
 check: lint test  ## Everything CI runs locally
