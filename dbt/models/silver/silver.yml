@@ -32,15 +32,13 @@ unit_tests:
       - input: ref('int_jobs__unioned')
         rows:
           - {job_key: k1, source: lever, company: acme, title: old title, clean_text: "",
-             location: Ottawa, ingested_at: 2026-07-01 10:00:00, posted_or_updated_at: 2026-06-01 00:00:00}
+             location: "Ottawa, Canada", ingested_at: 2026-07-01 10:00:00, posted_or_updated_at: 2026-06-01 00:00:00}
           - {job_key: k1, source: lever, company: acme, title: new title, clean_text: "",
-             location: Ottawa, ingested_at: 2026-07-02 10:00:00, posted_or_updated_at: 2026-06-01 00:00:00}
+             location: "Ottawa, Canada", ingested_at: 2026-07-02 10:00:00, posted_or_updated_at: 2026-06-01 00:00:00}
       - input: ref('deal_breaker_tech')
         rows: []
       - input: ref('allowed_locations')
-        rows: [{pattern: Ottawa}]
-      - input: ref('blocked_locations')
-        rows: []
+        rows: [{pattern: Canada}]
     expect:
       rows:
         - {job_key: k1, title: new title}
@@ -52,50 +50,58 @@ unit_tests:
       - input: ref('int_jobs__unioned')
         rows:
           - {job_key: k1, source: lever, company: acme, title: a, clean_text: We use Kafka daily,
-             location: Ottawa, ingested_at: 2026-07-02 10:00:00}
+             location: "Ottawa, Canada", ingested_at: 2026-07-02 10:00:00}
           - {job_key: k2, source: lever, company: acme, title: b, clean_text: Kafkaesque bureaucracy,
-             location: Ottawa, ingested_at: 2026-07-02 10:00:00}
+             location: "Ottawa, Canada", ingested_at: 2026-07-02 10:00:00}
           - {job_key: k3, source: lever, company: acme, title: c, clean_text: knows kafka a plus,
-             location: Ottawa, ingested_at: 2026-07-02 10:00:00}
+             location: "Ottawa, Canada", ingested_at: 2026-07-02 10:00:00}
       - input: ref('deal_breaker_tech')
         rows: [{tech: Kafka}]
       - input: ref('allowed_locations')
-        rows: [{pattern: Ottawa}]
-      - input: ref('blocked_locations')
-        rows: []
+        rows: [{pattern: Canada}]
     expect:
       rows:
         - {job_key: k2}
 
-  - name: location_gate_allows_canada_blocks_us_markers
+  - name: location_gate_keeps_null_bare_remote_and_canada
     description: >
-      Allowed substrings pass (or null location); blocked word-markers veto even
-      when "Remote" matched — the "Remote — US only" case.
+      Keep a posting whose location is null, is bare "Remote", or word-matches a
+      Canadian marker (Canada / Ontario / ON / Ottawa / Toronto / Montreal). Drop
+      everything else. Word-matched: "ON" hits "Ottawa, ON" but not "London".
     model: silver_jobs
     given:
       - input: ref('int_jobs__unioned')
         rows:
-          - {job_key: k1, source: lever, company: acme, title: a, clean_text: "",
-             location: "Ottawa, ON, Canada", ingested_at: 2026-07-02 10:00:00}
-          - {job_key: k2, source: lever, company: acme, title: b, clean_text: "",
-             location: Remote - US only, ingested_at: 2026-07-02 10:00:00}
-          - {job_key: k3, source: lever, company: acme, title: c, clean_text: "",
-             location: "Berlin, Germany", ingested_at: 2026-07-02 10:00:00}
-          - {job_key: k4, source: lever, company: acme, title: d, clean_text: "",
-             location: null, ingested_at: 2026-07-02 10:00:00}
-          - {job_key: k5, source: lever, company: acme, title: e, clean_text: "",
+          - {job_key: remote, source: lever, company: acme, title: a, clean_text: "",
              location: Remote, ingested_at: 2026-07-02 10:00:00}
+          - {job_key: unknown, source: lever, company: acme, title: b, clean_text: "",
+             location: null, ingested_at: 2026-07-02 10:00:00}
+          - {job_key: canada, source: lever, company: acme, title: c, clean_text: "",
+             location: "Ottawa, ON, Canada", ingested_at: 2026-07-02 10:00:00}
+          - {job_key: on_abbrev, source: lever, company: acme, title: d, clean_text: "",
+             location: "Ottawa, ON", ingested_at: 2026-07-02 10:00:00}
+          - {job_key: toronto, source: lever, company: acme, title: e, clean_text: "",
+             location: Toronto, ingested_at: 2026-07-02 10:00:00}
+          - {job_key: montreal, source: lever, company: acme, title: f, clean_text: "",
+             location: "Montreal, QC", ingested_at: 2026-07-02 10:00:00}
+          - {job_key: london, source: lever, company: acme, title: g, clean_text: "",
+             location: "London, UK", ingested_at: 2026-07-02 10:00:00}
+          - {job_key: foreign, source: lever, company: acme, title: h, clean_text: "",
+             location: "Berlin, Germany", ingested_at: 2026-07-02 10:00:00}
+          - {job_key: uk_remote, source: lever, company: acme, title: i, clean_text: "",
+             location: Remote - United Kingdom, ingested_at: 2026-07-02 10:00:00}
       - input: ref('deal_breaker_tech')
         rows: []
       - input: ref('allowed_locations')
-        rows: [{pattern: Ottawa}, {pattern: Canada}, {pattern: Remote}]
-      - input: ref('blocked_locations')
-        rows: [{pattern: United States}, {pattern: USA}, {pattern: US only}]
+        rows: [{pattern: Canada}, {pattern: Ontario}, {pattern: ON}, {pattern: Ottawa}, {pattern: Toronto}, {pattern: Montreal}]
     expect:
       rows:
-        - {job_key: k1}
-        - {job_key: k4}
-        - {job_key: k5}
+        - {job_key: remote}
+        - {job_key: unknown}
+        - {job_key: canada}
+        - {job_key: on_abbrev}
+        - {job_key: toronto}
+        - {job_key: montreal}
 
   - name: posting_missing_from_latest_board_ingest_is_inactive
     description: >
@@ -106,17 +112,15 @@ unit_tests:
       - input: ref('int_jobs__unioned')
         rows:
           - {job_key: k1, source: lever, company: acme, title: live, clean_text: "",
-             location: Ottawa, ingested_at: 2026-07-01 10:00:00}
+             location: "Ottawa, Canada", ingested_at: 2026-07-01 10:00:00}
           - {job_key: k1, source: lever, company: acme, title: live, clean_text: "",
-             location: Ottawa, ingested_at: 2026-07-02 10:00:00}
+             location: "Ottawa, Canada", ingested_at: 2026-07-02 10:00:00}
           - {job_key: k2, source: lever, company: acme, title: gone, clean_text: "",
-             location: Ottawa, ingested_at: 2026-07-01 10:00:00}
+             location: "Ottawa, Canada", ingested_at: 2026-07-01 10:00:00}
       - input: ref('deal_breaker_tech')
         rows: []
       - input: ref('allowed_locations')
-        rows: [{pattern: Ottawa}]
-      - input: ref('blocked_locations')
-        rows: []
+        rows: [{pattern: Canada}]
     expect:
       rows:
         - {job_key: k1, is_active: true}
