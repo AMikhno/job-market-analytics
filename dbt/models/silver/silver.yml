@@ -4,8 +4,10 @@ models:
     description: All sources unioned into one shape, with identity key, change hash, and cleaned text.
     columns:
       - name: job_key
+        description: Surrogate of (source, company, external_id) — stable posting identity.
         data_tests: [not_null]
       - name: content_hash
+        description: Surrogate of (title, clean_text); changes when the posting text changes (V2 reprocessing key).
         data_tests: [not_null]
   - name: silver_jobs
     description: >
@@ -14,12 +16,16 @@ models:
       distinguishable from live ones.
     columns:
       - name: job_key
+        description: Stable posting identity; silver keeps the latest row per key.
         data_tests: [not_null, unique]
       - name: url
+        description: Link to the live posting.
         data_tests: [not_null]
       - name: last_seen_at
+        description: Most recent ingest timestamp that still contained this posting.
         data_tests: [not_null]
       - name: is_active
+        description: True while the posting is present in its board's latest ingest.
         data_tests: [not_null]
 
 unit_tests:

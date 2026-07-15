@@ -6,10 +6,13 @@ models:
       The V1 output: recency-ranked links to apply to.
     columns:
       - name: job_key
+        description: Stable posting identity (one row per posting).
         data_tests: [not_null, unique]
       - name: url
+        description: Link out to the original posting.
         data_tests: [not_null]
       - name: recency_rank
+        description: 1 = most recent by posted_or_updated_at; dense unique ordering for the digest.
         data_tests: [not_null, unique]
 
 unit_tests:
