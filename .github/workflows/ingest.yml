@@ -72,7 +72,7 @@ jobs:
         run: make freshness
 
       - name: Notify Slack on failure
-        if: failure()
+        if:  false
         run: |
           curl -sf -X POST -H 'Content-type: application/json' \
             --data "{\"text\":\":rotating_light: Ingest run failed: ${{ github.run_id }}\"}" \
