@@ -1,14 +1,26 @@
 # TODO
 
-## V1 improvements before V2
+## V1.5 — broaden ingestion + filtering
 
-### Search/filtering
-- Add desired technologies filtering
-- Add desired titles filtering
-- Decide where to keep inactive postings
+See `docs/decisions/0013`, `0014` and the plan discussion for context.
 
-### Ingestion
-- Add more ATS support (Ashby, Workday ...)
-- Validate company board_ref values
-- Expand the company list in GitHub Actions variable 
-- Create separate folders in BigQuery for bronze/silver/gold
+### Done
+- [x] Ashby ATS adapter (public keyless GET) — `ingest/adapters/ashby.py`
+- [x] Validate company `board_ref` values (per-source, fail-loud at load) — ADR-0012
+- [x] Separate BigQuery datasets per zone (`jobs_bronze/_silver/_gold`) — ADR-0014
+- [x] Ingestion completeness: `first_seen_at` ("new since last run") + documented model
+
+### Ingestion — next
+- [ ] Generalized adapter/HTTP contract (POST + offset pagination + per-job detail) — ADR-0013
+- [ ] BambooHR adapter (`careers/list` + per-id detail; undocumented, add fragility guard)
+- [ ] Workday adapter (POST + pagination + detail; `board_ref` = tenant/wdN/site) — needs the
+      generalized contract above
+- [ ] iCIMS — **deferred**: no public keyless API (OAuth2 feed or brittle scraping); stays
+      inventory-only (`active=false`) until we accept one of those costs — ADR-0013
+- [ ] Expand the company list in the GitHub Actions variable (`COMPANIES_CSV_CONTENT`) —
+      human-owned (secrets boundary); add a `make validate-companies` helper first
+
+### Search/filtering — after completeness is confirmed
+- [ ] Desired technologies filtering (new seed; soft match-count vs hard drop — decide)
+- [ ] Desired titles filtering (new seed; title include-list — likely a hard filter)
+- [ ] Decide where inactive postings live (silver retains today; gold is live-only)

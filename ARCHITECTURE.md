@@ -4,8 +4,9 @@ Design for the job-matching pipeline.
 
 **Scope discipline.** V1 (MVP) is **ingestion + dbt transformations only** — no LLM, no
 embeddings, no scoring. It produces a clean, deduplicated, rule-filtered table of job
-postings from **Greenhouse and Lever**, on a **dual-target dbt project** (DuckDB for dev,
-BigQuery for production, from day one — there is no later migration). All AI lands in V2.
+postings from **every ATS with a public, keyless feed** (Greenhouse, Lever, and Ashby today;
+Workday and BambooHR planned — see ADR-0013), on a **dual-target dbt project** (DuckDB for
+dev, BigQuery for production, from day one — there is no later migration). All AI lands in V2.
 
 Rationale for each non-obvious choice is in `docs/decisions/`.
 
@@ -17,8 +18,8 @@ End-state: deliver **links to full original postings, preselected to the relevan
 no generated prose, just a ranked list of links the user clicks through. Relevance ranking
 needs the LLM, so it is a **V2** capability.
 
-**V1 delivers** the curated dataset itself: every Greenhouse/Lever posting, unified into one
-schema, deduplicated, with hard deal-breakers removed, ordered by recency — a trustworthy,
+**V1 delivers** the curated dataset itself: every posting from the supported ATS, unified into
+one schema, deduplicated, with hard deal-breakers removed, ordered by recency — a trustworthy,
 queryable `gold` table built entirely from ingestion + SQL.
 
 ---
@@ -30,8 +31,8 @@ queryable `gold` table built entirely from ingestion + SQL.
 ┌────────┐   ┌─────────┐   ┌───────────────────────────────────┐   ┌──────┐
 │ INGEST │ → │ BRONZE  │ → │              SILVER               │ → │ GOLD │ → DELIVER
 └────────┘   └─────────┘   │  (intermediate zone — several     │   └──────┘   (links)
- GH + Lever   staging      │   int_ models, not one layer)     │    marts
- public APIs  stg_*(views) │                                   │    fct_job_postings
+ GH/Lever/    staging      │   int_ models, not one layer)     │    marts
+ Ashby APIs   stg_*(views) │                                   │    fct_job_postings
  1 table/src               │  int_jobs__unioned  (view)        │    (table)
  + run meta                │  silver_jobs        (table)       │
                            │  ┄ V2 int_jobs_structured         │
@@ -58,9 +59,9 @@ are incremental tables that are never recomputed).
 | Zone (medallion / dbt) | Phase | Model(s) | Materialized | Does |
 |------------------------|-------|----------|--------------|------|
 | Ingest (Python)        | V1 | `raw_*_jobs`, `ops.ingest_runs` | — | Normalize, land, record run metadata. |
-| **Bronze** / staging   | V1 | `stg_greenhouse__jobs`, `stg_lever__jobs` | **view** | Cast/standardize the typed landing, per source. |
+| **Bronze** / staging   | V1 | `stg_greenhouse__jobs`, `stg_lever__jobs`, `stg_ashby__jobs` | **view** | Cast/standardize the typed landing, per source. |
 | **Silver** / intermediate | V1 | `int_jobs__unioned` | **view** | Union + `job_key` + `content_hash` + `clean_text`. |
-|                        | V1 | `silver_jobs` | **table** | Dedup (latest per `job_key`) + tech/location filter + lifecycle (`last_seen_at`/`is_active`). |
+|                        | V1 | `silver_jobs` | **table** | Dedup (latest per `job_key`) + tech/location filter + lifecycle (`first_seen_at`/`last_seen_at`/`is_active`). |
 |                        | V2 | `int_jobs_structured` | **incremental** | `AI.GENERATE`: typed fields + requirement text. |
 |                        | V2 | `int_jobs_scored` | **incremental** | `AI.GENERATE_INT`: fit score against the trimmed artifact. |
 | **Gold** / marts       | V1 | `fct_job_postings` | **table** | One row per *active* posting, recency-ranked, with the link. |
@@ -80,7 +81,13 @@ posting: `id`, `text` (title), `categories.{location,commitment,department}`, `w
 `additional` (the adapter concatenates these in tested Python so dbt needn't flatten a JSON
 array cross-dialect).
 
-Both adapters output the common `RawPosting` schema: `source`, `company`, `external_id`,
+**Ashby** — `GET https://api.ashbyhq.com/posting-api/job-board/{board_ref}?includeCompensation=true`.
+Public, keyless. One `{"jobs": [...]}` response, no pagination. Per job: `id` (UUID), `title`,
+`location`, `workplaceType`, `department`, `employmentType`, `jobUrl`, `publishedAt`, and
+`descriptionHtml` — already real HTML, so it is passed through, not unescaped like Greenhouse's
+entity-encoded `content`.
+
+Each adapter outputs the common `RawPosting` schema: `source`, `company`, `external_id`,
 `title`, `location`, `remote_policy`, `department`, `employment_type`, `url`,
 `description_html`, `posted_or_updated_at`, `raw`.
 
@@ -91,11 +98,13 @@ time by its board reference, and filter location/title yourself (which is what s
 curated company list is **private config** in `config/companies.csv` (gitignored; committed only
 as `config/companies.example.csv`), read by the **Python ingest** — it is *not* a dbt seed (see
 ADR-0011). Columns: `company_name, source, board_ref, active, tier, notes`. `board_ref` is the
-ATS-specific path fragment the adapter interprets — a bare token for Greenhouse/Lever
-(`boards.greenhouse.io/<board_ref>`, `jobs.lever.co/<board_ref>`), but multi-segment for boards
-that need it (e.g. Workday's tenant/instance/site); see ADR-0012. Companies on ATS without an
-adapter yet (Ashby, Workday, …) are kept as `active=false` so the inventory stays complete. No
-automated discovery pipeline in V1 — there's no API for it.
+ATS-specific path fragment the adapter interprets — a bare token for Greenhouse/Lever/Ashby
+(`boards.greenhouse.io/<board_ref>`, `jobs.lever.co/<board_ref>`, `jobs.ashbyhq.com/<board_ref>`),
+but multi-segment for boards that need it (e.g. Workday's tenant/instance/site); see ADR-0012.
+Each active `board_ref` is format-checked against its source's rule at load time (a pasted URL or
+stray slash fails loudly before any fetch). Companies on ATS without an adapter yet (Workday,
+BambooHR, iCIMS, …) are kept as `active=false` so the inventory stays complete. No automated
+discovery pipeline in V1 — there's no API for it.
 
 ### Keys and dedup
 
@@ -112,10 +121,20 @@ location rule is deliberately coarse: keep a posting whose location is null, is 
 word-matches an allowed Canadian marker (`Canada`, `Ontario`, `ON`, `Ottawa`, `Toronto`,
 `Montreal`); drop the rest (so "Remote - United Kingdom" is dropped). No country blocklist.
 
-Silver also derives **lifecycle** columns: `last_seen_at` (latest ingest that still contained the
-posting) and `is_active` (present in its board's most recent ingest) — so gold delivers only live
-postings and taken-down ones drop out. What V1 **cannot** do without the LLM: tell required from
-nice-to-have, infer seniority, or judge true location eligibility. Those move to V2.
+Silver also derives **lifecycle** columns: `first_seen_at` (earliest ingest that saw the posting —
+the "new since last run" signal), `last_seen_at` (latest ingest that still contained it), and
+`is_active` (present in its board's most recent ingest) — so gold delivers only live postings,
+taken-down ones drop out, and net-new postings are identifiable.
+
+**Completeness model.** None of the V1 source APIs offer a server-side date filter, so each run
+pulls the *whole board* (append-only landing) — which is complete for a single-response feed —
+and "new since last run" is *derived* from `first_seen_at`, not requested from the source. The one
+gap is pagination: today's single-GET fetch would truncate a paged board, so the POST + offset
+paginator lands with the first paginated adapter (Workday); Greenhouse, Lever, and Ashby return
+their full board in one response and are unaffected.
+
+What V1 **cannot** do without the LLM: tell required from nice-to-have, infer seniority, or judge
+true location eligibility. Those move to V2.
 
 ---
 
@@ -231,8 +250,9 @@ dbt models/columns carry schema tests (`not_null`, `unique`, `accepted_values`).
 
 ## 9. Roadmap
 
-**V1 — MVP:** Greenhouse + Lever ingest → bronze → silver (dedup, keyword + location filter, hash)
-→ gold (curated, recency-ordered). Dual-target; no AI.
+**V1 — MVP:** public-keyless ATS ingest (Greenhouse, Lever, Ashby; Workday/BambooHR planned) →
+bronze → silver (dedup, keyword + location filter, hash, first-seen/lifecycle) → gold (curated,
+recency-ordered). Dual-target, per-zone datasets (`jobs_bronze/_silver/_gold`); no AI.
 
 **V2 — Relevance via AI inside dbt:** structured extraction + scoring SQL models, post-extraction
 fine-grained deal-breaker filter, embeddings as a cost pre-filter + cross-source dedup, relevant-links

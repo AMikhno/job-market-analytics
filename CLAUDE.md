@@ -5,8 +5,9 @@ Context and conventions for AI agents (and humans) working on this repo.
 ## What this project is
 
 Automated job-matching pipeline. **V1 (current) is ingestion + dbt transformations
-only** — no LLM, no embeddings, no scoring. Python pulls Greenhouse and Lever
-postings into per-source raw tables; one dbt project transforms them through
+only** — no LLM, no embeddings, no scoring. Python pulls postings from every ATS with
+a public, keyless feed (Greenhouse, Lever, Ashby today; Workday/BambooHR planned — see
+ADR-0013) into per-source raw tables; one dbt project transforms them through
 bronze → silver → gold into a deduplicated, rule-filtered table of postings.
 AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
 
@@ -42,7 +43,8 @@ AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
 
 The repo and anything an agent can read must never contain a secret *value*.
 
-- **V1 ingestion sources need no credentials** — Greenhouse and Lever read APIs are public.
+- **V1 ingestion sources need no credentials** — the supported ATS read APIs (Greenhouse,
+  Lever, Ashby) are public and keyless.
 - Secret **values** live only in (a) GitHub Actions Encrypted Secrets and (b) your OS
   keychain / gcloud ADC. Neither is a file in the working tree.
 - The repo contains only secret **names** (in workflow YAML) and **placeholders** (`.env.example`).
@@ -59,7 +61,8 @@ must be sanitized before they are committed.
 ## What NOT to do
 
 - Don't add an LLM, embeddings, or scoring to V1 — that's V2 by design.
-- Don't add sources beyond Greenhouse/Lever in V1.
+- Only add sources with a public, keyless feed in V1; anything needing auth or scraping
+  stays inventory-only (`active=false`) — see ADR-0013.
 - Don't create per-source Python files for sources that fit an existing adapter.
 - Don't introduce YAML source configs. Pydantic only.
 - Don't read `.env` directly; use `shared/config.py`.
