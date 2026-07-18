@@ -55,8 +55,13 @@ openjobdata (ADR-0017), score thresholds / delivery filtering (ADR-0020 §2).
   Downstream models and unit tests run against the stub.
 
 ### 3. `int_jobs_scored` (silver, incremental, prod-only)
-- `AI.GENERATE_INT`, temperature 0; prompt = profile block (static prefix, from
-  `var('profile_prompt')`) + the trimmed `requirement_text` — never the full posting.
+- Scoring function: **evaluate `AI.SCORE` first** (GA 2026, natively managed — no
+  resource connection to provision; rubric-in-prompt, rating output), falling back to
+  `AI.GENERATE_INT` (also GA, needs the Vertex connection) if AI.SCORE can't express
+  the 1–5 contract or its provenance needs. Whichever is chosen: temperature-0
+  semantics, prompt = profile block (static prefix, from `var('profile_prompt')` —
+  static so Gemini context caching discounts it) + the trimmed `requirement_text` —
+  never the full posting.
 - Columns: `fit_score` (1–5), `model`, `prompt_version`, `scored_at`.
 - Same incremental guard; re-score is triggered by `content_hash` change or
   `prompt_version` bump.
