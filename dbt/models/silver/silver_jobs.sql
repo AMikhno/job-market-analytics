@@ -11,7 +11,10 @@ with lifecycle as (
         -- when this posting was last seen on its board, across all ingests
         max(ingested_at) over (partition by job_key) as last_seen_at,
         -- the board's most recent ingest: a posting absent from it was taken down
-        max(ingested_at) over (partition by source, company) as board_last_ingested_at
+        max(ingested_at) over (partition by source, company) as board_last_ingested_at,
+        -- the latest ingest across the whole pipeline: the staleness yardstick
+        -- for boards that stopped being ingested at all (see is_active below)
+        max(ingested_at) over () as pipeline_last_ingested_at
     from {{ ref('int_jobs__unioned') }}
 ),
 
@@ -100,8 +103,19 @@ select
     d.last_seen_at,
     coalesce(dtc.desired_tech_hits, 0) as desired_tech_hits,
     coalesce(tm.title_match, false) as title_match,
-    -- still on the board as of that board's latest ingest
-    d.last_seen_at >= d.board_last_ingested_at as is_active
+    -- Active = still on the board as of that board's latest ingest, AND that
+    -- board is itself still being ingested. Without the second clause, a board
+    -- removed from the company list (or 404-ing forever - per-company failures
+    -- only warn) freezes its board_last_ingested_at and its postings would stay
+    -- "active" in gold indefinitely. The grace window tolerates ~2 consecutive
+    -- failed runs at the twice-daily cadence (mirroring the 30h freshness gate)
+    -- and self-heals: a recovering board's postings are re-seen and reactivate.
+    (
+        d.last_seen_at >= d.board_last_ingested_at
+        and d.board_last_ingested_at >= {{ timestamp_hours_before(
+            'd.pipeline_last_ingested_at', var('board_staleness_hours', 36)
+        ) }}
+    ) as is_active
 from deduped d
 left join desired_tech_counts dtc on d.job_key = dtc.job_key
 left join title_matches tm on d.job_key = tm.job_key

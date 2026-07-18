@@ -21,10 +21,20 @@ class Settings(BaseSettings):
     # partitions older than this are dropped (keeps storage under the free tier).
     bq_raw_partition_expiry_days: int = Field(default=400)
 
-    slack_webhook_url: str = Field(default="")
     http_user_agent: str = Field(default="job-search-pipeline/0.1")
     # Private company list (gitignored); falls back to the committed example if absent.
     companies_csv: str = Field(default="config/companies.csv")
+
+    # Email digest (deliver/digest.py). Unset SMTP credentials disable the
+    # digest (dev/CI); in prod they come from GitHub Actions secrets.
+    smtp_host: str = Field(default="smtp.gmail.com")
+    smtp_port: int = Field(default=465)
+    smtp_user: str = Field(default="")
+    smtp_password: str = Field(default="")
+    digest_to: str = Field(default="")  # recipient; defaults to smtp_user when empty
+    # First-ever digest has no watermark; bootstrap with this lookback window
+    # instead of emailing the entire gold table.
+    digest_lookback_hours: int = Field(default=26)
 
     # A source returning fewer than this many rows is a (non-failing) warning.
     low_volume_threshold: int = Field(default=1)

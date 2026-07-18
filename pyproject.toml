@@ -1,6 +1,6 @@
 [project]
 name = "job-search-pipeline"
-version = "0.1.5"
+version = "0.1.6"
 description = "Automated job-matching pipeline (V1: ingestion + dbt transformations)."
 requires-python = ">=3.14"
 dependencies = [
@@ -46,7 +46,7 @@ module = ["google.cloud.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-addopts = "--cov=shared --cov=ingest --cov-report=term-missing --cov-fail-under=85"
+addopts = "--cov=shared --cov=ingest --cov=deliver --cov-report=term-missing --cov-fail-under=85"
 testpaths = ["tests"]
 
 [tool.coverage.run]

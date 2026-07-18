@@ -1,3 +1,4 @@
+import pytest
 import responses
 
 from ingest.adapters.ashby import AshbyAdapter
@@ -45,3 +46,16 @@ def test_ashby_description_html_is_passed_through(ashby_payload: dict) -> None:
     assert p.description_html == (
         '<div class="content"><p>Build dbt models &amp; dashboards.</p></div>'
     )
+
+
+@responses.activate
+def test_ashby_response_without_jobs_key_raises() -> None:
+    """An error body / schema drift must raise (per-company warn in the
+    pipeline), not silently look like an empty board."""
+    board_ref = "example"
+    responses.add(
+        responses.GET, URL_TEMPLATE.format(board_ref=board_ref), json={"errors": ["nope"]}
+    )
+
+    with pytest.raises(KeyError):
+        _adapter().fetch(build_session("test/1.0"), board_ref)

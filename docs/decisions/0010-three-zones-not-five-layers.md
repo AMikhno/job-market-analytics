@@ -14,9 +14,13 @@ passthrough layers). The risks of multi-model zones are handled explicitly:
 
 - **Materialization is per-model**, so we don't persist redundant copies:
   - bronze `stg_*` → **view**
-  - `int_jobs__unioned` → **view** (originally ephemeral; amended 2026-07 because dbt
-    unit tests must introspect input columns from the warehouse, and an ephemeral
-    model has no relation there — a view costs nothing and keeps the DAG debuggable)
+  - `int_jobs__unioned` → **view** (originally ephemeral; amended 2026-07: a view is
+    operationally strictly better here — debuggable in the warehouse (`select * from
+    int_jobs__unioned` when silver looks wrong), visible in `information_schema` and
+    lineage, and free: the engine scans the same bytes whether the union is a view or
+    an inlined CTE. Ephemeral saves only namespace clutter, and it also blocks dbt
+    unit tests, which introspect input columns from a real relation. We use ephemeral
+    nowhere; a model either earns a name in the warehouse or shouldn't exist)
   - `silver_jobs` → **table**
   - `int_jobs_structured` / `int_jobs_scored` (V2) → **incremental** (LLM output is never recomputed)
   - `fct_job_postings` → **table**

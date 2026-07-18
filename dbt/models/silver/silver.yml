@@ -85,7 +85,11 @@ models:
         data_type: boolean
         data_tests: [not_null]
       - name: is_active
-        description: True while the posting is present in its board's latest ingest.
+        description: >
+          True while the posting is present in its board's latest ingest AND that
+          board itself was ingested within board_staleness_hours of the pipeline's
+          latest ingest — so postings from boards removed from the company list
+          (or persistently failing) age out of gold instead of lingering forever.
         data_type: boolean
         data_tests: [not_null]
 
@@ -209,6 +213,71 @@ unit_tests:
       rows:
         - {job_key: k1, is_active: true, first_seen_at: 2026-07-01 10:00:00}
         - {job_key: k2, is_active: false, first_seen_at: 2026-07-01 10:00:00}
+
+  - name: postings_from_stale_boards_go_inactive
+    description: >
+      deadco's board was last ingested on 06-25 — far beyond board_staleness_hours
+      (36) of the pipeline's latest ingest (07-02) — so its posting goes inactive
+      even though it was present in its own board's last ingest (the zombie-board
+      case: removed from the company list or 404-ing forever). acme, ingested one
+      hour before the pipeline's latest, is comfortably within grace and stays
+      active.
+    model: silver_jobs
+    given:
+      - input: ref('int_jobs__unioned')
+        rows:
+          - {job_key: live, source: lever, company: acme, title: a, clean_text: "",
+             location: "Ottawa, Canada", ingested_at: 2026-07-02 09:00:00}
+          - {job_key: zombie, source: lever, company: deadco, title: b, clean_text: "",
+             location: "Ottawa, Canada", ingested_at: 2026-06-25 10:00:00}
+          - {job_key: yardstick, source: greenhouse, company: other, title: c, clean_text: "",
+             location: "Ottawa, Canada", ingested_at: 2026-07-02 10:00:00}
+      - input: ref('deal_breaker_tech')
+        rows: []
+      - input: ref('allowed_locations')
+        rows: [{pattern: Canada}]
+      - input: ref('desired_tech')
+        rows: []
+      - input: ref('desired_titles')
+        rows: []
+    expect:
+      rows:
+        - {job_key: live, is_active: true}
+        - {job_key: zombie, is_active: false}
+        - {job_key: yardstick, is_active: true}
+
+  - name: seed_terms_with_regex_specials_match_literally
+    description: >
+      Seed terms are matched as literals, not regex fragments: "C++" matches
+      (no word boundary exists after '+', and unescaped '+' is a regex
+      quantifier), "C#" matches, and ".NET" does not hit "knet" (unescaped
+      '.' would match any character). Applies to every seed-driven matcher.
+    model: silver_jobs
+    given:
+      - input: ref('int_jobs__unioned')
+        rows:
+          - {job_key: cpp, source: lever, company: acme, title: a,
+             clean_text: "Modern C++ services", location: "Ottawa, Canada",
+             ingested_at: 2026-07-02 10:00:00}
+          - {job_key: dotnet, source: lever, company: acme, title: b,
+             clean_text: "backend in .NET and C#", location: "Ottawa, Canada",
+             ingested_at: 2026-07-02 10:00:00}
+          - {job_key: knet, source: lever, company: acme, title: c,
+             clean_text: "uses the knet framework", location: "Ottawa, Canada",
+             ingested_at: 2026-07-02 10:00:00}
+      - input: ref('deal_breaker_tech')
+        rows: []
+      - input: ref('allowed_locations')
+        rows: [{pattern: Canada}]
+      - input: ref('desired_tech')
+        rows: [{tech: "C++"}, {tech: "C#"}, {tech: ".NET"}]
+      - input: ref('desired_titles')
+        rows: []
+    expect:
+      rows:
+        - {job_key: cpp, desired_tech_hits: 1}
+        - {job_key: dotnet, desired_tech_hits: 2}
+        - {job_key: knet, desired_tech_hits: 0}
 
   - name: soft_signals_annotate_without_dropping
     description: >

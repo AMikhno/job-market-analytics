@@ -2,6 +2,7 @@ name: CI
 
 # Runs on every PR and push. DuckDB dev target only — NO secrets, so it runs
 # safely on fork PRs in a public repo, and never touches the private company list.
+# Actions are pinned to commit SHAs (see ingest.yml for rationale).
 on:
   pull_request:
   push:
@@ -11,8 +12,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
       - run: uv sync --extra dev
 
       - name: Lint (ruff, mypy, sqlfluff)
@@ -33,3 +34,15 @@ jobs:
         env:
           GCP_PROJECT: ci-fake-project
         run: cd dbt && uv run dbt parse --target prod
+
+  # The local gitleaks pre-commit hook is bypassable (--no-verify); CI is the
+  # backstop that actually blocks a leaked secret from merging.
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0        # scan full history, not just the tip
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

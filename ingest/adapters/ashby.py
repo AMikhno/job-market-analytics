@@ -27,7 +27,9 @@ class AshbyAdapter:
 
     def fetch(self, session: requests.Session, board_ref: str) -> list[RawPosting]:
         data = get_json(session, self.url_template.format(board_ref=board_ref))
-        jobs: list[dict[str, Any]] = data.get("jobs", [])
+        # Strict: a response without "jobs" is schema drift or an error body, not
+        # an empty board - raise (per-company warn) instead of landing 0 rows.
+        jobs: list[dict[str, Any]] = data["jobs"]
         return [self._map(item, board_ref) for item in jobs]
 
     def _map(self, item: dict[str, Any], board_ref: str) -> RawPosting:

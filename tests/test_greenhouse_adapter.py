@@ -1,3 +1,4 @@
+import pytest
 import responses
 
 from ingest.adapters.greenhouse import GreenhouseAdapter
@@ -49,3 +50,16 @@ def test_greenhouse_unescapes_html_content(greenhouse_payload: dict) -> None:
     )
     # the untouched escaped payload is still preserved in `raw` for debugging
     assert p.raw["content"].startswith("&lt;div")
+
+
+@responses.activate
+def test_greenhouse_response_without_jobs_key_raises() -> None:
+    """An error body / schema drift must raise (per-company warn in the
+    pipeline), not silently look like an empty board."""
+    board_ref = "example"
+    responses.add(
+        responses.GET, URL_TEMPLATE.format(board_ref=board_ref), json={"error": "no board"}
+    )
+
+    with pytest.raises(KeyError):
+        _adapter().fetch(build_session("test/1.0"), board_ref)

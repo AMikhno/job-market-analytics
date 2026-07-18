@@ -1,11 +1,17 @@
 name: job_pipeline
-version: "0.1.5"
+version: "0.1.6"
 config-version: 2
 profile: job_pipeline
 
 model-paths: ["models"]
 seed-paths: ["seeds"]
 macro-paths: ["macros"]
+
+vars:
+  # A board whose latest ingest lags the pipeline's latest by more than this is
+  # considered retired (removed from the list, or persistently failing) and its
+  # postings go inactive. ~2 missed runs of grace at the twice-daily cadence.
+  board_staleness_hours: 36
 
 # Three medallion zones = dbt staging -> intermediate -> marts.
 # Folder defaults below; per-model overrides live in-model:

@@ -1,3 +1,4 @@
+import pytest
 import responses
 
 from ingest.adapters.lever import LeverAdapter
@@ -26,3 +27,16 @@ def test_lever_maps_and_assembles_body(lever_payload: list) -> None:
     assert "Kafka and Spark" in p.description_html
     assert "Airflow" in p.description_html
     assert p.posted_or_updated_at is not None
+
+
+@responses.activate
+def test_lever_non_array_response_raises() -> None:
+    """Lever returns a bare JSON array; a dict is an error body / schema
+    drift and must raise (per-company warn), not land 0 rows."""
+    board_ref = "example"
+    responses.add(
+        responses.GET, URL_TEMPLATE.format(board_ref=board_ref), json={"error": "no site"}
+    )
+
+    with pytest.raises(ValueError, match="expected a JSON array"):
+        LeverAdapter(URL_TEMPLATE).fetch(build_session("test/1.0"), board_ref)

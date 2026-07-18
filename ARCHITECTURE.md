@@ -65,9 +65,29 @@ are incremental tables that are never recomputed).
 |                        | V2 | `int_jobs_structured` | **incremental** | `AI.GENERATE`: typed fields + requirement text. |
 |                        | V2 | `int_jobs_scored` | **incremental** | `AI.GENERATE_INT`: fit score against the trimmed artifact. |
 | **Gold** / marts       | V1 | `fct_job_postings` | **table** | One row per *active* posting, recency-ranked, with the link. |
-| Deliver (Python/SQL)   | V2 | — | — | Read scored gold, send **links** to relevant postings. |
+| Deliver (Python)       | V1 | `deliver/digest.py` → `ops.digest_runs` | — | Email new-since-last-digest postings (watermark; ADR-0019). V2 reorders/trims this by fit score. |
 
 ---
+
+### Schema evolution & rule changes (why there are no migrations)
+
+Everything dbt builds — bronze views, `silver_jobs`, `fct_job_postings` — is **recreated from
+raw on every run** (`CREATE OR REPLACE`). Consequences worth stating explicitly:
+
+- **Changing a model or adding a column needs no migration, ever.** The next run materializes
+  the new shape over the whole retained history.
+- **Changing filter/signal seeds is retroactive by design.** Tighten `deal_breaker_tech` or
+  expand `desired_tech` and the next run re-filters *all* postings still in raw — expected
+  and desired as the rule set matures with more company data.
+- The **only stateful objects are the raw and ops tables** (append-only; `ensure_*` uses
+  `CREATE IF NOT EXISTS` and will *not* alter an existing table). Rule for changing them:
+  additive, nullable columns only, applied with `ALTER TABLE ADD COLUMN` (or the load job's
+  `ALLOW_FIELD_ADDITION`) *before* deploying code that writes them. Renames/type changes are
+  a new column + backfill, not an in-place edit.
+- **V2's incremental AI models are the exception**: they exist precisely to *avoid*
+  recomputation, so a schema change there is not free — `--full-refresh` re-bills the whole
+  backfill. They set `on_schema_change: append_new_columns` and treat full refreshes as a
+  deliberate, costed decision (see `docs/v2-plan.md`).
 
 ## 4. V1 sources and the common schema (verified)
 
@@ -134,8 +154,11 @@ required-vs-nice-to-have and seniority to V2.
 
 Silver also derives **lifecycle** columns: `first_seen_at` (earliest ingest that saw the posting —
 the "new since last run" signal), `last_seen_at` (latest ingest that still contained it), and
-`is_active` (present in its board's most recent ingest) — so gold delivers only live postings,
-taken-down ones drop out, and net-new postings are identifiable. `silver_jobs` is the durable
+`is_active` (present in its board's most recent ingest, **and** that board itself ingested within
+`board_staleness_hours` (36) of the pipeline's latest ingest — so a board removed from the company
+list or persistently 404-ing ages out of gold within a day instead of leaving zombie postings) —
+so gold delivers only live postings, taken-down ones drop out, and net-new postings are
+identifiable. `silver_jobs` is the durable
 record of *all* postings (live and closed); gold shows only live ones, and the hard retention
 floor is raw's partition expiry (ADR-0016).
 
@@ -225,15 +248,18 @@ all live in the same region (`northamerica-northeast2`). `BQ_LOCATION` is set co
   `make lint` + `make test` (coverage gate) + `dbt build`/`test` on DuckDB.
 - **`ingest.yml`** — scheduled twice daily (~09:30 and ~15:00 America/Toronto; UTC crons drift one
   hour in winter, which is harmless). Authenticates to BigQuery via **Workload Identity Federation**
-  (no key file), runs `make ingest` → low-volume warning → `make dbt-prod` → freshness gate →
-  Slack-on-failure.
+  (no key file), runs `make ingest` → warning annotations → `make dbt-prod` → freshness gate →
+  `make deliver` (email digest, ADR-0019). Actions are **SHA-pinned** (the workflow holds
+  `id-token: write`; a hijacked moving tag could exfiltrate the OIDC exchange).
 
 **Three-layer health model:**
 - *Hard failure (non-zero exit):* a source raising an exception. The pipeline records it in
-  `ops.ingest_runs`, finishes the other sources, then exits non-zero → Slack-on-failure fires.
+  `ops.ingest_runs`, finishes the other sources, then exits non-zero → GitHub's failed-run
+  email notifies (GitHub-native, no webhook to rot — ADR-0019).
 - *Warning (run still succeeds):* a queried board returns fewer than `low_volume_threshold` rows.
-  It is logged, written to the run summary, and pinged to Slack — but never fails the run. Sources
-  with no configured companies are skipped, not warned.
+  It is logged, written to the run summary, surfaced as a run annotation, and rides along as a
+  digest footer — but can never fail the run. Sources with no configured companies are skipped,
+  not warned.
 - *Sustained staleness (hard failure):* dbt `source freshness` errors after 30h with no fresh rows,
   escalating a persistently dead board that single-run warnings wouldn't catch.
 
@@ -245,9 +271,9 @@ plus freshness, not by whether the cron fired.
 
 ## 7. Secrets & access boundary
 
-V1 ingestion needs **no credentials** (both source APIs are public). The only secrets are BigQuery
-auth (via WIF — no key file) and the Slack webhook, and both live **only** in GitHub Actions, never
-on the dev machine. The repo holds secret *names* and placeholders, never values; `gitleaks` is a
+V1 ingestion needs **no credentials** (the source APIs are public). The only secrets are BigQuery
+auth (via WIF — no key file) and the digest's SMTP credentials (a Gmail app password), and both
+live **only** in GitHub Actions, never on the dev machine. The repo holds secret *names* and placeholders, never values; `gitleaks` is a
 pre-commit backstop; agents don't push (a human authenticates). The boundary is structural, not a
 CLAUDE.md promise. See `docs/decisions/0007`.
 
@@ -271,13 +297,19 @@ Dual-target, per-zone datasets (`jobs_bronze/_silver/_gold`); no AI.
 per-zone BigQuery datasets, `first_seen_at` completeness, soft desired-tech/title signals,
 inactive-postings retention decision, and `make validate-companies` tooling. See ADR-0013–0016.
 
-**V2 — Relevance via AI inside dbt:** structured extraction + scoring SQL models, post-extraction
-fine-grained deal-breaker filter, embeddings as a cost pre-filter + cross-source dedup, and
-relevant-links delivery. **Tentative:** more ATS adapters — BambooHR and Workday via a generalized
-POST + pagination contract; iCIMS deferred (no keyless API). **Under evaluation:** adopting
-**openjobdata** — a free, daily, aggregated ~47-ATS Parquet dataset — as a hybrid source that could
-subsume those adapters (custom collection still needed for the niche local ATS it misses); pending
-Ottawa-coverage verification (ADR-0017, `docs/research/openjobdata.md`).
+**V1.6 — hardening + delivery (done):** literal (regex-safe) seed matching, board-staleness
+`is_active` rule, strict adapter parsing, SHA-pinned actions + gitleaks in CI, Slack retired in
+favor of GitHub-native failure alerts, and the **email digest** of new postings with an
+`ops.digest_runs` watermark. See ADR-0019.
+
+**V2 — Relevance via AI inside dbt (scoped — ADR-0020, plan in `docs/v2-plan.md`):** structured
+extraction + scoring SQL models and a score-aware digest (the score **orders** delivery, it never
+filters it). Embeddings are **deferred** — as a cost pre-filter they save pennies at this scale,
+and cross-source dedup is moot while each company lives on one ATS. **Parked behind gates:** more
+ATS adapters — BambooHR and Workday via a generalized POST + pagination contract; iCIMS deferred
+(no keyless API) — and **openjobdata** — a free, daily, aggregated ~47-ATS Parquet dataset that
+could subsume those adapters; pending Ottawa-coverage verification (ADR-0017,
+`docs/research/openjobdata.md`).
 
 **V3 — Quality & breadth (direction):** feedback loop to calibrate the fit threshold; multiple profile
 embeddings (one per target role); revisit paid APIs for ToS-restricted sources.
