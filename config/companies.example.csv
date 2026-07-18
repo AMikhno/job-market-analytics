@@ -1,5 +1,6 @@
 company_name,source,board_ref,active,tier,notes
 Lever (demo board),lever,lever,true,1,verified public board — smoke test
 ExampleGreenhouseCo,greenhouse,REPLACE_WITH_GH_TOKEN,false,1,placeholder — copy this file to config/companies.csv and edit
-ExampleWorkdayCo,workday,examplewd/wd5/External,false,2,unsupported ATS in V1 — board_ref carries tenant/instance/site for multi-parameter boards
+ExampleWorkdayCo,workday,examplewd/wd5/External,false,2,adapter not built yet — board_ref carries tenant/instance/site for multi-parameter boards
+ExampleBambooCo,bamboohr,examplebamboo,false,2,adapter not built yet — board_ref is the company subdomain
 Ashby (demo board),ashby,ashby,true,1,verified public board — smoke test
