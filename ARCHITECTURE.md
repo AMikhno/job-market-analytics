@@ -103,8 +103,12 @@ ATS-specific path fragment the adapter interprets — a bare token for Greenhous
 but multi-segment for boards that need it (e.g. Workday's tenant/instance/site); see ADR-0012.
 Each active `board_ref` is format-checked against its source's rule at load time (a pasted URL or
 stray slash fails loudly before any fetch). Companies on ATS without an adapter yet (Workday,
-BambooHR, iCIMS, …) are kept as `active=false` so the inventory stays complete. No automated
-discovery pipeline in V1 — there's no API for it.
+BambooHR, iCIMS, …) are kept as `active=false` so the inventory stays complete.
+
+Discovery is **manual, not automated** (there's no reliable discovery API): a Jupyter notebook
+(`tools/company_discovery/`, ADR-0018) detects each company's ATS and writes a short description,
+run by hand ~monthly on new companies. Its output populates the private list; it also classifies
+each company as openjobdata-covered vs needing custom collection (ADR-0017).
 
 ### Keys and dedup
 
@@ -270,7 +274,10 @@ inactive-postings retention decision, and `make validate-companies` tooling. See
 **V2 — Relevance via AI inside dbt:** structured extraction + scoring SQL models, post-extraction
 fine-grained deal-breaker filter, embeddings as a cost pre-filter + cross-source dedup, and
 relevant-links delivery. **Tentative:** more ATS adapters — BambooHR and Workday via a generalized
-POST + pagination contract; iCIMS deferred (no keyless API).
+POST + pagination contract; iCIMS deferred (no keyless API). **Under evaluation:** adopting
+**openjobdata** — a free, daily, aggregated ~47-ATS Parquet dataset — as a hybrid source that could
+subsume those adapters (custom collection still needed for the niche local ATS it misses); pending
+Ottawa-coverage verification (ADR-0017, `docs/research/openjobdata.md`).
 
 **V3 — Quality & breadth (direction):** feedback loop to calibrate the fit threshold; multiple profile
 embeddings (one per target role); revisit paid APIs for ToS-restricted sources.
@@ -289,3 +296,6 @@ embeddings (one per target role); revisit paid APIs for ToS-restricted sources.
    `northamerica-northeast2`.
 5. ~~Doc consistency~~ — **swept:** no stale source counts, Pydantic wording throughout, deprecated
    model removed, cadence matches the workflow. Re-check on each new source.
+6. **openjobdata evaluation (V2)** — verify Ottawa/Canada density, dataset license/ToS, source
+   identity, cadence, and lifecycle mapping before adopting it as a hybrid source. See ADR-0017 and
+   `docs/research/openjobdata.md`. Decisive gate: a real Ottawa-coverage data pull.

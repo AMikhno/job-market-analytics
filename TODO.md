@@ -22,6 +22,15 @@ All shipped and verified (see `docs/decisions/0013`–`0016`):
 - [ ] iCIMS — deferred: no public keyless API (OAuth2 feed or brittle scraping); stays
       inventory-only (`active=false`) until we accept one of those costs — ADR-0013
 
+### Sourcing evaluation (tentative) — see ADR-0017 / `docs/research/openjobdata.md`
+- [ ] Verify **openjobdata** before adopting: Ottawa/Canada density (decisive — needs a real
+      parquet pull + filter/count), dataset license/ToS, source identity, cadence, lifecycle mapping
+- [ ] If adopted: new `openjobdata` source (filter delta parquet → `raw_openjobdata_jobs` →
+      `stg_openjobdata__jobs` → same silver/gold). Hybrid — niche local ATS still need custom collection
+- [ ] Decide fate of the Greenhouse/Lever/Ashby adapters (keep vs retire) — after coverage verified
+- [ ] Company-discovery notebook: add under `tools/company_discovery/` and exclude `tools/` from the
+      CI gates (ruff/mypy/coverage in `pyproject.toml` + `.pre-commit-config.yaml`) — ADR-0018
+
 ### Filtering (tentative)
 - [ ] Revisit whether any soft signal should become a hard filter, once the LLM can judge fit
 

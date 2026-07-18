@@ -33,3 +33,9 @@ we deliberately accept one of those costs. Custom career pages are later still.
 
 The secrets boundary (ADR-0007) is unchanged: only sources with public, keyless feeds are
 switched on; anything requiring auth stays off.
+
+**May be subsumed by an aggregated source.** ADR-0017 evaluates adopting openjobdata (a free,
+daily, ~47-ATS Parquet dataset) as a hybrid source. If its Ottawa coverage verifies, it could
+supply Workday/BambooHR (and more) without building these adapters — reframing the adapters here as
+the *niche fallback* for local ATS the aggregate misses, rather than the main roadmap. Until that
+verifies, the tentative adapters above stand.

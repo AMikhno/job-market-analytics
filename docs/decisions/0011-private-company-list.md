@@ -11,3 +11,7 @@ private file is absent, so a fresh clone and CI still run.
 It is no longer a dbt seed: no model referenced it, and seeding it would have published it. The
 deal-breaker tech and allowed-location lists remain committed seeds (generic, non-private, and used
 by models). If a warehouse-side company table is wanted in V2, ingest can land it then.
+
+The private list is populated by the manual company-discovery notebook (ADR-0018), which detects
+each company's ATS; that notebook's real-company output is gitignored for the same reason this list
+is.
