@@ -12,6 +12,17 @@ All shipped and verified (see `docs/decisions/0013`–`0016`):
 - [x] Inactive-postings retention: silver is the record, gold is live-only — ADR-0016
 - [x] `make validate-companies` pre-flight helper + expanded example list
 
+## V1.6 — hardening + delivery — ✅ COMPLETE
+
+All shipped (see ADR-0019 and `ARCHITECTURE.md` §9):
+
+- [x] Seed terms matched literally (C++/C#/.NET safe) — regexp escaping in `regexp_word_ci`
+- [x] Board-staleness rule: postings from removed/dead boards age out of gold (36h grace)
+- [x] Strict adapter parsing: schema drift raises instead of landing 0 rows
+- [x] Slack retired: GitHub-native failure email; warnings annotate + digest footer
+- [x] Actions SHA-pinned; gitleaks runs in CI (local hook is bypassable)
+- [x] Email digest of new postings (`deliver/digest.py`, watermark in `ops.digest_runs`)
+
 ## V2 — tentative
 
 ### More ATS adapters (tentative)
@@ -40,3 +51,6 @@ All shipped and verified (see `docs/decisions/0013`–`0016`):
 ## Operational (ongoing, human-owned)
 - [ ] Expand the actual company list in the GitHub Actions variable (`COMPANIES_CSV_CONTENT`) —
       secrets boundary; validate with `make validate-companies` before pasting
+- [ ] Create the digest secrets in the `production` environment: `SMTP_USER` +
+      `SMTP_PASSWORD` (Gmail app password; https://myaccount.google.com/apppasswords),
+      optional `DIGEST_TO` variable. Until set, the digest step logs "disabled" and skips.

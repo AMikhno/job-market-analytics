@@ -41,7 +41,7 @@ docs/        decisions/ (ADRs), build-plan.md, fix-roadmap.md  (ARCHITECTURE.md 
 ## Stack
 
 Python 3.14 + Pydantic v2 · dbt-core with dbt-duckdb (dev) and dbt-bigquery (prod) ·
-GitHub Actions (twice-daily ingest, freshness gate, Slack-on-failure).
+GitHub Actions (twice-daily ingest, freshness gate, email digest of new postings).
 
 ## Status
 

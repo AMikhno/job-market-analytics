@@ -32,7 +32,7 @@ AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
 - **The company list is private config** (gitignored locally): real list in `config/companies.csv`,
   committed only as `config/companies.example.csv`. It targets public job boards, so in CI it is a
   GitHub Actions **variable** (`COMPANIES_CSV_CONTENT`), *not* a secret — only credentials (BigQuery,
-  Slack) are secrets. One row per company per board; put companies on unsupported ATS in with
+  SMTP) are secrets. One row per company per board; put companies on unsupported ATS in with
   `active=false`. Never commit the real list. Run `make validate-companies` before pasting a list
   into the variable — it format-checks every `board_ref` so a bad row fails locally, not mid-run.
 - **Filter rules are data**: deal-breaker tech, allowed locations, and the soft desired-tech /
@@ -95,7 +95,7 @@ must be sanitized before they are committed.
 
 ## Commands
 
-`make install · ingest · validate-companies · dbt-dev · dbt-prod · dbt-test · freshness · test · lint · format · check`
+`make install · ingest · validate-companies · deliver · dbt-dev · dbt-prod · dbt-test · freshness · test · lint · format · check`
 
 ## Pointers
 
