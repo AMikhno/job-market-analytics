@@ -9,6 +9,7 @@ See `docs/decisions/0013`, `0014` and the plan discussion for context.
 - [x] Validate company `board_ref` values (per-source, fail-loud at load) — ADR-0012
 - [x] Separate BigQuery datasets per zone (`jobs_bronze/_silver/_gold`) — ADR-0014
 - [x] Ingestion completeness: `first_seen_at` ("new since last run") + documented model
+- [x] Desired technologies + titles as **soft** signals (`desired_tech_hits`, `title_match`) — ADR-0015
 
 ### Ingestion — next
 - [ ] Generalized adapter/HTTP contract (POST + offset pagination + per-job detail) — ADR-0013
@@ -20,7 +21,6 @@ See `docs/decisions/0013`, `0014` and the plan discussion for context.
 - [ ] Expand the company list in the GitHub Actions variable (`COMPANIES_CSV_CONTENT`) —
       human-owned (secrets boundary); add a `make validate-companies` helper first
 
-### Search/filtering — after completeness is confirmed
-- [ ] Desired technologies filtering (new seed; soft match-count vs hard drop — decide)
-- [ ] Desired titles filtering (new seed; title include-list — likely a hard filter)
+### Search/filtering
 - [ ] Decide where inactive postings live (silver retains today; gold is live-only)
+- [ ] (V2) Revisit whether any soft signal should become a hard filter, once the LLM can judge fit

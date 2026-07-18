@@ -61,7 +61,7 @@ are incremental tables that are never recomputed).
 | Ingest (Python)        | V1 | `raw_*_jobs`, `ops.ingest_runs` | — | Normalize, land, record run metadata. |
 | **Bronze** / staging   | V1 | `stg_greenhouse__jobs`, `stg_lever__jobs`, `stg_ashby__jobs` | **view** | Cast/standardize the typed landing, per source. |
 | **Silver** / intermediate | V1 | `int_jobs__unioned` | **view** | Union + `job_key` + `content_hash` + `clean_text`. |
-|                        | V1 | `silver_jobs` | **table** | Dedup (latest per `job_key`) + tech/location filter + lifecycle (`first_seen_at`/`last_seen_at`/`is_active`). |
+|                        | V1 | `silver_jobs` | **table** | Dedup (latest per `job_key`) + tech/location filter + soft signals (`desired_tech_hits`/`title_match`) + lifecycle (`first_seen_at`/`last_seen_at`/`is_active`). |
 |                        | V2 | `int_jobs_structured` | **incremental** | `AI.GENERATE`: typed fields + requirement text. |
 |                        | V2 | `int_jobs_scored` | **incremental** | `AI.GENERATE_INT`: fit score against the trimmed artifact. |
 | **Gold** / marts       | V1 | `fct_job_postings` | **table** | One row per *active* posting, recency-ranked, with the link. |
@@ -120,6 +120,13 @@ silver via a case-insensitive word-boundary regex (so "Kafka a plus" matches on 
 location rule is deliberately coarse: keep a posting whose location is null, is bare "Remote", or
 word-matches an allowed Canadian marker (`Canada`, `Ontario`, `ON`, `Ottawa`, `Toronto`,
 `Montreal`); drop the rest (so "Remote - United Kingdom" is dropped). No country blocklist.
+
+Beyond these hard drops, silver adds two **soft match signals** (ADR-0015) that annotate but
+never filter: `desired_tech_hits` (count of wanted technologies the posting text names) and
+`title_match` (whether the title word-matches a targeted role). Both are seed-driven
+(`desired_tech`, `desired_titles`) and flow through to gold, so delivery can sort or prioritize
+by them without dropping any posting on a keyword — V1 keeps recall high and leaves
+required-vs-nice-to-have and seniority to V2.
 
 Silver also derives **lifecycle** columns: `first_seen_at` (earliest ingest that saw the posting —
 the "new since last run" signal), `last_seen_at` (latest ingest that still contained it), and
