@@ -78,3 +78,16 @@ jobs:
         env:
           GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
         run: make freshness
+
+      # Sends only when postings were first seen since the last digest's
+      # watermark (ops.digest_runs); warnings from this run ride along.
+      - name: Email digest (new postings since last digest)
+        env:
+          PIPELINE_TARGET: prod
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+          BQ_DATASET: jobs
+          BQ_LOCATION: northamerica-northeast2
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          DIGEST_TO: ${{ vars.DIGEST_TO }}
+        run: make deliver

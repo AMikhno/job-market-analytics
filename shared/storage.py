@@ -51,6 +51,14 @@ _OPS_BQ_SCHEMA = [
     ("error", "STRING"),
 ]
 
+# One row per digest actually sent; max(watermark) is the "already delivered
+# up to here" cursor the next digest reads (deliver/digest.py, ADR-0019).
+_DIGEST_BQ_SCHEMA = [
+    ("sent_at", "TIMESTAMP"),
+    ("watermark", "TIMESTAMP"),
+    ("postings_sent", "INT64"),
+]
+
 
 def ensure_raw_tables(settings: Settings) -> None:
     """Idempotently provision the landing objects the pipeline writes to.
@@ -174,6 +182,94 @@ def land_runs(runs: Sequence[IngestRun], *, settings: Settings) -> None:
         bq_schema=_OPS_BQ_SCHEMA,
         settings=settings,
     )
+
+
+def gold_table(settings: Settings) -> str:
+    """Fully-qualified name of the gold mart on the active target.
+
+    Mirrors dbt's generate_schema_name: DuckDB dev lands in main_gold,
+    BigQuery prod in <project>.<dataset>_gold (ADR-0014).
+    """
+    if settings.is_prod:
+        return f"{settings.gcp_project}.{settings.bq_dataset}_gold.fct_job_postings"
+    return "main_gold.fct_job_postings"
+
+
+def ensure_digest_table(settings: Settings) -> None:
+    """Idempotently provision ops digest state, so the first digest run can
+    read an (empty) watermark instead of erroring on a missing table."""
+    if settings.is_prod:
+        from google.cloud import bigquery
+
+        client = bigquery.Client(project=settings.gcp_project, location=settings.bq_location)
+        table = bigquery.Table(
+            f"{settings.gcp_project}.{settings.bq_dataset}_ops.digest_runs",
+            schema=[bigquery.SchemaField(name, kind) for name, kind in _DIGEST_BQ_SCHEMA],
+        )
+        client.create_table(table, exists_ok=True)
+        return
+    import duckdb
+
+    Path(settings.duckdb_path).parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(settings.duckdb_path)
+    try:
+        cols = ", ".join(f"{name} VARCHAR" for name, _ in _DIGEST_BQ_SCHEMA)
+        con.execute(f"CREATE TABLE IF NOT EXISTS ops_digest_runs ({cols})")
+    finally:
+        con.close()
+
+
+def latest_digest_watermark(settings: Settings) -> str | None:
+    """ISO timestamp the last digest delivered up to, or None if never sent."""
+    table = (
+        f"{settings.gcp_project}.{settings.bq_dataset}_ops.digest_runs"
+        if settings.is_prod
+        else "ops_digest_runs"
+    )
+    rows = query_rows(f"select max(watermark) as wm from {table}", settings=settings)
+    wm = rows[0]["wm"]
+    return None if wm is None else str(wm)
+
+
+def land_digest(*, sent_at: str, watermark: str, postings_sent: int, settings: Settings) -> None:
+    """Record one sent digest (advances the watermark for the next run)."""
+    _write(
+        [{"sent_at": sent_at, "watermark": watermark, "postings_sent": postings_sent}],
+        duckdb_table="ops_digest_runs",
+        bq_dataset=f"{settings.bq_dataset}_ops",
+        bq_table="digest_runs",
+        bq_schema=_DIGEST_BQ_SCHEMA,
+        settings=settings,
+    )
+
+
+def query_rows(
+    sql: str, *, params: Sequence[object] = (), settings: Settings
+) -> list[dict[str, object]]:
+    """Run a read-only query, returning rows as dicts (DuckDB dev / BigQuery prod).
+
+    Placeholders are `?` on both targets; timestamp params are passed as ISO
+    strings and cast in the SQL (`cast(? as timestamp)`), which both dialects
+    accept, so callers write one query.
+    """
+    if settings.is_prod:
+        from google.cloud import bigquery
+
+        client = bigquery.Client(project=settings.gcp_project, location=settings.bq_location)
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[bigquery.ScalarQueryParameter(None, "STRING", str(p)) for p in params]
+        )
+        return [dict(row) for row in client.query(sql, job_config=job_config).result()]
+    import duckdb
+
+    con = duckdb.connect(settings.duckdb_path, read_only=True)
+    try:
+        cur = con.execute(sql, list(params))
+        assert cur.description is not None  # a SELECT always has a description
+        names = [d[0] for d in cur.description]
+        return [dict(zip(names, row, strict=True)) for row in cur.fetchall()]
+    finally:
+        con.close()
 
 
 def _write(

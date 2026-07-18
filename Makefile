@@ -1,4 +1,4 @@
-.PHONY: install ingest validate-companies dbt-deps ensure-raw dbt-dev dbt-prod dbt-test freshness test lint sql-lint format check
+.PHONY: install ingest validate-companies deliver dbt-deps ensure-raw dbt-dev dbt-prod dbt-test freshness test lint sql-lint format check
 
 install:          ## Set up the uv venv, dbt packages, and pre-commit hooks
 	uv sync --extra dev
@@ -11,6 +11,9 @@ ingest:           ## Run the ingestion pipeline once (Python -> raw tables)
 
 validate-companies: ## Pre-flight check the company list (board_ref formats) before use
 	uv run python -m ingest.validate_companies
+
+deliver:          ## Email the digest of new gold postings (no-op without SMTP creds)
+	uv run python -m deliver.digest
 
 dbt-deps:         ## Install dbt package dependencies (dbt_utils)
 	cd dbt && uv run dbt deps
@@ -36,7 +39,7 @@ test:             ## Run the Python test suite with coverage gate
 lint: sql-lint    ## ruff (check + format) + mypy + sqlfluff
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run mypy shared ingest
+	uv run mypy shared ingest deliver
 
 sql-lint: dbt-deps ## Lint dbt SQL (dbt templater, DuckDB dialect; run from dbt/)
 	mkdir -p data                         # DuckDB path the profile resolves to
