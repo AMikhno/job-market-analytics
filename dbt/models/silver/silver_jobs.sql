@@ -5,6 +5,9 @@
 with lifecycle as (
     select
         *,
+        -- the earliest ingest that saw this posting: a job_key whose first_seen_at
+        -- falls in the current run is net-new (the "new since last run" signal).
+        min(ingested_at) over (partition by job_key) as first_seen_at,
         -- when this posting was last seen on its board, across all ingests
         max(ingested_at) over (partition by job_key) as last_seen_at,
         -- the board's most recent ingest: a posting absent from it was taken down
@@ -70,6 +73,7 @@ select
     d.clean_text,
     d.posted_or_updated_at,
     d.ingested_at,
+    d.first_seen_at,
     d.last_seen_at,
     -- still on the board as of that board's latest ingest
     d.last_seen_at >= d.board_last_ingested_at as is_active

@@ -33,6 +33,10 @@ models:
         data_type: timestamp
       - name: ingested_at
         data_type: timestamp
+      - name: first_seen_at
+        description: Earliest ingest that saw this posting ("new since last run" signal).
+        data_type: timestamp
+        data_tests: [not_null]
       - name: last_seen_at
         data_type: timestamp
       - name: recency_rank

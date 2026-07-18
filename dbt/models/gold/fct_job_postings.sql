@@ -12,6 +12,7 @@ select
     url,
     posted_or_updated_at,
     ingested_at,
+    first_seen_at,
     last_seen_at,
     row_number() over (
         order by posted_or_updated_at desc nulls last, job_key asc
