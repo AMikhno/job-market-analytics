@@ -44,19 +44,38 @@ def test_legacy_company_slug_header_still_parses(tmp_path: Path, monkeypatch) ->
     assert c.notes == ""  # blank CSV cell falls back to the default
 
 
-def test_multi_segment_board_ref_passes_through_untouched(tmp_path: Path, monkeypatch) -> None:
-    # Workday-style boards need tenant/instance/site; the loader must not
-    # assume single-token slugs.
-    csv_file = tmp_path / "companies.csv"
-    csv_file.write_text(
-        "company_name,source,board_ref,active,tier,notes\nWdCo,greenhouse,wdco/wd5/External,true,2,\n"
+def test_multi_segment_board_ref_parses_untouched() -> None:
+    # Workday-style boards need tenant/instance/site; CSV parsing must not split
+    # or mangle a multi-segment board_ref. (Per-source *format* validation is a
+    # separate concern, exercised in test_sources.py — a multi-segment ref is
+    # rejected by bare-token sources but accepted by the source that owns it.)
+    c = Company.model_validate(
+        {
+            "company_name": "WdCo",
+            "source": "workday",
+            "board_ref": "wdco/wd5/External",
+            "active": "true",
+            "tier": "2",
+            "notes": "",
+        }
     )
-    _use(monkeypatch, str(csv_file))
-
-    (c,) = pipeline.load_companies("greenhouse")
 
     assert c.board_ref == "wdco/wd5/External"
     assert c.tier == 2
+
+
+def test_invalid_board_ref_fails_loudly_before_fetching(tmp_path: Path, monkeypatch) -> None:
+    # A URL pasted where a bare board token belongs would build a broken request
+    # and silently 404-skip; catch it at load time instead.
+    bad = tmp_path / "companies.csv"
+    bad.write_text(
+        "company_name,source,board_ref,active,tier,notes\n"
+        "Acme,greenhouse,https://boards.greenhouse.io/acme,true,1,\n"
+    )
+    _use(monkeypatch, str(bad))
+
+    with pytest.raises(ValueError, match="invalid board_ref"):
+        pipeline.load_companies("greenhouse")
 
 
 def test_whitespace_in_csv_cells_is_stripped(tmp_path: Path, monkeypatch) -> None:

@@ -18,3 +18,9 @@ sources:
         freshness:
           warn_after: { count: 12, period: hour }
           error_after: { count: 30, period: hour }
+      - name: raw_ashby_jobs
+        description: Append-only Ashby landings (all columns STRING; bronze casts).
+        loaded_at_field: "cast(ingested_at as timestamp)"
+        freshness:
+          warn_after: { count: 12, period: hour }
+          error_after: { count: 30, period: hour }

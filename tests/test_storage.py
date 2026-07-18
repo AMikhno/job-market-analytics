@@ -77,14 +77,14 @@ def test_land_runs_writes_ops_table(tmp_path) -> None:
     assert row == ("lever", "3", "ok")
 
 
-def test_ensure_raw_tables_creates_both_empty(tmp_path) -> None:
+def test_ensure_raw_tables_creates_all_empty(tmp_path) -> None:
     import duckdb
 
     settings = Settings(_env_file=None, duckdb_path=str(tmp_path / "j.duckdb"))
     storage.ensure_raw_tables(settings)
     con = duckdb.connect(str(tmp_path / "j.duckdb"))
     try:
-        for tbl in ("raw_greenhouse_jobs", "raw_lever_jobs"):
+        for tbl in ("raw_greenhouse_jobs", "raw_lever_jobs", "raw_ashby_jobs"):
             assert con.execute(f"select count(*) from {tbl}").fetchone()[0] == 0
     finally:
         con.close()
@@ -148,9 +148,14 @@ def test_ensure_raw_tables_provisions_bigquery(monkeypatch) -> None:
     assert set(by_id) == {
         "proj.jobs_raw.raw_greenhouse_jobs",
         "proj.jobs_raw.raw_lever_jobs",
+        "proj.jobs_raw.raw_ashby_jobs",
         "proj.jobs_ops.ingest_runs",
     }
-    for raw_id in ("proj.jobs_raw.raw_greenhouse_jobs", "proj.jobs_raw.raw_lever_jobs"):
+    for raw_id in (
+        "proj.jobs_raw.raw_greenhouse_jobs",
+        "proj.jobs_raw.raw_lever_jobs",
+        "proj.jobs_raw.raw_ashby_jobs",
+    ):
         tp = by_id[raw_id].time_partitioning
         assert tp is not None and tp.expiration_ms == 400 * 24 * 60 * 60 * 1000
         assert [f.name for f in by_id[raw_id].schema] == storage.RAW_COLUMNS

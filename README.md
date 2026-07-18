@@ -2,7 +2,8 @@
 
 Automated pipeline that ingests job postings, deduplicates and rule-filters them, and
 (in V2) ranks them against a personal profile using an LLM. **V1 is ingestion + dbt
-transformations only**, against **Greenhouse and Lever**.
+transformations only**, against **every ATS with a public, keyless feed** (Greenhouse,
+Lever, and Ashby today; more ATS are tentative V2).
 
 ## Why
 
@@ -28,7 +29,7 @@ make test && make dbt-test
 ## Structure
 
 ```
-ingest/      Greenhouse + Lever adapters, source registry, pipeline entrypoint
+ingest/      per-ATS adapters (Greenhouse, Lever, Ashby), source registry, pipeline entrypoint
 shared/      config (Pydantic Settings), models, http, storage
 config/      private company list (config/companies.csv, gitignored; .example committed)
 dbt/         one dual-target project: models/{bronze,silver,gold}, seeds, macros

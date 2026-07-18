@@ -1,5 +1,5 @@
 name: job_pipeline
-version: "0.1.0"
+version: "0.1.5"
 config-version: 2
 profile: job_pipeline
 
@@ -18,12 +18,19 @@ models:
     +persist_docs:
       relation: true
       columns: true
+    # Each zone lands in its own dataset. dbt's default generate_schema_name
+    # concatenates <target dataset>_<+schema>, giving jobs_bronze / jobs_silver /
+    # jobs_gold on BigQuery (alongside the jobs_raw / jobs_ops the Python ingest
+    # creates) and main_bronze / _silver / _gold on DuckDB dev. See ADR-0014.
     bronze:                       # staging
       +materialized: view
+      +schema: bronze
     silver:                       # intermediate zone (several int_ models)
       +materialized: table
+      +schema: silver
     gold:                         # marts
       +materialized: table
+      +schema: gold
 
 seeds:
   job_pipeline:

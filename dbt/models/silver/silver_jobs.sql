@@ -5,6 +5,9 @@
 with lifecycle as (
     select
         *,
+        -- the earliest ingest that saw this posting: a job_key whose first_seen_at
+        -- falls in the current run is net-new (the "new since last run" signal).
+        min(ingested_at) over (partition by job_key) as first_seen_at,
         -- when this posting was last seen on its board, across all ingests
         max(ingested_at) over (partition by job_key) as last_seen_at,
         -- the board's most recent ingest: a posting absent from it was taken down
@@ -52,6 +55,29 @@ location_ok as (
         max(d.location) is null
         or lower(trim(max(d.location))) = 'remote'
         or count(a.pattern) > 0
+),
+
+-- Soft signals (ADR-0015): annotate, never drop. desired_tech_hits counts how
+-- many desired techs the posting text names; title_match flags a targeted title.
+-- V1 keeps everything and lets delivery sort/filter; V2's LLM does the judgment.
+desired_tech_counts as (
+    select
+        d.job_key,
+        count(t.tech) as desired_tech_hits
+    from deduped d
+    left join {{ ref('desired_tech') }} t
+        on {{ regexp_word_ci('d.clean_text', 't.tech') }}
+    group by d.job_key
+),
+
+title_matches as (
+    select
+        d.job_key,
+        count(p.pattern) > 0 as title_match
+    from deduped d
+    left join {{ ref('desired_titles') }} p
+        on {{ regexp_word_ci('d.title', 'p.pattern') }}
+    group by d.job_key
 )
 
 select
@@ -70,10 +96,15 @@ select
     d.clean_text,
     d.posted_or_updated_at,
     d.ingested_at,
+    d.first_seen_at,
     d.last_seen_at,
+    coalesce(dtc.desired_tech_hits, 0) as desired_tech_hits,
+    coalesce(tm.title_match, false) as title_match,
     -- still on the board as of that board's latest ingest
     d.last_seen_at >= d.board_last_ingested_at as is_active
 from deduped d
+left join desired_tech_counts dtc on d.job_key = dtc.job_key
+left join title_matches tm on d.job_key = tm.job_key
 where
     d.job_key not in (select tech_hits.job_key from tech_hits)
     and d.job_key in (select location_ok.job_key from location_ok)

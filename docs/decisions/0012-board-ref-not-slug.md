@@ -17,3 +17,11 @@ constructed from it, so there is a single source of truth.
 
 The legacy `company_slug` CSV header is accepted as a validation alias so existing
 private lists (including the GitHub Actions variable) keep working unchanged.
+
+**Validation is adapter-owned too.** Because the ref's *shape* is source-specific, so is its
+format check: each source in `ingest/sources.py` carries a `validate_board_ref` (default: a
+bare board token — no slashes, spaces, or URL — which a multi-segment ATS like Workday
+overrides). `load_companies` runs it on every active row before any fetch, so a pasted URL or
+a stray slash fails loudly at load time instead of building a broken request and being
+silently skipped as a 404. CSV parsing still passes multi-segment refs through untouched
+(splitting is the adapter's job, not the loader's).

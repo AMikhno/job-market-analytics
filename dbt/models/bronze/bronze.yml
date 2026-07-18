@@ -18,3 +18,12 @@ models:
       - name: url
         description: Canonical hostedUrl to the live posting.
         data_tests: [not_null]
+  - name: stg_ashby__jobs
+    description: Typed staging over the Ashby raw landing — one row per posting.
+    columns:
+      - name: external_id
+        description: Ashby job id (UUID), as text; unique within the board.
+        data_tests: [not_null]
+      - name: url
+        description: Canonical jobUrl to the live posting.
+        data_tests: [not_null]

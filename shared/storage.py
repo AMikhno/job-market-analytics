@@ -14,7 +14,11 @@ from pathlib import Path
 from shared.config import Settings
 from shared.models import IngestRun, RawPosting
 
-_RAW_TABLE = {"greenhouse": "raw_greenhouse_jobs", "lever": "raw_lever_jobs"}
+_RAW_TABLE = {
+    "greenhouse": "raw_greenhouse_jobs",
+    "lever": "raw_lever_jobs",
+    "ashby": "raw_ashby_jobs",
+}
 
 # Canonical raw column order (must match the dict built in _posting_rows).
 RAW_COLUMNS = [

@@ -12,8 +12,9 @@ models:
   - name: silver_jobs
     description: >
       Deduplicated, rule-filtered postings ready for V1 delivery / V2 AI, with
-      lifecycle columns (last_seen_at / is_active) so taken-down postings are
-      distinguishable from live ones.
+      lifecycle columns (first_seen_at / last_seen_at / is_active) so net-new and
+      taken-down postings are distinguishable, plus soft match signals
+      (desired_tech_hits / title_match) that annotate but never drop (ADR-0015).
     # Contract enforced on the DuckDB dev target — CI builds it on every PR, so
     # column drift and type regressions (e.g. the old cast-null-as-varchar) fail
     # fast. Declared types are DuckDB's; the BigQuery build reports STRING/BOOL/
@@ -30,7 +31,7 @@ models:
         description: Change-detection hash of (title, clean_text); V2 reprocessing key.
         data_type: varchar
       - name: source
-        description: ATS the posting came from ("greenhouse" | "lever").
+        description: ATS the posting came from ("greenhouse" | "lever" | "ashby").
         data_type: varchar
       - name: company
         description: The board_ref the posting was fetched from.
@@ -61,9 +62,27 @@ models:
         data_type: timestamp
       - name: ingested_at
         data_type: timestamp
+      - name: first_seen_at
+        description: >
+          Earliest ingest timestamp that contained this posting; a job_key whose
+          first_seen_at is in the current run is net-new ("new since last run").
+        data_type: timestamp
+        data_tests: [not_null]
       - name: last_seen_at
         description: Most recent ingest timestamp that still contained this posting.
         data_type: timestamp
+        data_tests: [not_null]
+      - name: desired_tech_hits
+        description: >
+          Count of desired-tech seed terms word-matched in clean_text. Soft
+          signal — annotates, never drops (ADR-0015).
+        data_type: bigint
+        data_tests: [not_null]
+      - name: title_match
+        description: >
+          True if the title word-matches a desired_titles pattern. Soft signal —
+          annotates, never drops (ADR-0015).
+        data_type: boolean
         data_tests: [not_null]
       - name: is_active
         description: True while the posting is present in its board's latest ingest.
@@ -87,6 +106,10 @@ unit_tests:
         rows: []
       - input: ref('allowed_locations')
         rows: [{pattern: Canada}]
+      - input: ref('desired_tech')
+        rows: []
+      - input: ref('desired_titles')
+        rows: []
     expect:
       rows:
         - {job_key: k1, title: new title}
@@ -107,6 +130,10 @@ unit_tests:
         rows: [{tech: Kafka}]
       - input: ref('allowed_locations')
         rows: [{pattern: Canada}]
+      - input: ref('desired_tech')
+        rows: []
+      - input: ref('desired_titles')
+        rows: []
     expect:
       rows:
         - {job_key: k2}
@@ -142,6 +169,10 @@ unit_tests:
         rows: []
       - input: ref('allowed_locations')
         rows: [{pattern: Canada}, {pattern: Ontario}, {pattern: ON}, {pattern: Ottawa}, {pattern: Toronto}, {pattern: Montreal}]
+      - input: ref('desired_tech')
+        rows: []
+      - input: ref('desired_titles')
+        rows: []
     expect:
       rows:
         - {job_key: remote}
@@ -154,7 +185,8 @@ unit_tests:
   - name: posting_missing_from_latest_board_ingest_is_inactive
     description: >
       k2 was seen on 07-01 but not in the board's 07-02 ingest — it was taken
-      down. It stays in silver (history) but is_active must be false.
+      down. It stays in silver (history) but is_active must be false. Also pins
+      first_seen_at to the earliest ingest (k1 first seen 07-01, not 07-02).
     model: silver_jobs
     given:
       - input: ref('int_jobs__unioned')
@@ -169,7 +201,39 @@ unit_tests:
         rows: []
       - input: ref('allowed_locations')
         rows: [{pattern: Canada}]
+      - input: ref('desired_tech')
+        rows: []
+      - input: ref('desired_titles')
+        rows: []
     expect:
       rows:
-        - {job_key: k1, is_active: true}
-        - {job_key: k2, is_active: false}
+        - {job_key: k1, is_active: true, first_seen_at: 2026-07-01 10:00:00}
+        - {job_key: k2, is_active: false, first_seen_at: 2026-07-01 10:00:00}
+
+  - name: soft_signals_annotate_without_dropping
+    description: >
+      desired_tech_hits counts desired techs word-matched in clean_text and
+      title_match flags a targeted title — but neither drops a row: a posting
+      with no desired tech and a non-target title still survives (soft, ADR-0015).
+    model: silver_jobs
+    given:
+      - input: ref('int_jobs__unioned')
+        rows:
+          - {job_key: hit, source: lever, company: acme, title: Analytics Engineer,
+             clean_text: "We use dbt and BigQuery daily", location: "Ottawa, Canada",
+             ingested_at: 2026-07-02 10:00:00}
+          - {job_key: miss, source: lever, company: acme, title: Office Manager,
+             clean_text: "general office administration", location: "Ottawa, Canada",
+             ingested_at: 2026-07-02 10:00:00}
+      - input: ref('deal_breaker_tech')
+        rows: []
+      - input: ref('allowed_locations')
+        rows: [{pattern: Canada}]
+      - input: ref('desired_tech')
+        rows: [{tech: dbt}, {tech: BigQuery}]
+      - input: ref('desired_titles')
+        rows: [{pattern: Analytics}]
+    expect:
+      rows:
+        - {job_key: hit, desired_tech_hits: 2, title_match: true}
+        - {job_key: miss, desired_tech_hits: 0, title_match: false}

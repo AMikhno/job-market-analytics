@@ -1,4 +1,4 @@
-.PHONY: install ingest dbt-deps ensure-raw dbt-dev dbt-prod dbt-test freshness test lint sql-lint format check
+.PHONY: install ingest validate-companies dbt-deps ensure-raw dbt-dev dbt-prod dbt-test freshness test lint sql-lint format check
 
 install:          ## Set up the uv venv, dbt packages, and pre-commit hooks
 	uv sync --extra dev
@@ -8,6 +8,9 @@ install:          ## Set up the uv venv, dbt packages, and pre-commit hooks
 
 ingest:           ## Run the ingestion pipeline once (Python -> raw tables)
 	uv run python -m ingest.pipeline
+
+validate-companies: ## Pre-flight check the company list (board_ref formats) before use
+	uv run python -m ingest.validate_companies
 
 dbt-deps:         ## Install dbt package dependencies (dbt_utils)
 	cd dbt && uv run dbt deps

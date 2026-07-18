@@ -5,8 +5,9 @@ Context and conventions for AI agents (and humans) working on this repo.
 ## What this project is
 
 Automated job-matching pipeline. **V1 (current) is ingestion + dbt transformations
-only** — no LLM, no embeddings, no scoring. Python pulls Greenhouse and Lever
-postings into per-source raw tables; one dbt project transforms them through
+only** — no LLM, no embeddings, no scoring. Python pulls postings from every ATS with
+a public, keyless feed (Greenhouse, Lever, Ashby today; more ATS are tentative V2 — see
+ADR-0013) into per-source raw tables; one dbt project transforms them through
 bronze → silver → gold into a deduplicated, rule-filtered table of postings.
 AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
 
@@ -32,8 +33,10 @@ AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
   committed only as `config/companies.example.csv`. It targets public job boards, so in CI it is a
   GitHub Actions **variable** (`COMPANIES_CSV_CONTENT`), *not* a secret — only credentials (BigQuery,
   Slack) are secrets. One row per company per board; put companies on unsupported ATS in with
-  `active=false`. Never commit the real list.
-- **Filter rules are data**: deal-breaker tech and allowed locations live in dbt seeds.
+  `active=false`. Never commit the real list. Run `make validate-companies` before pasting a list
+  into the variable — it format-checks every `board_ref` so a bad row fails locally, not mid-run.
+- **Filter rules are data**: deal-breaker tech, allowed locations, and the soft desired-tech /
+  desired-title signals all live in dbt seeds.
 - **Cross-warehouse SQL**: models must run on both DuckDB (dev) and BigQuery (prod);
   dialect-specific logic goes in an `adapter.dispatch` macro (see `macros/cross_db.sql`).
 - **Conventional commits** (`feat:`, `fix:`, `chore:`, `docs:`); small, single-purpose.
@@ -42,7 +45,8 @@ AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
 
 The repo and anything an agent can read must never contain a secret *value*.
 
-- **V1 ingestion sources need no credentials** — Greenhouse and Lever read APIs are public.
+- **V1 ingestion sources need no credentials** — the supported ATS read APIs (Greenhouse,
+  Lever, Ashby) are public and keyless.
 - Secret **values** live only in (a) GitHub Actions Encrypted Secrets and (b) your OS
   keychain / gcloud ADC. Neither is a file in the working tree.
 - The repo contains only secret **names** (in workflow YAML) and **placeholders** (`.env.example`).
@@ -59,7 +63,8 @@ must be sanitized before they are committed.
 ## What NOT to do
 
 - Don't add an LLM, embeddings, or scoring to V1 — that's V2 by design.
-- Don't add sources beyond Greenhouse/Lever in V1.
+- Only add sources with a public, keyless feed in V1; anything needing auth or scraping
+  stays inventory-only (`active=false`) — see ADR-0013.
 - Don't create per-source Python files for sources that fit an existing adapter.
 - Don't introduce YAML source configs. Pydantic only.
 - Don't read `.env` directly; use `shared/config.py`.
@@ -90,7 +95,7 @@ must be sanitized before they are committed.
 
 ## Commands
 
-`make install · ingest · dbt-dev · dbt-prod · dbt-test · freshness · test · lint · format · check`
+`make install · ingest · validate-companies · dbt-dev · dbt-prod · dbt-test · freshness · test · lint · format · check`
 
 ## Pointers
 

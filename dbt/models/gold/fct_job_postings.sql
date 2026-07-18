@@ -12,7 +12,10 @@ select
     url,
     posted_or_updated_at,
     ingested_at,
+    first_seen_at,
     last_seen_at,
+    desired_tech_hits,
+    title_match,
     row_number() over (
         order by posted_or_updated_at desc nulls last, job_key asc
     ) as recency_rank

@@ -33,8 +33,20 @@ models:
         data_type: timestamp
       - name: ingested_at
         data_type: timestamp
+      - name: first_seen_at
+        description: Earliest ingest that saw this posting ("new since last run" signal).
+        data_type: timestamp
+        data_tests: [not_null]
       - name: last_seen_at
         data_type: timestamp
+      - name: desired_tech_hits
+        description: Count of desired techs named in the posting (soft signal; sort/filter downstream).
+        data_type: bigint
+        data_tests: [not_null]
+      - name: title_match
+        description: True if the title matches a targeted role (soft signal; sort/filter downstream).
+        data_type: boolean
+        data_tests: [not_null]
       - name: recency_rank
         description: 1 = most recent by posted_or_updated_at; dense unique ordering for the digest.
         data_type: bigint

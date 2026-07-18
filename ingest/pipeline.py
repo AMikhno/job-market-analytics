@@ -22,10 +22,11 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ingest.adapters.ashby import AshbyAdapter
 from ingest.adapters.base import SourceAdapter
 from ingest.adapters.greenhouse import GreenhouseAdapter
 from ingest.adapters.lever import LeverAdapter
-from ingest.sources import SOURCES
+from ingest.sources import SOURCES, Source
 from shared import storage
 from shared.config import Settings, get_settings
 from shared.http import build_session
@@ -39,10 +40,13 @@ log = logging.getLogger("ingest")
 _ADAPTER_FACTORIES: dict[str, Callable[[str], SourceAdapter]] = {
     GreenhouseAdapter.source: GreenhouseAdapter,
     LeverAdapter.source: LeverAdapter,
+    AshbyAdapter.source: AshbyAdapter,
 }
 ADAPTERS: dict[str, SourceAdapter] = {
     s.adapter: _ADAPTER_FACTORIES[s.adapter](s.url_template) for s in SOURCES
 }
+# The source object (owner of the board_ref format rule) keyed by adapter name.
+_SOURCE_BY_ADAPTER: dict[str, Source] = {s.adapter: s for s in SOURCES}
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_COMPANIES = ROOT / "config" / "companies.example.csv"
 
@@ -73,11 +77,18 @@ def load_companies(source: str, settings: Settings | None = None) -> list[Compan
 
     Every row is validated into a typed Company (a malformed list fails loudly,
     before anything is fetched); the legacy `company_slug` header still parses.
+    Each active board_ref is then format-checked against its source's rule, so a
+    pasted URL or a stray slash fails here rather than 404-ing mid-run.
     """
     settings = settings or get_settings()
     with _companies_path(settings).open(newline="") as fh:
         rows = [Company.model_validate(row) for row in csv.DictReader(fh)]
-    return [c for c in rows if c.source == source and c.active]
+    active = [c for c in rows if c.source == source and c.active]
+    src = _SOURCE_BY_ADAPTER.get(source)
+    if src is not None:
+        for c in active:
+            src.validate_board_ref(c.board_ref)  # fail loudly before any fetch
+    return active
 
 
 def run() -> int:
