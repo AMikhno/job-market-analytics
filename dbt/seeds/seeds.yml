@@ -17,3 +17,24 @@ seeds:
     columns:
       - name: pattern
         data_tests: [not_null, unique]
+  - name: desired_tech
+    description: >
+      Technologies a good match tends to name. SOFT signal (ADR-0015): silver
+      counts how many appear in the posting text (desired_tech_hits) but never
+      drops a row. Word-matched, case-insensitive; keep entries
+      regex-metacharacter-free.
+    columns:
+      - name: tech
+        data_tests: [not_null, unique]
+      - name: note
+        description: Why it is on the list (documentation only; unused in SQL).
+  - name: desired_titles
+    description: >
+      Title patterns for targeted roles. SOFT signal (ADR-0015): silver flags
+      whether the posting title word-matches one (title_match) but never drops a
+      row. Word-matched, case-insensitive; keep entries regex-metacharacter-free.
+    columns:
+      - name: pattern
+        data_tests: [not_null, unique]
+      - name: note
+        description: What it targets (documentation only; unused in SQL).
