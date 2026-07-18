@@ -131,7 +131,9 @@ required-vs-nice-to-have and seniority to V2.
 Silver also derives **lifecycle** columns: `first_seen_at` (earliest ingest that saw the posting —
 the "new since last run" signal), `last_seen_at` (latest ingest that still contained it), and
 `is_active` (present in its board's most recent ingest) — so gold delivers only live postings,
-taken-down ones drop out, and net-new postings are identifiable.
+taken-down ones drop out, and net-new postings are identifiable. `silver_jobs` is the durable
+record of *all* postings (live and closed); gold shows only live ones, and the hard retention
+floor is raw's partition expiry (ADR-0016).
 
 **Completeness model.** None of the V1 source APIs offer a server-side date filter, so each run
 pulls the *whole board* (append-only landing) — which is complete for a single-response feed —

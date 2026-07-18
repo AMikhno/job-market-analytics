@@ -10,6 +10,7 @@ See `docs/decisions/0013`, `0014` and the plan discussion for context.
 - [x] Separate BigQuery datasets per zone (`jobs_bronze/_silver/_gold`) — ADR-0014
 - [x] Ingestion completeness: `first_seen_at` ("new since last run") + documented model
 - [x] Desired technologies + titles as **soft** signals (`desired_tech_hits`, `title_match`) — ADR-0015
+- [x] Decided where inactive postings live: silver is the record, gold is live-only — ADR-0016
 
 ### Ingestion — next
 - [ ] Generalized adapter/HTTP contract (POST + offset pagination + per-job detail) — ADR-0013
@@ -22,5 +23,4 @@ See `docs/decisions/0013`, `0014` and the plan discussion for context.
       human-owned (secrets boundary); add a `make validate-companies` helper first
 
 ### Search/filtering
-- [ ] Decide where inactive postings live (silver retains today; gold is live-only)
 - [ ] (V2) Revisit whether any soft signal should become a hard filter, once the LLM can judge fit
