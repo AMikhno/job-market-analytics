@@ -1,5 +1,5 @@
 name: job_pipeline
-version: "0.1.0"
+version: "0.1.5"
 config-version: 2
 profile: job_pipeline
 
