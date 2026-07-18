@@ -2,6 +2,14 @@ name: Ingest
 
 # Twice daily, ~09:30 and ~15:00 America/Toronto. GitHub cron is UTC and ignores
 # DST, so these drift one hour earlier in winter (harmless for a job digest).
+#
+# Failure alerting is GitHub-native: a failed run of a scheduled workflow emails
+# the workflow's author/actor (no Slack, no webhook to rot — see ADR-0019).
+# Warnings surface as run annotations + the step summary, and ride along in the
+# email digest when one is sent.
+#
+# Actions are pinned to commit SHAs, not tags: this workflow holds `id-token:
+# write` (WIF), and a hijacked moving tag could exfiltrate the OIDC exchange.
 on:
   schedule:
     - cron: "30 13 * * *"   # 09:30 EDT / 08:30 EST
@@ -17,16 +25,16 @@ jobs:
     runs-on: ubuntu-latest
     environment: production  # scopes the secrets below
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
       - run: uv sync --extra dev
 
       - name: Authenticate to Google Cloud (WIF — no service-account key)
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-      
+
       # The company list targets public job boards, so it's a GitHub Actions
       # *variable* (not a secret). Named COMPANIES_CSV_CONTENT to avoid colliding
       # with the COMPANIES_CSV env var that holds a file *path* (shared/config.py).
@@ -44,14 +52,14 @@ jobs:
           HTTP_USER_AGENT: ${{ vars.HTTP_USER_AGENT }}
         run: make ingest
 
-      - name: Warn on low volume (non-failing)
+      # Warnings must never be able to fail the run (the old Slack curl could).
+      - name: Surface warnings (annotations + run summary)
         if: success()
         run: |
           warns=$(jq -r '.warnings | join(", ")' ingest_summary.json)
           if [ -n "$warns" ]; then
-            curl -sf -X POST -H 'Content-type: application/json' \
-              --data "{\"text\":\":warning: Low/zero volume from: $warns (run ${{ github.run_id }})\"}" \
-              "${{ secrets.SLACK_WEBHOOK_URL }}"
+            echo "::warning::Low/zero volume from: $warns"
+            echo ":warning: Low/zero volume from: $warns" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Fail fast on BigQuery dialect errors (compile, no mutations)
@@ -70,10 +78,3 @@ jobs:
         env:
           GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
         run: make freshness
-
-      - name: Notify Slack on failure
-        if:  false
-        run: |
-          curl -sf -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\":rotating_light: Ingest run failed: ${{ github.run_id }}\"}" \
-            "${{ secrets.SLACK_WEBHOOK_URL }}"

@@ -21,7 +21,6 @@ class Settings(BaseSettings):
     # partitions older than this are dropped (keeps storage under the free tier).
     bq_raw_partition_expiry_days: int = Field(default=400)
 
-    slack_webhook_url: str = Field(default="")
     http_user_agent: str = Field(default="job-search-pipeline/0.1")
     # Private company list (gitignored); falls back to the committed example if absent.
     companies_csv: str = Field(default="config/companies.csv")
