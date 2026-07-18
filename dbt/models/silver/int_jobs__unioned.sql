@@ -8,6 +8,8 @@ with unioned as (
     select * from {{ ref('stg_greenhouse__jobs') }}
     union all
     select * from {{ ref('stg_lever__jobs') }}
+    union all
+    select * from {{ ref('stg_ashby__jobs') }}
 ),
 
 keyed as (

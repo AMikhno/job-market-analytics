@@ -1,0 +1,20 @@
+{
+  "jobs": [
+    {
+      "id": "7458d4e9-da2e-47bd-98cb-adfda43d42b2",
+      "title": "Analytics Engineer",
+      "department": "Data",
+      "team": "Analytics",
+      "employmentType": "FullTime",
+      "location": "Toronto, Canada",
+      "secondaryLocations": [],
+      "isRemote": true,
+      "workplaceType": "Remote",
+      "publishedAt": "2026-03-04T14:29:08.532+00:00",
+      "jobUrl": "https://jobs.ashbyhq.com/example/7458d4e9-da2e-47bd-98cb-adfda43d42b2",
+      "applyUrl": "https://jobs.ashbyhq.com/example/7458d4e9-da2e-47bd-98cb-adfda43d42b2/application",
+      "descriptionHtml": "<div class=\"content\"><p>Build dbt models &amp; dashboards.</p></div>",
+      "descriptionPlain": "Build dbt models & dashboards."
+    }
+  ]
+}

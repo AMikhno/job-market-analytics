@@ -12,7 +12,7 @@ class Company(BaseModel):
     """One row of the (private) company list, config/companies.csv.
 
     `board_ref` is the ATS-specific path fragment that identifies one company's
-    board. For Greenhouse/Lever it is a bare token (`boards.greenhouse.io/<ref>`),
+    board. For Greenhouse/Lever/Ashby it is a bare token (`boards.greenhouse.io/<ref>`),
     but ATS like Workday need several path segments (tenant/instance/site), so it
     is a *reference the adapter interprets*, not necessarily a single slug.
     The legacy `company_slug` CSV header is accepted as an alias.
@@ -52,7 +52,7 @@ class RawPosting(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    source: str  # "greenhouse" | "lever"
+    source: str  # "greenhouse" | "lever" | "ashby"
     company: str  # the Company.board_ref this posting was fetched from
     external_id: str
     title: str

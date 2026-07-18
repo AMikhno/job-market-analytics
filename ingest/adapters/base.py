@@ -13,7 +13,7 @@ class SourceAdapter(Protocol):
     """Fetch postings for one company's board and return the common schema.
 
     `board_ref` is the ATS-specific path fragment from the company list; each
-    adapter owns its interpretation (bare token for Greenhouse/Lever, richer
+    adapter owns its interpretation (bare token for Greenhouse/Lever/Ashby, richer
     multi-segment forms for future ATS like Workday).
     """
 
