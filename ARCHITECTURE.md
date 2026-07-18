@@ -5,7 +5,7 @@ Design for the job-matching pipeline.
 **Scope discipline.** V1 (MVP) is **ingestion + dbt transformations only** — no LLM, no
 embeddings, no scoring. It produces a clean, deduplicated, rule-filtered table of job
 postings from **every ATS with a public, keyless feed** (Greenhouse, Lever, and Ashby today;
-Workday and BambooHR planned — see ADR-0013), on a **dual-target dbt project** (DuckDB for
+more ATS are tentative V2 — see ADR-0013), on a **dual-target dbt project** (DuckDB for
 dev, BigQuery for production, from day one — there is no later migration). All AI lands in V2.
 
 Rationale for each non-obvious choice is in `docs/decisions/`.
@@ -259,13 +259,18 @@ dbt models/columns carry schema tests (`not_null`, `unique`, `accepted_values`).
 
 ## 9. Roadmap
 
-**V1 — MVP:** public-keyless ATS ingest (Greenhouse, Lever, Ashby; Workday/BambooHR planned) →
-bronze → silver (dedup, keyword + location filter, hash, first-seen/lifecycle) → gold (curated,
-recency-ordered). Dual-target, per-zone datasets (`jobs_bronze/_silver/_gold`); no AI.
+**V1 — MVP:** public-keyless ATS ingest (Greenhouse, Lever, Ashby) → bronze → silver (dedup,
+keyword + location filter, hash, first-seen/lifecycle) → gold (curated, recency-ordered).
+Dual-target, per-zone datasets (`jobs_bronze/_silver/_gold`); no AI.
+
+**V1.5 — broaden ingestion + filtering (done):** Ashby adapter, per-source `board_ref` validation,
+per-zone BigQuery datasets, `first_seen_at` completeness, soft desired-tech/title signals,
+inactive-postings retention decision, and `make validate-companies` tooling. See ADR-0013–0016.
 
 **V2 — Relevance via AI inside dbt:** structured extraction + scoring SQL models, post-extraction
-fine-grained deal-breaker filter, embeddings as a cost pre-filter + cross-source dedup, relevant-links
-delivery, and more sources.
+fine-grained deal-breaker filter, embeddings as a cost pre-filter + cross-source dedup, and
+relevant-links delivery. **Tentative:** more ATS adapters — BambooHR and Workday via a generalized
+POST + pagination contract; iCIMS deferred (no keyless API).
 
 **V3 — Quality & breadth (direction):** feedback loop to calibrate the fit threshold; multiple profile
 embeddings (one per target role); revisit paid APIs for ToS-restricted sources.

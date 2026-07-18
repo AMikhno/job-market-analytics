@@ -13,7 +13,9 @@ is public and keyless and returns a single `{"jobs": [...]}` response with no pa
 its adapter mirrors Greenhouse/Lever exactly (one GET, map each item). Unlike Greenhouse,
 Ashby's `descriptionHtml` is already real HTML, so it is passed through, not unescaped.
 
-**Planned, in feasibility order (from live API research):**
+**Tentative V2, in feasibility order (from live API research).** V1.5 broadened ingestion to
+Ashby and is complete; the remaining adapters below are deferred to V2 (tentative) rather than
+built now — they are heavier and, for Workday, cannot be schema-verified without live POST calls:
 
 - **BambooHR** — public `{company}.bamboohr.com/careers/list` plus a per-id
   `/careers/{id}/detail`. Two-step and undocumented; the internal shape shifts between

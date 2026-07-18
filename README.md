@@ -3,7 +3,7 @@
 Automated pipeline that ingests job postings, deduplicates and rule-filters them, and
 (in V2) ranks them against a personal profile using an LLM. **V1 is ingestion + dbt
 transformations only**, against **every ATS with a public, keyless feed** (Greenhouse,
-Lever, and Ashby today; Workday/BambooHR planned).
+Lever, and Ashby today; more ATS are tentative V2).
 
 ## Why
 
