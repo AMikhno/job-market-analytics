@@ -16,7 +16,7 @@ flowchart LR
     G -.-> E
 ```
 
-## What a reviewer should notice
+## Design highlights 
 
 - **Medallion = dbt-native.** Three zones map 1:1 onto staging → intermediate → marts
   (ADR-0010), each in its own BigQuery dataset (ADR-0014); raw is append-only with
