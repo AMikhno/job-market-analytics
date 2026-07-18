@@ -27,6 +27,10 @@ class LeverAdapter:
         items: list[dict[str, Any]] = get_json(
             session, self.url_template.format(board_ref=board_ref)
         )
+        # Strict: Lever returns a bare JSON array; a dict here is an error body
+        # or schema drift - raise (per-company warn) instead of landing 0 rows.
+        if not isinstance(items, list):
+            raise ValueError(f"expected a JSON array from Lever, got {type(items).__name__}")
         return [self._map(item, board_ref) for item in items]
 
     def _map(self, item: dict[str, Any], board_ref: str) -> RawPosting:
