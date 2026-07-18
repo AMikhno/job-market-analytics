@@ -50,6 +50,10 @@ openjobdata (ADR-0017), score thresholds / delivery filtering (ADR-0020 §2).
 - Failure semantics: null/failed generations land with `extract_ok = false`,
   retried next run (guard on `content_hash` + `extract_ok`), never silently
   dropped or scored.
+- Schema evolution: `on_schema_change: append_new_columns` on both incremental
+  models; a `--full-refresh` re-bills the entire backfill (~$0.12 at current
+  scale) and must be a deliberate decision, not a reflex (ARCHITECTURE §3,
+  "Schema evolution").
 - **Dev parity:** on the DuckDB target the model is a stub emitting the same
   columns as typed nulls (`enabled`/target-conditional SQL, pattern per §5).
   Downstream models and unit tests run against the stub.

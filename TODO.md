@@ -48,6 +48,22 @@ work items top-to-bottom, one conventional commit each:
 - **Company-discovery notebook** under `tools/` (CI-quarantined) — ADR-0018
 - **Soft-signal → hard-filter revisit** and score thresholds — V3 feedback loop
 
+## Before starting V2 (sequencing — cheap checks that could re-scope it)
+
+- [ ] **Verify the first prod run on the V1.6 workflow** (Actions page): new BigQuery-dialect
+      SQL (regex escaping, staleness rule) executes for the first time there; digest step
+      logs "disabled" until SMTP secrets exist — that's expected, not a failure
+- [ ] **Value/coverage check against real gold data**: how many active postings, how many
+      title-matched, how many you'd actually apply to. If the funnel is thin, coverage —
+      not scoring — is the priority. Same numbers feed the README results section
+- [ ] **openjobdata Ottawa pull** (ADR-0017's decisive gate, one notebook): does the
+      aggregated dataset see Ottawa/Canada AE postings the curated list misses? Answer
+      re-scopes V2 if coverage beats relevance
+- [ ] **Dead-man's switch**: GitHub suspends cron workflows after ~60 days of repo
+      inactivity — no run means no failure email. Cheapest fix: free healthchecks.io ping
+      as the last ingest.yml step (alerts when pings *stop*); interim habit: no digest for
+      3+ days → check Actions
+
 ## Operational (ongoing, human-owned)
 - [ ] Expand the actual company list in the GitHub Actions variable (`COMPANIES_CSV_CONTENT`) —
       secrets boundary; validate with `make validate-companies` before pasting

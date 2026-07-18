@@ -69,6 +69,26 @@ are incremental tables that are never recomputed).
 
 ---
 
+### Schema evolution & rule changes (why there are no migrations)
+
+Everything dbt builds — bronze views, `silver_jobs`, `fct_job_postings` — is **recreated from
+raw on every run** (`CREATE OR REPLACE`). Consequences worth stating explicitly:
+
+- **Changing a model or adding a column needs no migration, ever.** The next run materializes
+  the new shape over the whole retained history.
+- **Changing filter/signal seeds is retroactive by design.** Tighten `deal_breaker_tech` or
+  expand `desired_tech` and the next run re-filters *all* postings still in raw — expected
+  and desired as the rule set matures with more company data.
+- The **only stateful objects are the raw and ops tables** (append-only; `ensure_*` uses
+  `CREATE IF NOT EXISTS` and will *not* alter an existing table). Rule for changing them:
+  additive, nullable columns only, applied with `ALTER TABLE ADD COLUMN` (or the load job's
+  `ALLOW_FIELD_ADDITION`) *before* deploying code that writes them. Renames/type changes are
+  a new column + backfill, not an in-place edit.
+- **V2's incremental AI models are the exception**: they exist precisely to *avoid*
+  recomputation, so a schema change there is not free — `--full-refresh` re-bills the whole
+  backfill. They set `on_schema_change: append_new_columns` and treat full refreshes as a
+  deliberate, costed decision (see `docs/v2-plan.md`).
+
 ## 4. V1 sources and the common schema (verified)
 
 **Greenhouse** — `GET https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true`.
