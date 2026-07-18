@@ -42,6 +42,10 @@ flowchart LR
   fork-safe pipeline with no secrets in CI.
 - **Every non-obvious choice has an ADR** — 20 so far, in `docs/decisions/`.
 
+**Browse the [dbt docs & lineage DAG](https://amikhno.github.io/job-search-pipeline/)** —
+generated in CI on every push to main (raw sources → bronze → silver → gold → the email-digest
+exposure), or locally via `make dbt-docs`.
+
 ## Quickstart
 
 ```bash

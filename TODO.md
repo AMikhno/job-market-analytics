@@ -65,6 +65,8 @@ work items top-to-bottom, one conventional commit each:
       3+ days → check Actions
 
 ## Operational (ongoing, human-owned)
+- [ ] Enable GitHub Pages once (Settings → Pages → Source: **GitHub Actions**) so docs.yml
+      can publish the dbt docs site on pushes to main
 - [ ] Expand the actual company list in the GitHub Actions variable (`COMPANIES_CSV_CONTENT`) —
       secrets boundary; validate with `make validate-companies` before pasting
 - [ ] Create the digest secrets in the `production` environment: `SMTP_USER` +

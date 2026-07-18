@@ -1,0 +1,19 @@
+version: 2
+
+# The pipeline's downstream consumers, so lineage shows where gold actually goes
+# (dbt docs renders these as terminal nodes of the DAG).
+exposures:
+  - name: email_digest
+    label: Email digest of new postings
+    type: application
+    maturity: high
+    url: https://github.com/AMikhno/job-search-pipeline/blob/main/deliver/digest.py
+    description: >
+      deliver/digest.py — after each successful prod run, emails postings first seen
+      since the last digest's watermark (ops.digest_runs), ordered by the soft
+      signals (V2: by fit score). The score orders, never filters (ADR-0020).
+      Delivery model: ADR-0019.
+    depends_on:
+      - ref('fct_job_postings')
+    owner:
+      name: Ana Mikhno
