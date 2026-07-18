@@ -282,13 +282,14 @@ inactive-postings retention decision, and `make validate-companies` tooling. See
 favor of GitHub-native failure alerts, and the **email digest** of new postings with an
 `ops.digest_runs` watermark. See ADR-0019.
 
-**V2 — Relevance via AI inside dbt:** structured extraction + scoring SQL models, post-extraction
-fine-grained deal-breaker filter, embeddings as a cost pre-filter + cross-source dedup, and
-relevant-links delivery. **Tentative:** more ATS adapters — BambooHR and Workday via a generalized
-POST + pagination contract; iCIMS deferred (no keyless API). **Under evaluation:** adopting
-**openjobdata** — a free, daily, aggregated ~47-ATS Parquet dataset — as a hybrid source that could
-subsume those adapters (custom collection still needed for the niche local ATS it misses); pending
-Ottawa-coverage verification (ADR-0017, `docs/research/openjobdata.md`).
+**V2 — Relevance via AI inside dbt (scoped — ADR-0020, plan in `docs/v2-plan.md`):** structured
+extraction + scoring SQL models and a score-aware digest (the score **orders** delivery, it never
+filters it). Embeddings are **deferred** — as a cost pre-filter they save pennies at this scale,
+and cross-source dedup is moot while each company lives on one ATS. **Parked behind gates:** more
+ATS adapters — BambooHR and Workday via a generalized POST + pagination contract; iCIMS deferred
+(no keyless API) — and **openjobdata** — a free, daily, aggregated ~47-ATS Parquet dataset that
+could subsume those adapters; pending Ottawa-coverage verification (ADR-0017,
+`docs/research/openjobdata.md`).
 
 **V3 — Quality & breadth (direction):** feedback loop to calibrate the fit threshold; multiple profile
 embeddings (one per target role); revisit paid APIs for ToS-restricted sources.

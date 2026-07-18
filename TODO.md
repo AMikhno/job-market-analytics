@@ -23,30 +23,30 @@ All shipped (see ADR-0019 and `ARCHITECTURE.md` §9):
 - [x] Actions SHA-pinned; gitleaks runs in CI (local hook is bypassable)
 - [x] Email digest of new postings (`deliver/digest.py`, watermark in `ops.digest_runs`)
 
-## V2 — tentative
+## V2 — AI relevance (scoped, ready to build)
 
-### More ATS adapters (tentative)
-- [ ] Generalized adapter/HTTP contract (POST + offset pagination + per-job detail) — ADR-0013
-- [ ] BambooHR adapter (`careers/list` + per-id detail; undocumented, add fragility guard)
-- [ ] Workday adapter (POST + pagination + detail; `board_ref` = tenant/wdN/site) — needs the
-      generalized contract above
-- [ ] iCIMS — deferred: no public keyless API (OAuth2 feed or brittle scraping); stays
-      inventory-only (`active=false`) until we accept one of those costs — ADR-0013
+**Scope fixed by ADR-0020; implementation contract in `docs/v2-plan.md`** — execute its
+work items top-to-bottom, one conventional commit each:
 
-### Sourcing evaluation (tentative) — see ADR-0017 / `docs/research/openjobdata.md`
-- [ ] Verify **openjobdata** before adopting: Ottawa/Canada density (decisive — needs a real
-      parquet pull + filter/count), dataset license/ToS, source identity, cadence, lifecycle mapping
-- [ ] If adopted: new `openjobdata` source (filter delta parquet → `raw_openjobdata_jobs` →
-      `stg_openjobdata__jobs` → same silver/gold). Hybrid — niche local ATS still need custom collection
-- [ ] Decide fate of the Greenhouse/Lever/Ashby adapters (keep vs retire) — after coverage verified
-- [ ] Company-discovery notebook: add under `tools/company_discovery/` and exclude `tools/` from the
-      CI gates (ruff/mypy/coverage in `pyproject.toml` + `.pre-commit-config.yaml`) — ADR-0018
+- [ ] Profile config: `shared/profile.py` + `config/profile.example.yaml` + prompt rendering
+      (`PROMPT_VERSION` provenance); gitignore guard for the real file
+- [ ] `int_jobs_structured` — AI.GENERATE typed extraction, content_hash incremental guard
+      (cost control), delimiter injection defense, dev-target stub
+- [ ] `int_jobs_scored` — AI.GENERATE_INT 1–5 fit score, profile as static prefix,
+      model/prompt_version/scored_at provenance, accepted_values test
+- [ ] Gold + digest score-aware: fit_score orders (never filters — ADR-0020), unscored
+      postings still ship
+- [ ] Docs to "as built"; verify first-backfill cost (~$0.12 expected, §5.5)
 
-### Filtering (tentative)
-- [ ] Revisit whether any soft signal should become a hard filter, once the LLM can judge fit
+## Parked (gated — not V2)
 
-> AI relevance (LLM extraction/scoring, embeddings, relevant-links delivery) is the core of V2 —
-> see `ARCHITECTURE.md` §5 and §9.
+- **More ATS adapters** (generalized POST/pagination contract, BambooHR, Workday; iCIMS
+  inventory-only) — ADR-0013; may be subsumed by openjobdata
+- **openjobdata evaluation** — decisive gate: real Ottawa-coverage parquet pull; then
+  license/identity/cadence/lifecycle — ADR-0017 / `docs/research/openjobdata.md`
+- **Embeddings** (cost pre-filter, cross-source dedup) — deferred, no current payoff — ADR-0020
+- **Company-discovery notebook** under `tools/` (CI-quarantined) — ADR-0018
+- **Soft-signal → hard-filter revisit** and score thresholds — V3 feedback loop
 
 ## Operational (ongoing, human-owned)
 - [ ] Expand the actual company list in the GitHub Actions variable (`COMPANIES_CSV_CONTENT`) —

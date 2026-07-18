@@ -1,6 +1,7 @@
 # Secrets / private config — never commit values
 .env
 config/companies.csv
+config/profile.yaml
 *.key
 *.pem
 **/keyfile*.json
