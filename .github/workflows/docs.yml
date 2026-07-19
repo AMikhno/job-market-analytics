@@ -33,7 +33,10 @@ jobs:
       - name: Package site
         run: |
           mkdir -p _site
-          cp dbt/target/index.html _site/index.html
+          cp dbt/target/index.html _site/
+          cp dbt/target/catalog.json _site/
+          cp dbt/target/manifest.json _site/
+          
 
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
