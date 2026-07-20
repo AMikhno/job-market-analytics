@@ -1,0 +1,48 @@
+name: Tag release
+
+# Keep the git tag in lockstep with the single source of truth (pyproject's
+# version). When a push to main changes pyproject.toml, publish the matching
+# annotated tag `v<version>` if it doesn't exist yet — so a version bump can
+# never merge without its tag, and the tag is never bumped by hand.
+#
+# Idempotent: a push that touches pyproject without changing the version finds
+# the tag already present and no-ops. Actions are SHA-pinned (see ingest.yml).
+on:
+  push:
+    branches: [main]
+    paths:
+      - pyproject.toml
+
+permissions:
+  contents: write   # create and push the tag
+
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0   # need existing tags to test for the tag's presence
+
+      - name: Publish v<version> tag if absent
+        run: |
+          set -euo pipefail
+          version="$(grep -m1 -E '^version = ' pyproject.toml | sed -E 's/^version = "(.*)"$/\1/')"
+          if [ -z "$version" ]; then
+            echo "::error::could not read version from pyproject.toml"
+            exit 1
+          fi
+          tag="v${version}"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "Tag ${tag} already exists; nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${tag}" -m "Release ${tag}"
+          git push origin "${tag}"
+          echo "Created and pushed ${tag}." >> "$GITHUB_STEP_SUMMARY"
