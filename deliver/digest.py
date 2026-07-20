@@ -2,9 +2,11 @@
 
 Delivery model (ADR-0019): after each successful prod run, email only postings
 whose first_seen_at is newer than the last digest's watermark (ops.digest_runs),
-ordered by the soft signals. No email when nothing is new. Ingest warnings ride
-along as a footer. Failure alerting stays GitHub-native (failed-run email) —
-this module delivers content, it is not the alarm channel.
+ordered by the soft signals. When nothing is new, a short "no new jobs" heartbeat
+is still sent (so a healthy-but-quiet run is visible) but the watermark/ledger is
+left untouched — digest_runs tracks delivered postings, not empty pings. Ingest
+warnings ride along as a footer. Failure alerting stays GitHub-native (failed-run
+email) — this module delivers content, it is not the alarm channel.
 
 Posting fields are untrusted input from the web; the HTML part escapes every
 field and never embeds description_html.
@@ -57,7 +59,10 @@ def build_email(
     """Multipart text+HTML message. Every posting field is escaped in the HTML
     part — posting metadata is scraped web content, not trusted markup."""
     msg = EmailMessage()
-    msg["Subject"] = f"{len(rows)} new job posting{'s' if len(rows) != 1 else ''}"
+    if rows:
+        msg["Subject"] = f"{len(rows)} new job posting{'s' if len(rows) != 1 else ''}"
+    else:
+        msg["Subject"] = "No new jobs since the last run"
     msg["From"] = settings.smtp_user
     msg["To"] = settings.digest_to or settings.smtp_user
 
@@ -84,8 +89,15 @@ def build_email(
         footer_text = f"\n\nWarnings: low/zero volume from {joined}."
         footer_html = f"<p><small>Warnings: low/zero volume from {html.escape(joined)}.</small></p>"
 
-    msg.set_content("\n".join(text_lines) + footer_text)
-    msg.add_alternative(f"<ul>{''.join(html_items)}</ul>{footer_html}", subtype="html")
+    if rows:
+        body_text = "\n".join(text_lines)
+        body_html = f"<ul>{''.join(html_items)}</ul>"
+    else:
+        body_text = "No new job postings since the last digest."
+        body_html = f"<p>{body_text}</p>"
+
+    msg.set_content(body_text + footer_text)
+    msg.add_alternative(body_html + footer_html, subtype="html")
     return msg
 
 
@@ -116,12 +128,14 @@ def run() -> int:
         log.info("first digest: bootstrapping watermark to %s", watermark)
 
     rows = fetch_new_postings(settings, watermark)
-    if not rows:
-        log.info("digest: no postings first seen after %s; not sending", watermark)
-        return 0
-
     msg = build_email(rows, read_warnings(settings), settings)
     _send(msg, settings)
+
+    if not rows:
+        # Heartbeat only: nothing new, so the content watermark/ledger is left
+        # untouched (digest_runs records delivered postings, not empty pings).
+        log.info("digest: no new postings after %s; sent heartbeat", watermark)
+        return 0
 
     new_watermark = max(_iso(r["first_seen_at"]) for r in rows)
     storage.land_digest(
