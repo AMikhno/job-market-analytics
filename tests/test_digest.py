@@ -11,7 +11,10 @@ from deliver import digest
 from shared import storage
 from shared.config import Settings
 
-NOW = datetime(2026, 7, 18, 12, 0, 0, tzinfo=UTC)
+# Anchored to the real clock (not a fixed date): run() bootstraps the first
+# watermark from datetime.now(UTC) - digest_lookback_hours, so seeded rows must
+# be offset from *now* or they drift out of the lookback window as time passes.
+NOW = datetime.now(UTC).replace(microsecond=0)
 
 
 def _settings(tmp_path, **overrides) -> Settings:
@@ -123,16 +126,38 @@ def test_sends_new_postings_and_advances_watermark(tmp_path, monkeypatch, stub_s
     assert storage.latest_digest_watermark(settings) == fresh.replace(tzinfo=None).isoformat()
 
 
-def test_no_email_when_nothing_new(tmp_path, monkeypatch, stub_smtp) -> None:
+def test_sends_heartbeat_when_nothing_new(tmp_path, monkeypatch, stub_smtp) -> None:
     settings = _settings(tmp_path)
     seen = NOW - timedelta(hours=2)
     _seed_gold(settings, [{"first_seen_at": seen}])
     monkeypatch.setattr(digest, "get_settings", lambda: settings)
 
+    # First run delivers the one posting and advances the watermark to `seen`.
     assert digest.run() == 0
     assert len(stub_smtp.sent) == 1
-    assert digest.run() == 0  # second run: watermark == first_seen_at -> nothing new
-    assert len(stub_smtp.sent) == 1
+    watermark_after_send = storage.latest_digest_watermark(settings)
+
+    # Second run: nothing new -> a "no new jobs" heartbeat is still sent, but the
+    # watermark/ledger is left untouched (heartbeats are not delivered content).
+    assert digest.run() == 0
+    assert len(stub_smtp.sent) == 2
+    heartbeat = stub_smtp.sent[1]
+    assert heartbeat["Subject"] == "No new jobs since the last run"
+    assert "No new job postings" in heartbeat.get_body(("plain",)).get_content()
+    assert storage.latest_digest_watermark(settings) == watermark_after_send
+
+
+def test_heartbeat_carries_warning_footer(tmp_path, monkeypatch, stub_smtp) -> None:
+    settings = _settings(tmp_path)
+    (tmp_path / "ingest_summary.json").write_text(json.dumps({"warnings": ["lever"]}))
+    _seed_gold(settings, [{"first_seen_at": NOW - timedelta(hours=200)}])  # outside lookback
+    monkeypatch.setattr(digest, "get_settings", lambda: settings)
+
+    assert digest.run() == 0
+    (heartbeat,) = stub_smtp.sent
+    assert heartbeat["Subject"] == "No new jobs since the last run"
+    assert "Warnings: low/zero volume from lever." in heartbeat.get_body(("plain",)).get_content()
+    assert storage.latest_digest_watermark(settings) is None  # nothing landed
 
 
 def test_email_escapes_posting_fields_and_includes_warnings(tmp_path) -> None:
