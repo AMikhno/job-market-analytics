@@ -1,0 +1,5 @@
+# Strip Jupyter notebook outputs/metadata on commit so no run data (real company
+# names, results) is ever committed and diffs stay readable. Fenced tools only.
+# Each clone must enable the filter once:
+#   uv tool install nbstripout && nbstripout --install
+tools/**/*.ipynb filter=nbstripout diff=ipynb

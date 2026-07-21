@@ -1,0 +1,10 @@
+# Stage 1 (ats_audit.py) — isolated from the repo's core deps on purpose.
+# Install into a throwaway venv, not the project env:
+#   python -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements.txt && playwright install chromium
+playwright>=1.40
+openpyxl>=3.1
+requests>=2.31
+
+# Stage 2 (categorize.ipynb) runs in Colab and pip-installs its own deps
+# (google-genai, gspread) in-notebook — they are deliberately NOT listed here.
