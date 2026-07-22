@@ -50,7 +50,19 @@ ATS_HOSTS = {
     "iCIMS":           r"([\w-]+)\.icims\.com",
     "Dayforce":        r"([\w-]+)\.dayforcehcm\.com",
     "ADP":             r"(workforcenow|recruiting|myjobs)\.adp\.com",
-    "SuccessFactors":  r"([\w-]+)\.successfactors\.(?:com|eu)",
+    # smaller / enterprise-HRIS platforms found in the Ottawa list's Unknown bucket
+    # (all inventory-only — none is a V1 keyless feed).
+    "SuccessFactors":  r"(?:[\w-]+\.)?(?:successfactors\.(?:com|eu)|sapsf\.com)|jobs\.sap\.com",
+    "UKG":             r"([\w-]+)\.(?:ukg|ultipro|ukgpro)\.(?:com|ca)",
+    "Oracle HCM":      r"\.oraclecloud\.com|([\w-]+)\.taleo\.net",
+    "Paylocity":       r"recruiting\.paylocity\.com",
+    "Rippling":        r"ats\.rippling\.com",
+    "Jobvite":         r"jobvite\.com",
+    "Phenom":          r"([\w-]+)\.phenompeople\.com|phenom\.com",
+    "Eightfold":       r"([\w-]+)\.eightfold\.ai",
+    "Njoyn":           r"([\w-]+\.)?njoyn\.com",       # Canadian ATS (gov/enterprise)
+    "Humi":            r"([\w-]+)\.humi\.ca",           # Canadian HRIS
+    "Indeed":          r"(?:[\w-]+\.)?indeed\.com",     # aggregator link — keep last
 }
 _BAD_TOKENS = {"v1", "v0", "api", "embed", "jobs", "job", "boards", "board", "www",
                "posting-api", "job-board", "postings", "companies", "for", "js"}
@@ -70,7 +82,8 @@ def match_ats(url: str):
     for ats, pat in ATS_HOSTS.items():
         m = re.search(pat, u)
         if m:
-            tok = m.group(1) if m.groups() else ""
+            # first participating capture group (alternations may leave some None)
+            tok = next((g for g in m.groups() if g), "") if m.groups() else ""
             return ats, tok
     return None
 
