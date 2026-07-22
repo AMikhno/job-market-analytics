@@ -32,6 +32,11 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py314"
+# Manual, on-demand tooling (Colab-style notebooks + throwaway scripts) is fenced
+# off from the repo's gates — see tools/company_discovery/README.md. force-exclude
+# makes ruff honor this even when pre-commit passes the paths explicitly.
+extend-exclude = ["tools"]
+force-exclude = true
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 

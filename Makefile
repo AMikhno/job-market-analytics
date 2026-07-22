@@ -1,4 +1,4 @@
-.PHONY: install ingest validate-companies deliver dbt-deps ensure-raw dbt-dev dbt-prod dbt-test dbt-docs freshness test lint sql-lint format check
+.PHONY: install ingest validate-companies update-company-list deliver dbt-deps ensure-raw dbt-dev dbt-prod dbt-test dbt-docs freshness test lint sql-lint format check
 
 install:          ## Set up the uv venv, dbt packages, and pre-commit hooks
 	uv sync --extra dev
@@ -11,6 +11,13 @@ ingest:           ## Run the ingestion pipeline once (Python -> raw tables)
 
 validate-companies: ## Pre-flight check the company list (board_ref formats) before use
 	uv run python -m ingest.validate_companies
+
+update-company-list: ## Stage a discovery inventory into config/companies.csv + validate. Usage: make update-company-list INV=/path/to/companies_all.csv
+	@test -n "$(INV)" || { echo "set INV=/path/to/companies_all.csv"; exit 1; }
+	cp $(INV) config/companies.csv
+	$(MAKE) validate-companies
+	@echo "validated. push it (human-authenticated):"
+	@echo "  gh variable set COMPANIES_CSV_CONTENT < config/companies.csv"
 
 deliver:          ## Email the digest of new gold postings (no-op without SMTP creds)
 	uv run python -m deliver.digest
