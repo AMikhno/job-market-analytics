@@ -7,3 +7,8 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "chore"
+    # One batched PR per week instead of one per action.
+    groups:
+      github-actions:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
