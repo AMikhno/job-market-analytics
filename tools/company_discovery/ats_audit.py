@@ -367,6 +367,40 @@ def emit_ingestable(records, out_path):
     return clean, review
 
 
+def emit_inventory(records, out_path):
+    """Every company on a *detected* ATS -> config/companies.csv schema.
+
+    V1 (Greenhouse/Lever/Ashby) is active=true with a validated bare token; every
+    other detected ATS is active=false inventory (ADR-0013). Custom / no-board
+    companies are dropped (nothing to ingest). Returns (active_count, rows).
+    """
+    _bare = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    v1 = {"greenhouse", "lever", "ashby"}
+    out, seen = [], set()
+    for r in records:
+        ats, token = r[3], (r[4] or "").strip()
+        if ats in ("Unknown/Custom", "N/A", "ERROR", ""):
+            continue
+        source = re.sub(r"[^a-z0-9]", "", ats.lower())
+        if source in v1:
+            if not (_bare.fullmatch(token) and token.lower() not in _BAD_TOKENS):
+                continue
+            active, tier, ref = "true", "1", token
+        else:
+            active, tier, ref = "false", "2", token          # inventory; ref may be blank
+        key = (source, ref.lower(), r[0].lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append([r[0], source, ref, active, tier, f"{ats}; careers via {r[5]}"])
+    out.sort(key=lambda x: (x[3] != "true", x[1], x[0].lower()))   # active first
+    with open(out_path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["company_name", "source", "board_ref", "active", "tier", "notes"])
+        w.writerows(out)
+    return sum(1 for x in out if x[3] == "true"), out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--xlsx", required=True,
@@ -376,6 +410,8 @@ def main():
                     help="full audit CSV (default: cwd)")
     ap.add_argument("--ingestable", default="companies_ingestable.csv",
                     help="GH/Lever/Ashby rows in the config/companies.csv schema (default: cwd)")
+    ap.add_argument("--inventory", default="companies_all.csv",
+                    help="all detected-ATS companies (V1 active + inventory) in the same schema")
     ap.add_argument("--concurrency", type=int, default=6)
     ap.add_argument("--checkpoint-every", type=int, default=20)
     ap.add_argument("--limit", type=int, default=0, help="0 = all; else first N (for testing)")
@@ -391,9 +427,12 @@ def main():
     print("\nATS:", dict(Counter(r[3] for r in records if r[3])))
     print("Found via:", dict(Counter(r[5] for r in records if r[5])))
     clean, review = emit_ingestable(records, args.ingestable)
+    active, inv = emit_inventory(records, args.inventory)
     print(f"\nIngestable (GH/Lever/Ashby): {len(clean)} clean, {len(review)} need review")
+    print(f"Inventory: {len(inv)} rows ({active} active + {len(inv) - active} inventory)")
     print(f"  full audit  -> {args.out}")
-    print(f"  companies   -> {args.ingestable}")
+    print(f"  ingestable  -> {args.ingestable}")
+    print(f"  inventory   -> {args.inventory}")
     if review:
         print("  REVIEW (bad token capture):")
         for row in review:

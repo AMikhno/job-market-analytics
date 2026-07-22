@@ -21,9 +21,11 @@ pip install -r requirements.txt
 playwright install chromium
 
 python ats_audit.py --xlsx "path/to/companies.xlsx" --sheet "Company List"
-# outputs (next to defaults in ~/Downloads, override with --out / --ingestable):
+# outputs (in cwd; override with --out / --ingestable / --inventory):
 #   ats_audit_results.csv     full audit: careers URL, ATS, board token, found-via, status
-#   companies_ingestable.csv  GH/Lever/Ashby rows in the config/companies.csv schema
+#   companies_ingestable.csv  the GH/Lever/Ashby rows (config/companies.csv schema)
+#   companies_all.csv         every detected-ATS company: V1 active=true + inventory
+#                             active=false (ADR-0013); custom / no-board companies dropped
 ```
 Resume-safe: re-running skips companies already in the output CSV. Checkpoints every
 `--checkpoint-every` companies.
@@ -42,6 +44,20 @@ no sheet ID / real company data is baked in before committing.
 **Handoff from Stage 1:** import Stage 1's `ats_audit_results.csv` into a worksheet named
 `ATS_Audit` in the source Google Sheet. The notebook reads each company's career page +
 detected ATS from that tab (`AUDIT_SHEET`) and writes its analytics scores to `Results`.
+
+## Refreshing the company list (recurring)
+Adding companies is incremental — Stage 1 skips anything already audited, so a refresh
+only renders the new rows:
+
+1. Add companies (name + website) to the `Company List` sheet, re-export the `.xlsx`.
+2. Re-run Stage 1 with the **same** `--out` (resume skips the rest):
+   `python ats_audit.py --xlsx "…/companies.xlsx" --out ats_audit_results.csv`
+3. From the repo root, stage + validate + get the push command:
+   `make update-company-list INV=/path/to/companies_all.csv`
+4. Push it (human-authenticated): `gh variable set COMPANIES_CSV_CONTENT < config/companies.csv`
+
+`config/companies.csv` is gitignored — the real list never enters the repo; it lives only
+in your working tree and the GitHub Actions variable.
 
 ## Secrets / privacy
 No secret values in these files. Stage 1 takes the xlsx path as an argument. Stage 2
