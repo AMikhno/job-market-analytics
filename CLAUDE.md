@@ -52,7 +52,7 @@ The repo and anything an agent can read must never contain a secret *value*.
 - The repo contains only secret **names** (in workflow YAML) and **placeholders** (`.env.example`).
 - BigQuery auth uses **Workload Identity Federation** — there is no service-account key file.
 - `gitleaks` runs as a pre-commit hook. `.env`, `*.duckdb`, and key files are gitignored.
-- Agents do not run `git push` or `gh`; a human authenticates and pushes.
+- Agents do not run `gh` and do not work in the main branch. Agents can commit and push in feature branches.
 
 ## Public-repo / PII
 
