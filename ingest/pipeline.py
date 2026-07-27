@@ -31,9 +31,16 @@ from shared import storage
 from shared.config import Settings, get_settings
 from shared.http import build_session
 from shared.models import Company, IngestRun
+from shared.redact import redact_ref
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("ingest")
+
+
+def _label(value: str, settings: Settings) -> str:
+    """Company identifier as it may appear in a (public) log line."""
+    return redact_ref(value) if settings.redact_company_logs else value
+
 
 # Adapters are constructed from the registry so the URL templates have exactly
 # one home (ingest/sources.py).
@@ -124,12 +131,14 @@ def _run(settings: Settings) -> int:
                     postings, source=source.adapter, run_id=run_id, settings=settings
                 )
             except Exception as exc:  # noqa: BLE001 - per-company; skip and keep going
+                # Raw ref: this list feeds IngestRun.error, which lands in the
+                # private warehouse. Only the log line below is redacted.
                 failed_boards.append(company.board_ref)
                 log.warning(
                     "source=%s company=%s board_ref=%s failed: %s",
                     source.adapter,
-                    company.company_name,
-                    company.board_ref,
+                    _label(company.company_name, settings),
+                    _label(company.board_ref, settings),
                     exc,
                 )
 
@@ -182,7 +191,12 @@ def _finalize(runs: Sequence[IngestRun], settings: Settings) -> int:
     for r in warnings:
         log.warning("low volume (warn-only): source=%s rows=%d", r.source, r.rows_fetched)
     if failures:
-        log.error("hard failure: %s", [(r.source, r.error) for r in failures])
+        # r.error embeds the failed board_refs verbatim; keep it out of the log
+        # and read it from ops.ingest_runs / the run summary instead.
+        log.error(
+            "hard failure: sources=%s (failed board_refs in ops.ingest_runs)",
+            [r.source for r in failures],
+        )
     return 1 if failures else 0
 
 
