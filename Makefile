@@ -12,6 +12,10 @@ ingest:           ## Run the ingestion pipeline once (Python -> raw tables)
 validate-companies: ## Pre-flight check the company list (board_ref formats) before use
 	uv run python -m ingest.validate_companies
 
+whois:            ## Resolve a redacted CI-log ref to a company (local only). Usage: make whois REF=redacted:ad589ceb
+	@test -n "$(REF)" || { echo "set REF=redacted:xxxxxxxx"; exit 1; }
+	@uv run python -m ingest.whois $(REF)
+
 update-company-list: ## Stage a discovery inventory into config/companies.csv + validate. Usage: make update-company-list INV=/path/to/companies_all.csv
 	@test -n "$(INV)" || { echo "set INV=/path/to/companies_all.csv"; exit 1; }
 	cp $(INV) config/companies.csv

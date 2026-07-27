@@ -77,3 +77,31 @@ class IngestRun(BaseModel):
     started_at: datetime
     finished_at: datetime
     error: str | None = None
+
+
+class SourceSummary(BaseModel):
+    """Per-source outcome as recorded in the run summary file."""
+
+    source: str
+    rows: int
+    status: str  # "ok" | "error"
+    company_count: int = 0
+    error: str | None = None  # may embed raw board_refs: private sinks only
+
+
+class RunSummary(BaseModel):
+    """The ingest run summary handed to the digest (ingest_summary.json).
+
+    Typed rather than a raw dict so the digest can state source health
+    positively -- an absent file is a distinct, reportable case, not an
+    empty warnings list.
+    """
+
+    run_id: str | None = None
+    failures: list[str] = []
+    warnings: list[str] = []
+    sources: list[SourceSummary] = []
+
+    @property
+    def board_count(self) -> int:
+        return sum(s.company_count for s in self.sources)

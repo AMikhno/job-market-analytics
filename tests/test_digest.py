@@ -10,6 +10,7 @@ import pytest
 from deliver import digest
 from shared import storage
 from shared.config import Settings
+from shared.models import RunSummary, SourceSummary
 
 # Anchored to the real clock (not a fixed date): run() bootstraps the first
 # watermark from datetime.now(UTC) - digest_lookback_hours, so seeded rows must
@@ -173,7 +174,7 @@ def test_email_escapes_posting_fields_and_includes_warnings(tmp_path) -> None:
             "first_seen_at": NOW,
         }
     ]
-    msg = digest.build_email(rows, ["lever"], settings)
+    msg = digest.build_email(rows, RunSummary(warnings=["lever"]), settings)
 
     html_part = msg.get_body(("html",)).get_content()
     assert "<script>" not in html_part  # untrusted fields are escaped
@@ -186,11 +187,63 @@ def test_email_escapes_posting_fields_and_includes_warnings(tmp_path) -> None:
     assert "Warnings: low/zero volume from lever." in text_part
 
 
-def test_read_warnings_from_summary(tmp_path) -> None:
+def test_read_run_summary_absent_is_none(tmp_path) -> None:
+    """Absent file is None, not an empty summary -- the footer says so."""
+    assert digest.read_run_summary(_settings(tmp_path)) is None
+
+
+def test_read_run_summary_parses_file(tmp_path) -> None:
     settings = _settings(tmp_path)
-    assert digest.read_warnings(settings) == []  # no summary file: standalone run
     (tmp_path / "ingest_summary.json").write_text(json.dumps({"warnings": ["ashby"]}))
-    assert digest.read_warnings(settings) == ["ashby"]
+    summary = digest.read_run_summary(settings)
+    assert summary is not None
+    assert summary.warnings == ["ashby"]
+
+
+def test_footer_states_are_distinguishable() -> None:
+    """The bug this closes: 'healthy' and 'never checked' used to look identical."""
+    healthy = RunSummary(
+        sources=[
+            SourceSummary(source="greenhouse", rows=10, status="ok", company_count=100),
+            SourceSummary(source="lever", rows=5, status="ok", company_count=41),
+        ]
+    )
+    assert digest._footer(healthy) == "All 2 sources healthy (141 boards checked)."
+    assert "unknown" in digest._footer(None)
+    assert digest._footer(RunSummary(warnings=["lever"])).startswith("Warnings:")
+    assert digest._footer(RunSummary(failures=["ashby"])).startswith("Ingest FAILED")
+    assert digest._footer(RunSummary()) == "No sources ran in this ingest."
+
+
+def test_footer_singular_source(tmp_path) -> None:
+    one = RunSummary(sources=[SourceSummary(source="lever", rows=1, status="ok", company_count=3)])
+    assert digest._footer(one) == "All 1 source healthy (3 boards checked)."
+
+
+def test_healthy_digest_states_health_explicitly(tmp_path, monkeypatch, stub_smtp) -> None:
+    """A clean run must say so, not fall silent."""
+    settings = _settings(tmp_path)
+    (tmp_path / "ingest_summary.json").write_text(
+        RunSummary(
+            sources=[SourceSummary(source="lever", rows=7, status="ok", company_count=12)]
+        ).model_dump_json()
+    )
+    _seed_gold(settings, [{"first_seen_at": NOW - timedelta(hours=200)}])
+    monkeypatch.setattr(digest, "get_settings", lambda: settings)
+
+    assert digest.run() == 0
+    (sent,) = stub_smtp.sent
+    assert "All 1 source healthy (12 boards checked)." in sent.get_body(("plain",)).get_content()
+
+
+def test_missing_summary_says_unknown(tmp_path, monkeypatch, stub_smtp) -> None:
+    settings = _settings(tmp_path)  # no ingest_summary.json written
+    _seed_gold(settings, [{"first_seen_at": NOW - timedelta(hours=200)}])
+    monkeypatch.setattr(digest, "get_settings", lambda: settings)
+
+    assert digest.run() == 0
+    (sent,) = stub_smtp.sent
+    assert "Ingest status unknown" in sent.get_body(("plain",)).get_content()
 
 
 def test_ordering_puts_best_signals_first(tmp_path, monkeypatch, stub_smtp) -> None:

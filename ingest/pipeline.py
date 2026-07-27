@@ -14,7 +14,6 @@ ops.ingest_runs row per source. Failure model:
 from __future__ import annotations
 
 import csv
-import json
 import logging
 import sys
 import uuid
@@ -30,7 +29,7 @@ from ingest.sources import SOURCES, Source
 from shared import storage
 from shared.config import Settings, get_settings
 from shared.http import build_session
-from shared.models import Company, IngestRun
+from shared.models import Company, IngestRun, RunSummary, SourceSummary
 from shared.redact import redact_ref
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -208,17 +207,23 @@ def _write_summary(
     warnings: list[str],
     runs: Sequence[IngestRun],
 ) -> None:
-    summary = {
-        "run_id": run_id,
-        "failures": failures,
-        "warnings": warnings,
-        "sources": [
-            {"source": r.source, "rows": r.rows_fetched, "status": r.status, "error": r.error}
+    summary = RunSummary(
+        run_id=run_id,
+        failures=failures,
+        warnings=warnings,
+        sources=[
+            SourceSummary(
+                source=r.source,
+                rows=r.rows_fetched,
+                status=r.status,
+                company_count=r.company_count,
+                error=r.error,
+            )
             for r in runs
         ],
-    }
+    )
     try:
-        Path(settings.summary_path).write_text(json.dumps(summary, indent=2))
+        Path(settings.summary_path).write_text(summary.model_dump_json(indent=2))
     except OSError:
         log.exception("could not write run summary to %s", settings.summary_path)
 
