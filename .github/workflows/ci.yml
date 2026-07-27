@@ -23,7 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-      - run: uv sync --extra dev
+      # --locked fails the build if uv.lock is stale w.r.t. pyproject.toml, so a
+      # dependency change can't merge without its lockfile update. Contributors
+      # then all resolve to the same pinned, hash-checked versions.
+      - run: uv sync --extra dev --locked
 
       - name: Lint (ruff, mypy, sqlfluff)
         run: make lint
