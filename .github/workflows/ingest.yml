@@ -93,3 +93,29 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           DIGEST_TO: ${{ secrets.DIGEST_TO }}
         run: make deliver
+
+      # Dead-man's switch. GitHub suspends scheduled workflows after ~60 days of
+      # repo inactivity, and a suspended workflow sends no failed-run email — so
+      # "silently stopped" and "healthy" look identical from here. This pings
+      # healthchecks.io only after a fully successful run; the alert fires when
+      # the pings *stop*, which covers a suspended schedule, a failure earlier in
+      # this job, and a runner that died mid-run alike.
+      #
+      # The ping URL embeds a check UUID, so it is a secret, not a var (anyone
+      # holding it could ping the check and mask a dead pipeline).
+      #
+      # Never allowed to fail the run: an outage at the monitoring provider is
+      # not a pipeline failure, and this step runs after the digest is already
+      # sent. A failed ping degrades to a warning annotation — and, since the
+      # check then goes unpinged, healthchecks.io alerts anyway.
+      - name: Ping the dead-man's switch (healthchecks.io)
+        if: success()
+        env:
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+        run: |
+          if [ -z "$HEALTHCHECK_URL" ]; then
+            echo "dead-man's switch disabled: HEALTHCHECK_URL not configured"
+            exit 0
+          fi
+          curl -fsS -m 10 --retry 3 "$HEALTHCHECK_URL" \
+            || echo "::warning::dead-man's switch ping failed (the run itself succeeded)"
