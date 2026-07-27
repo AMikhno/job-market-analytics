@@ -29,7 +29,6 @@
     ],
     "deny": [
       "Read(./.env)",
-      "Read(./config/companies.csv)",
       "Read(./config/profile.yaml)",
       "Bash(pip *)",
       "Bash(pip3 *)",
