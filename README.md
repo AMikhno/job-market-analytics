@@ -48,7 +48,12 @@ exposure), or locally via `make dbt-docs`.
 
 ## Quickstart
 
+Prerequisite: [uv](https://docs.astral.sh/uv/) (the only one — it installs Python 3.14
+itself, per `.python-version`).
+
 ```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh   # macOS/Linux; or: brew install uv
+
 make install                  # uv venv + pre-commit hooks
 cp .env.example .env          # ingestion needs no secrets; fill BQ vars only for prod
 cp config/companies.example.csv config/companies.csv   # your PRIVATE company list (gitignored)

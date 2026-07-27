@@ -68,6 +68,9 @@ must be sanitized before they are committed.
 - Don't create per-source Python files for sources that fit an existing adapter.
 - Don't introduce YAML source configs. Pydantic only.
 - Don't read `.env` directly; use `shared/config.py`.
+- Don't install into the system/user Python. Every Python command goes through `uv run`
+  (or a `make` target, which already wraps it); dependencies change only via `uv add`,
+  which must land `pyproject.toml` **and** `uv.lock` in the same commit. Never `pip install`.
 - Don't swallow exceptions. The default is log + re-raise; a deliberate catch is allowed
   only when it (a) has a one-line comment stating why and (b) still surfaces failure via
   the run's exit status (see `ingest/pipeline.py`, which records failures and exits non-zero).
