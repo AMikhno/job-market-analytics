@@ -262,10 +262,16 @@ all live in the same region (`northamerica-northeast2`). `BQ_LOCATION` is set co
   not warned.
 - *Sustained staleness (hard failure):* dbt `source freshness` errors after 30h with no fresh rows,
   escalating a persistently dead board that single-run warnings wouldn't catch.
+- *Total silence (external alert):* the first three layers all assume the workflow **runs**. GitHub
+  suspends scheduled workflows after ~60 days of repo inactivity, and a suspended workflow emails
+  nothing — so the last step of a successful run pings a healthchecks.io check (`HEALTHCHECK_URL`,
+  a secret: the URL embeds the check UUID). The alert fires when pings *stop*, catching a suspended
+  schedule, an earlier hard failure, and a dead runner alike. The check's period/grace must allow
+  for the twice-daily cadence plus DST drift (period 1 day, grace ≥ 6h).
 
 Every run writes one `ops.ingest_runs` row per source (run_id, counts, status, timings, error) and a
 machine-readable `ingest_summary.json`. GitHub schedules are best-effort, so health is judged by these
-plus freshness, not by whether the cron fired.
+plus freshness and the dead-man's switch, not by whether the cron fired.
 
 ---
 

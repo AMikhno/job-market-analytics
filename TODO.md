@@ -22,6 +22,8 @@ All shipped (see ADR-0019 and `ARCHITECTURE.md` §9):
 - [x] Slack retired: GitHub-native failure email; warnings annotate + digest footer
 - [x] Actions SHA-pinned; gitleaks runs in CI (local hook is bypassable)
 - [x] Email digest of new postings (`deliver/digest.py`, watermark in `ops.digest_runs`)
+- [x] Dead-man's switch: successful runs ping healthchecks.io (`HEALTHCHECK_URL` secret), so a
+      cron GitHub has suspended alerts instead of going silent — ARCHITECTURE §6
 
 ## V2 — AI relevance (scoped, ready to build)
 
@@ -50,25 +52,23 @@ work items top-to-bottom, one conventional commit each:
 
 ## Before starting V2 (sequencing — cheap checks that could re-scope it)
 
-- [ ] **Verify the first prod run on the V1.6 workflow** (Actions page): new BigQuery-dialect
-      SQL (regex escaping, staleness rule) executes for the first time there; digest step
-      logs "disabled" until SMTP secrets exist — that's expected, not a failure
+- [x] **Verify the first prod run on the V1.6 workflow** — runs, and is landing postings from
+      real companies. SMTP secrets are set, so the digest sends (to `SMTP_USER` itself unless
+      the optional `DIGEST_TO` secret is set)
 - [ ] **Value/coverage check against real gold data**: how many active postings, how many
       title-matched, how many you'd actually apply to. If the funnel is thin, coverage —
       not scoring — is the priority. Same numbers feed the README results section
 - [ ] **openjobdata Ottawa pull** (ADR-0017's decisive gate, one notebook): does the
       aggregated dataset see Ottawa/Canada AE postings the curated list misses? Answer
       re-scopes V2 if coverage beats relevance
-- [ ] **Dead-man's switch**: GitHub suspends cron workflows after ~60 days of repo
-      inactivity — no run means no failure email. Cheapest fix: free healthchecks.io ping
-      as the last ingest.yml step (alerts when pings *stop*); interim habit: no digest for
-      3+ days → check Actions
 
 ## Operational (ongoing, human-owned)
 - [ ] Enable GitHub Pages once (Settings → Pages → Source: **GitHub Actions**) so docs.yml
       can publish the dbt docs site on pushes to main
 - [ ] Expand the actual company list in the GitHub Actions variable (`COMPANIES_CSV_CONTENT`) —
       secrets boundary; validate with `make validate-companies` before pasting
-- [ ] Create the digest secrets in the `production` environment: `SMTP_USER` +
-      `SMTP_PASSWORD` (Gmail app password; https://myaccount.google.com/apppasswords),
-      optional `DIGEST_TO` variable. Until set, the digest step logs "disabled" and skips.
+- [x] Digest secrets created in the `production` environment (`SMTP_USER` + `SMTP_PASSWORD`).
+      `DIGEST_TO` stays optional — unset, the digest mails `SMTP_USER` (`deliver/digest.py`).
+- [ ] Create the healthchecks.io check and add its ping URL as the `HEALTHCHECK_URL` **secret**
+      in the `production` environment (period 1 day, grace ≥ 6h — twice-daily cron plus DST
+      drift). Until set, the step logs "disabled" and skips; the switch is not armed.
