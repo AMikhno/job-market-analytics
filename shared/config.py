@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     http_user_agent: str = Field(default="job-search-pipeline/0.1")
     # Private company list (gitignored); falls back to the committed example if absent.
     companies_csv: str = Field(default="config/companies.csv")
+    # This repo is public, so its Actions logs are too. Company identifiers are
+    # digested before they reach a log line. Default on so CI is safe without
+    # config; set REDACT_COMPANY_LOGS=false in your local .env to read names.
+    redact_company_logs: bool = Field(default=True)
 
     # Email digest (deliver/digest.py). Unset SMTP credentials disable the
     # digest (dev/CI); in prod they come from GitHub Actions secrets.
