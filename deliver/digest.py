@@ -15,7 +15,6 @@ field and never embeds description_html.
 from __future__ import annotations
 
 import html
-import json
 import logging
 import smtplib
 import sys
@@ -25,6 +24,7 @@ from pathlib import Path
 
 from shared import storage
 from shared.config import Settings, get_settings
+from shared.models import RunSummary
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("deliver")
@@ -43,18 +43,39 @@ def fetch_new_postings(settings: Settings, watermark: str) -> list[dict[str, obj
     return storage.query_rows(sql, params=[watermark], settings=settings)
 
 
-def read_warnings(settings: Settings) -> list[str]:
-    """Warned source names from this run's ingest summary (absent file = none:
-    the digest may run standalone, after a run whose summary wasn't kept)."""
+def read_run_summary(settings: Settings) -> RunSummary | None:
+    """This run's ingest summary, or None when there isn't one.
+
+    None is a real state, not an empty summary: the digest can run standalone,
+    after a run whose summary wasn't kept. Keeping it distinct is what lets the
+    footer say "unknown" instead of implying health it never verified.
+    """
     path = Path(settings.summary_path)
     if not path.exists():
-        return []
-    warnings = json.loads(path.read_text()).get("warnings", [])
-    return [str(w) for w in warnings]
+        return None
+    return RunSummary.model_validate_json(path.read_text())
+
+
+def _footer(summary: RunSummary | None) -> str:
+    """One line stating ingest health, in every digest.
+
+    Always present, so a silent footer can no longer mean either "healthy" or
+    "we never checked" -- the two now read differently.
+    """
+    if summary is None:
+        return "Ingest status unknown for this digest (no run summary was found)."
+    if summary.failures:
+        return f"Ingest FAILED for: {', '.join(summary.failures)}."
+    if summary.warnings:
+        return f"Warnings: low/zero volume from {', '.join(summary.warnings)}."
+    n = len(summary.sources)
+    if not n:
+        return "No sources ran in this ingest."
+    return f"All {n} source{'s' if n != 1 else ''} healthy ({summary.board_count} boards checked)."
 
 
 def build_email(
-    rows: list[dict[str, object]], warnings: list[str], settings: Settings
+    rows: list[dict[str, object]], summary: RunSummary | None, settings: Settings
 ) -> EmailMessage:
     """Multipart text+HTML message. Every posting field is escaped in the HTML
     part — posting metadata is scraped web content, not trusted markup."""
@@ -82,12 +103,9 @@ def build_email(
             f" <small>[{html.escape(signals)}]</small></li>"
         )
 
-    footer_text = ""
-    footer_html = ""
-    if warnings:
-        joined = ", ".join(warnings)
-        footer_text = f"\n\nWarnings: low/zero volume from {joined}."
-        footer_html = f"<p><small>Warnings: low/zero volume from {html.escape(joined)}.</small></p>"
+    status = _footer(summary)
+    footer_text = f"\n\n{status}"
+    footer_html = f"<p><small>{html.escape(status)}</small></p>"
 
     if rows:
         body_text = "\n".join(text_lines)
@@ -128,7 +146,7 @@ def run() -> int:
         log.info("first digest: bootstrapping watermark to %s", watermark)
 
     rows = fetch_new_postings(settings, watermark)
-    msg = build_email(rows, read_warnings(settings), settings)
+    msg = build_email(rows, read_run_summary(settings), settings)
     _send(msg, settings)
 
     if not rows:
