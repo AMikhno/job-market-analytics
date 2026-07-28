@@ -4,8 +4,9 @@ Design for the job-matching pipeline.
 
 **Scope discipline.** V1 (MVP) is **ingestion + dbt transformations only** — no LLM, no
 embeddings, no scoring. It produces a clean, deduplicated, rule-filtered table of job
-postings from **every ATS with a public, keyless feed** (Greenhouse, Lever, and Ashby today;
-more ATS are tentative V2 — see ADR-0013), on a **dual-target dbt project** (DuckDB for
+postings from **every ATS with a public, keyless feed** (Greenhouse, Lever, Ashby, BambooHR,
+Recruitee, Workable, Pinpoint, Rippling and SmartRecruiters today — see ADR-0013 and
+ADR-0021), on a **dual-target dbt project** (DuckDB for
 dev, BigQuery for production, from day one — there is no later migration). All AI lands in V2.
 
 Rationale for each non-obvious choice is in `docs/decisions/`.
@@ -107,9 +108,31 @@ Public, keyless. One `{"jobs": [...]}` response, no pagination. Per job: `id` (U
 `descriptionHtml` — already real HTML, so it is passed through, not unescaped like Greenhouse's
 entity-encoded `content`.
 
+**Tier 1 (added V1.8).** Six more public, keyless feeds — BambooHR, Recruitee, Workable,
+Pinpoint, Rippling, SmartRecruiters. Three of them carry the posting's description in the list
+(Recruitee `description` + `requirements`, Workable with `details=true`, Pinpoint across labelled
+blocks) and are single-GET like Ashby. The other three do not, and a V1 source **must** yield a
+description — silver's deal-breaker filter and desired-tech signal both read it — so BambooHR,
+SmartRecruiters and Rippling fetch each posting's detail (ADR-0021). Three payload quirks worth
+knowing: Rippling repeats a job once per location (collapsed by uuid in the adapter, or postings
+would collide on `job_key` and keep an arbitrary location), SmartRecruiters is the only paginated
+source (`limit`/`offset` + `totalFound`), and Pinpoint publishes no post date at all, so its
+`posted_or_updated_at` is null by design — gold sorts nulls last and "new since last run" runs off
+`first_seen_at`, which is ours. Where a payload bundles a company blurb next to the job text
+(BambooHR, Workable, Rippling, SmartRecruiters), only the job's own text is mapped: the blurb is
+identical on every posting of a board and would make the keyword signals fire on the employer.
+**BreezyHR is deliberately not here** — its list has no description and there is no keyless way to
+get one (V1.9).
+
 Each adapter outputs the common `RawPosting` schema: `source`, `company`, `external_id`,
 `title`, `location`, `remote_policy`, `department`, `employment_type`, `url`,
 `description_html`, `posted_or_updated_at`, `raw`.
+
+**Boards are fetched concurrently** (ADR-0022): one thread pool across all sources, with the
+minimum interval enforced **per host** rather than globally, and rows landed on the main thread
+(DuckDB takes a single writer). This is what keeps detail-fetching affordable — ATS that give each
+company its own subdomain (BambooHR, Recruitee, Pinpoint) overlap almost perfectly, while ATS on
+one shared host stay exactly as paced as before.
 
 ### Sourcing & the company seed
 
@@ -184,9 +207,10 @@ floor is raw's partition expiry (ADR-0016).
 **Completeness model.** None of the V1 source APIs offer a server-side date filter, so each run
 pulls the *whole board* (append-only landing) — which is complete for a single-response feed —
 and "new since last run" is *derived* from `first_seen_at`, not requested from the source. The one
-gap is pagination: today's single-GET fetch would truncate a paged board, so the POST + offset
-paginator lands with the first paginated adapter (Workday); Greenhouse, Lever, and Ashby return
-their full board in one response and are unaffected.
+gap was pagination, and it is now closed for the sources that need it: SmartRecruiters walks
+`limit`/`offset` until `totalFound` is reached (`ingest/adapters/smartrecruiters.py`), while every
+other current source returns its full board in one response. A **POST**-bodied paginator is still
+outstanding and lands with Workday.
 
 What V1 **cannot** do without the LLM: tell required from nice-to-have, infer seniority, or judge
 true location eligibility. Those move to V2.
@@ -327,14 +351,24 @@ inactive-postings retention decision, and `make validate-companies` tooling. See
 favor of GitHub-native failure alerts, and the **email digest** of new postings with an
 `ops.digest_runs` watermark. See ADR-0019.
 
+**V1.7 — company-list correctness (done):** a live audit found 101 of 157 active boards 404-ing
+silently. Skipped boards are now reported (redacted) instead of leaving a source "ok", discovery
+was rebuilt, and the master was re-audited to 285 rows / 123 verified boards.
+
+**V1.8 — Tier 1 ATS adapters (done):** six more public-keyless sources — BambooHR, Recruitee,
+Workable, Pinpoint, Rippling, SmartRecruiters — taking the list from 123 to **161 active boards**.
+Descriptions are fetched per posting where the list omits them (ADR-0021), boards are fetched
+**in parallel** with per-host rate limiting (ADR-0022), and SmartRecruiters closes the
+GET-pagination gap. BreezyHR is deferred to V1.9: no keyless description exists.
+
 **V2 — Relevance via AI inside dbt (scoped — ADR-0020, plan in `docs/v2-plan.md`):** structured
 extraction + scoring SQL models and a score-aware digest (the score **orders** delivery, it never
 filters it). Embeddings are **deferred** — as a cost pre-filter they save pennies at this scale,
-and cross-source dedup is moot while each company lives on one ATS. **Parked behind gates:** more
-ATS adapters — BambooHR and Workday via a generalized POST + pagination contract; iCIMS deferred
-(no keyless API) — and **openjobdata** — a free, daily, aggregated ~47-ATS Parquet dataset that
-could subsume those adapters; pending Ottawa-coverage verification (ADR-0017,
-`docs/research/openjobdata.md`).
+and cross-source dedup is moot while each company lives on one ATS. **Parked behind gates:**
+Workday (needs a POST + offset paginator *and* a multi-segment ref captured per row); iCIMS,
+Teamtailor, SuccessFactors and the rest (no keyless API); and **openjobdata** — a free, daily,
+aggregated ~47-ATS Parquet dataset that could subsume further adapters; pending Ottawa-coverage
+verification (ADR-0017, `docs/research/openjobdata.md`).
 
 **V3 — Quality & breadth (direction):** feedback loop to calibrate the fit threshold; multiple profile
 embeddings (one per target role); revisit paid APIs for ToS-restricted sources.

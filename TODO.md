@@ -51,45 +51,67 @@ Triggered by auditing the list against the live APIs: of 157 active boards, **10
       active / ~500). Variable pushed; merged to main as PR #12
 - [x] Companies on a non-V1 ATS stay as `active=false` inventory rows with their real ATS
 
-## V1.8 — Tier 1 ATS adapters — planned (separate branch)
+## V1.8 — Tier 1 ATS adapters — ✅ COMPLETE (2026-07-28, branch `feat/tier1-ats-adapters`)
 
-**Survey + evidence: `docs/research/ats-feeds.md`; re-probe with
-`tools/company_discovery/ats_feed_probe.py` before starting.** Seven ATS meet ADR-0013's
-public-keyless bar *today* and are single-GET/JSON — the Ashby pattern, not the heavier
-POST/pagination contract. Counts below are post-re-audit: **53 inactive companies**, a 43%
-increase on the 123 boards now running.
+Six of the surveyed seven shipped; **161 active boards, up from 123**. See ADR-0021/0022 and the
+"As built" section of `docs/research/ats-feeds.md`.
 
-- [ ] **BambooHR** — `{ref}.bamboohr.com/careers/list` → `{meta, result[]}`. **33 companies**,
-      the best payoff-to-effort work in the project. No per-id detail call needed
-- [ ] **Recruitee** (`{ref}.recruitee.com/api/offers/`, 6) + **Workable**
-      (`apply.workable.com/api/v1/widget/accounts/{ref}?details=true` — the v1 widget; the
-      documented v3 path 404s, 5)
-- [ ] **Rippling** (3), **BreezyHR** (2), **Pinpoint** (2), **SmartRecruiters** (2 — the only
-      one needing `limit`/`offset` pagination) — nearly identical, do together
-- [ ] Each: sanitized committed fixture + adapter tests + `active=true` flip for its rows.
-      The real cost is the `RawPosting` field mapping, not the HTTP call
-- [ ] Verify a **second** ref per platform first — one company's board can be misconfigured
-      in ways that look platform-wide
+- [x] **BambooHR** (33 rows, 32 resolving) — list + per-posting detail
+- [x] **Recruitee**, **Workable**, **Pinpoint** — single GET, description in the list
+- [x] **Rippling** (collapses its per-location duplicate rows) and **SmartRecruiters**
+      (`limit`/`offset` pagination) — both list + detail
+- [x] **A V1 source must yield a description** (ADR-0021). Three of the six omit it from the
+      list, and silver's deal-breaker filter + desired-tech signal both read it, so a list-only
+      row would be permanently unfilterable. Verified: **0 empty descriptions** in 1,324 postings
+- [x] **Parallel board fetch, per-host rate limiting** (ADR-0022) — needed once requests scale
+      with postings rather than boards
+- [x] Sanitized fixtures + adapter tests for each; every platform re-probed against a second
+      live ref first (which is what caught the detail-call, duplicate-row and no-date surprises)
+- [x] `make validate-companies` no longer fails on an *inactive* row with a blank ref — shipping
+      an adapter used to retroactively invalidate the inventory rows already on that ATS
 
-Deferred, unchanged: **Workday** (endpoint live — 422 not 404 — but needs tenant/wdN/site
-captured for all **30** rows before any code). Not keyless, stays inventory: SuccessFactors
-(401), Teamtailor (API key, now 6 companies), iCIMS, JazzHR, UKG, Dayforce, ADP, Phenom, Indeed.
+**BreezyHR moved to V1.9** (below). Workday unchanged: endpoint live (422, not 404) but needs
+tenant/wdN/site captured for all 30 rows, plus a POST paginator. Not keyless, stays inventory:
+SuccessFactors (401), Teamtailor (API key), iCIMS, JazzHR, UKG, Dayforce, ADP, Phenom, Indeed.
+
+## V1.9 — company-list repair, then BreezyHR
+
+Verifying V1.8 against live boards turned up list problems that no adapter can fix. **13 of the
+51 Tier 1 rows were left `active=false`**; each needs a human or a discovery re-run:
+
+- [ ] **Recruitee is mis-mapped, all 6 rows.** `career` (3 rows: Field Effect, RBR Global,
+      Trafilea) 404s — it is a URL path fragment, not a subdomain. Worse, **`huaweicanada` is
+      attached to *CMC Microsystems* and to a "Kanata North portal" row**: activating either
+      would land Huawei's 167 postings under another company's name. `certus` (TPC Training)
+      resolves but is unverified. Re-run discovery for these before touching `active`
+- [ ] **Rippling: 3 blank refs** (Argyle, Buxton, Pythian). Pythian's real ref is `pythian` —
+      verified live, 11 postings, 2 reaching gold. The other two need discovery
+- [ ] **SmartRecruiters: neither row is usable.** Sectigo's `job-widget` is a stub (200,
+      `totalFound: 0`). Renesas resolves but is a **poor trade**: 871 postings, ~10 minutes of
+      the run on a shared host, **2** surviving the location gate. Decide deliberately
+- [ ] **BambooHR `kivuto`** 302s to a non-JSON page (correctly skipped and reported)
+- [ ] **Workable `Fidus Systems`** has no ref
+- [ ] Add the `sources.yml` freshness block for `raw_rippling_jobs` / `raw_smartrecruiters_jobs`
+      **in the same change that activates a real board** — freshness errors on an empty table and
+      would take the whole prod run down with it
+- [ ] **BreezyHR** (2 companies) — only if a description becomes reachable. Four keyless paths
+      tried and documented in `docs/research/ats-feeds.md`; today the list alone would land
+      untextable rows (ADR-0021)
 
 ## Next session — start here
 
-1. **Check the first prod run with 123 boards** (Actions → Ingest). First time in prod for the
-   Ashby percent-encoding, the Lever EU fallback, and the healthchecks step. Expect a much
-   larger ingest; watch for a `Skipped boards (redacted:…)` annotation and resolve any with
-   `make whois REF=…`
-2. **Value/coverage check against real gold data** — now the highest-value open question.
-   Coverage went 13 → 123 boards, but most new companies are US-only and the silver location
-   gate drops non-Canadian postings, so 8,885 visible postings will *not* become 8,885 gold
-   rows. Count: active gold postings, title-matched, and how many you'd actually apply to.
-   **If the funnel is still thin after this much coverage work, V2 should be relevance, not
-   more sources** — and these numbers feed the README results section either way
-3. Then either **V1.8** (above) or **V2** (below), depending on what step 2 says
-4. Housekeeping: arm healthchecks (`NOTES.local.md` §4); delete the merged
-   `chore/uv-and-permissions` and `feat/company-list-correctness` remote branches; clear the
+1. **Push the rebuilt list and watch one prod run.** `gh variable set COMPANIES_CSV_CONTENT <
+   config/companies.active.csv` (161 boards, 10 KB), then Actions → Ingest. First prod run for
+   the parallel fetch, the per-host limiter and six new sources; watch the
+   `Skipped boards (redacted:…)` annotation and the freshness gate
+2. **Value/coverage check against real gold data** — still the highest-value open question, and
+   the V1.8 numbers already point at an answer. Of **336 gold postings from the six new
+   sources**, `title_match` was **0** and only 115 had any desired-tech hit: the new coverage is
+   mostly software/other roles, not analytics. Re-run the count across *all* 161 boards, then
+   decide. **If the funnel is still thin after this much coverage work, V2 should be relevance,
+   not more sources**
+3. Then **V2** (below), or the V1.9 list repair above if coverage still looks like the gap
+4. Housekeeping: arm healthchecks (`NOTES.local.md` §4); delete merged remote branches; clear the
    superseded scratch files in `~/Downloads`
 
 ## V2 — AI relevance (scoped, ready to build)
@@ -137,7 +159,7 @@ Step-by-step versions of these live in `NOTES.local.md` (gitignored personal run
       publishes the dbt docs site on pushes to main — done 2026-07-28
 - [ ] Push the rebuilt company list: `gh variable set COMPANIES_CSV_CONTENT <
       config/companies.active.csv` (the **active-only projection**, never the master).
-      `make update-company-list` validates it first
+      `make update-company-list` validates it first. Now **161 boards / ~10 KB** after V1.8
 - [x] Digest secrets created in the `production` environment (`SMTP_USER` + `SMTP_PASSWORD`).
       `DIGEST_TO` stays optional — unset, the digest mails `SMTP_USER` (`deliver/digest.py`).
 - [ ] Create the healthchecks.io check and add its ping URL as the `HEALTHCHECK_URL` **secret**
