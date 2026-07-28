@@ -49,6 +49,24 @@ def test_ashby_description_html_is_passed_through(ashby_payload: dict) -> None:
 
 
 @responses.activate
+def test_ashby_percent_encodes_a_spaced_board_ref(ashby_payload: dict) -> None:
+    """Ashby board names are display names ("Dominion Dynamics" -> the live board
+    at jobs.ashbyhq.com/Dominion%20Dynamics). The space must be encoded into the
+    path, while `company` keeps the readable name for downstream joins."""
+    board_ref = "Dominion Dynamics"
+    responses.add(
+        responses.GET,
+        URL_TEMPLATE.format(board_ref="Dominion%20Dynamics"),
+        json=ashby_payload,
+    )
+
+    (p,) = _adapter().fetch(build_session("test/1.0"), board_ref)
+
+    assert "Dominion%20Dynamics" in responses.calls[0].request.url
+    assert p.company == "Dominion Dynamics"
+
+
+@responses.activate
 def test_ashby_response_without_jobs_key_raises() -> None:
     """An error body / schema drift must raise (per-company warn in the
     pipeline), not silently look like an empty board."""

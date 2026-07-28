@@ -17,7 +17,7 @@ import csv
 import logging
 import sys
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -25,7 +25,7 @@ from ingest.adapters.ashby import AshbyAdapter
 from ingest.adapters.base import SourceAdapter
 from ingest.adapters.greenhouse import GreenhouseAdapter
 from ingest.adapters.lever import LeverAdapter
-from ingest.sources import SOURCES, Source
+from ingest.sources import SOURCES, GreenhouseSource, LeverSource, Source
 from shared import storage
 from shared.config import Settings, get_settings
 from shared.http import build_session
@@ -42,15 +42,17 @@ def _label(value: str, settings: Settings) -> str:
 
 
 # Adapters are constructed from the registry so the URL templates have exactly
-# one home (ingest/sources.py).
-_ADAPTER_FACTORIES: dict[str, Callable[[str], SourceAdapter]] = {
-    GreenhouseAdapter.source: GreenhouseAdapter,
-    LeverAdapter.source: LeverAdapter,
-    AshbyAdapter.source: AshbyAdapter,
-}
-ADAPTERS: dict[str, SourceAdapter] = {
-    s.adapter: _ADAPTER_FACTORIES[s.adapter](s.url_template) for s in SOURCES
-}
+# one home (ingest/sources.py). Matched on the source type rather than a name
+# dict because Lever carries a second (EU shard) template -- see LeverAdapter.
+def _build_adapter(src: Source) -> SourceAdapter:
+    if isinstance(src, LeverSource):
+        return LeverAdapter(src.url_template, src.eu_url_template)
+    if isinstance(src, GreenhouseSource):
+        return GreenhouseAdapter(src.url_template)
+    return AshbyAdapter(src.url_template)
+
+
+ADAPTERS: dict[str, SourceAdapter] = {s.adapter: _build_adapter(s) for s in SOURCES}
 # The source object (owner of the board_ref format rule) keyed by adapter name.
 _SOURCE_BY_ADAPTER: dict[str, Source] = {s.adapter: s for s in SOURCES}
 ROOT = Path(__file__).resolve().parents[1]
@@ -112,6 +114,7 @@ def _run(settings: Settings) -> int:
     session = build_session(settings.http_user_agent)
     run_id = uuid.uuid4().hex
     runs: list[IngestRun] = []
+    skipped: dict[str, list[str]] = {}  # source -> raw refs; redacted at summary time
     storage.ensure_raw_tables(settings)  # so dbt can build even for empty sources
 
     for source in (s for s in SOURCES if s.active):
@@ -146,6 +149,11 @@ def _run(settings: Settings) -> int:
             status, error = "error", f"all boards failed: {failed_boards}"
         elif failed_boards:
             error = f"skipped boards: {failed_boards}"  # status stays 'ok'
+            # A partial skip used to be invisible: status stayed "ok" and only
+            # low-volume sources reached the summary, so the digest could report
+            # "all sources healthy" while a board silently dropped out of the
+            # list. Carried out separately (redacted) so it is always reported.
+            skipped[source.adapter] = list(failed_boards)
         runs.append(
             IngestRun(
                 run_id=run_id,
@@ -172,10 +180,13 @@ def _run(settings: Settings) -> int:
         log.warning("no active companies configured in %s", _companies_path(settings))
 
     storage.land_runs(runs, settings=settings)
-    return _finalize(runs, settings)
+    return _finalize(runs, settings, skipped)
 
 
-def _finalize(runs: Sequence[IngestRun], settings: Settings) -> int:
+def _finalize(
+    runs: Sequence[IngestRun], settings: Settings, skipped: dict[str, list[str]] | None = None
+) -> int:
+    skipped = skipped or {}
     failures = [r for r in runs if r.status == "error"]
     warnings = [
         r for r in runs if r.status == "ok" and r.rows_fetched < settings.low_volume_threshold
@@ -186,9 +197,20 @@ def _finalize(runs: Sequence[IngestRun], settings: Settings) -> int:
         failures=[r.source for r in failures],
         warnings=[r.source for r in warnings],
         runs=runs,
+        skipped=skipped,
     )
     for r in warnings:
         log.warning("low volume (warn-only): source=%s rows=%d", r.source, r.rows_fetched)
+    for source, refs in skipped.items():
+        # Redacted: this line is world-readable in the public Actions log. The
+        # digest carries the same digests, and `make whois REF=…` resolves one
+        # locally against the private list.
+        log.warning(
+            "skipped %d board(s) on source=%s: %s (resolve with `make whois REF=…`)",
+            len(refs),
+            source,
+            ", ".join(redact_ref(ref) for ref in refs),
+        )
     if failures:
         # r.error embeds the failed board_refs verbatim; keep it out of the log
         # and read it from ops.ingest_runs / the run summary instead.
@@ -206,7 +228,9 @@ def _write_summary(
     failures: list[str],
     warnings: list[str],
     runs: Sequence[IngestRun],
+    skipped: dict[str, list[str]] | None = None,
 ) -> None:
+    skipped = skipped or {}
     summary = RunSummary(
         run_id=run_id,
         failures=failures,
@@ -218,6 +242,8 @@ def _write_summary(
                 status=r.status,
                 company_count=r.company_count,
                 error=r.error,
+                # redacted here, once, so every consumer of the summary is safe
+                skipped_refs=[redact_ref(ref) for ref in skipped.get(r.source, [])],
             )
             for r in runs
         ],

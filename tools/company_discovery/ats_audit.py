@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import concurrent.futures
 import csv
 import datetime
 import os
+import pathlib
 import re
 import threading
+import time
+import urllib.parse
 
 import openpyxl
 import requests
@@ -32,12 +36,23 @@ OUT_HEADERS = ["Company Name", "Website", "Career Page URL", "Detected ATS",
                "Board Token", "Found Via", "Status"]
 NAV_TIMEOUT = 25000  # ms
 
+# Discovery output lives with the private config, not in Downloads. The audit
+# cache is durable state -- it is the only record of every company's website and
+# detected ATS, and it is what makes a re-run resumable. Only the *input* xlsx
+# of new candidates comes from outside the repo. Gitignored, like the list itself.
+DISCOVERY = pathlib.Path(__file__).resolve().parents[2] / "config" / "discovery"
+DISCOVERY.mkdir(parents=True, exist_ok=True)
+
 # ---------------------------------------------------------------- ATS host map
 # host -> (ATS name, token capture). Order = priority; most specific first.
 ATS_HOSTS = {
     "Greenhouse":      r"greenhouse\.io/(?:v1/boards/|embed/job_board(?:/js)?\?for=)?([\w.-]+)",
-    "Lever":           r"(?:jobs|api)\.lever\.co/(?:v0/postings/)?([\w.-]+)",
-    "Ashby":           r"ashbyhq\.com/(?:posting-api/job-board/)?([\w.-]+)",
+    # `.eu.` shard included: Lever hosts some boards on jobs.eu/api.eu.lever.co and
+    # the plain host 404s for them, so without this they read as Unknown/Custom.
+    "Lever":           r"(?:jobs|api)(?:\.eu)?\.lever\.co/(?:v0/postings/)?([\w.-]+)",
+    # Token may contain spaces ("Dominion Dynamics"); URLs are unquoted before
+    # matching (see match_ats), so allow spaces here and strip the edges after.
+    "Ashby":           r"ashbyhq\.com/(?:posting-api/job-board/)?([\w.-]+(?: [\w.-]+)*)",
     "SmartRecruiters": r"smartrecruiters\.com/(?:v1/companies/)?([\w.-]+)",
     "Workday":         r"([\w-]+)\.(?:wd\d+\.)?myworkdayjobs\.com",
     "BambooHR":        r"([\w-]+)\.bamboohr\.com",
@@ -65,7 +80,21 @@ ATS_HOSTS = {
     "Indeed":          r"(?:[\w-]+\.)?indeed\.com",     # aggregator link — keep last
 }
 _BAD_TOKENS = {"v1", "v0", "api", "embed", "jobs", "job", "boards", "board", "www",
-               "posting-api", "job-board", "postings", "companies", "for", "js"}
+               "posting-api", "job-board", "postings", "companies", "for", "js",
+               # captured from account/app URLs rather than a board path -- HubSpot
+               # and Veeam both yielded "users", which 404s as a Greenhouse board
+               "users", "user", "auth", "login", "signup", "account", "accounts"}
+
+# board_ref format rules, mirroring ingest/sources.py. Ashby board names are
+# display names and may carry single inner spaces (verified: the API accepts
+# them, case-insensitively); Greenhouse/Lever stay bare tokens.
+_BARE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_ASHBY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?: [A-Za-z0-9._-]+)*$")
+
+
+def ref_ok(source: str, token: str) -> bool:
+    pattern = _ASHBY if source == "ashby" else _BARE
+    return bool(pattern.fullmatch(token)) and token.lower() not in _BAD_TOKENS
 
 
 def normalize_domain(raw: str) -> str:
@@ -78,13 +107,16 @@ def normalize_domain(raw: str) -> str:
 
 
 def match_ats(url: str):
-    u = (url or "").lower()
+    # Percent-decode first: an encoded board name ("Dominion%20Dynamics") used to
+    # truncate at the '%', silently yielding the wrong token ("dominion", which
+    # 404s) instead of the real one.
+    u = urllib.parse.unquote(url or "").lower()
     for ats, pat in ATS_HOSTS.items():
         m = re.search(pat, u)
         if m:
             # first participating capture group (alternations may leave some None)
             tok = next((g for g in m.groups() if g), "") if m.groups() else ""
-            return ats, tok
+            return ats, tok.strip()
     return None
 
 
@@ -100,6 +132,21 @@ CONSENT_SELECTORS = [
 ]
 CONSENT_TEXT = re.compile(
     r"^\s*(accept( all| cookies)?|allow all|i agree|agree|got it|ok(ay)?)\s*$", re.I)
+
+
+async def settle(page, idle_ms: int = 4500) -> None:
+    """Wait for the board to actually load, not a fixed guess.
+
+    Most modern careers pages fetch their postings by XHR *after* first paint.
+    A flat 2.5s wait closed the page before that request fired, so the network
+    listener saw nothing and the company read as "no ATS" while sitting on one.
+    Falls back to a short fixed wait when the page never goes idle (ad/analytics
+    beacons keep some sites busy indefinitely).
+    """
+    try:
+        await page.wait_for_load_state("networkidle", timeout=idle_ms)
+    except Exception:
+        await page.wait_for_timeout(2500)
 
 
 async def dismiss_consent(page) -> bool:
@@ -181,6 +228,39 @@ def _first_path_ok(domain: str) -> str:
     return ""
 
 
+# Links worth a second hop when the careers page itself shows no ATS. A landing
+# page like /careers is often pure marketing, with the board one click further
+# on ("Open roles", "See all jobs"); stopping at the first match made ~30 of 49
+# unresolved companies read as "no ATS" when they were on one.
+_DEEPER = re.compile(
+    r"open.?(roles|positions)|current.?openings|all.?(jobs|roles|positions)"
+    r"|view.?(jobs|roles|openings)|job.?(board|openings|search)|vacanc|apply",
+    re.I,
+)
+
+
+async def deeper_board_links(page, domain: str) -> list[str]:
+    """Candidate second-hop URLs, best first.
+
+    Ranked so an off-site link to a known ATS host wins over an on-site link:
+    if the page already points at greenhouse/lever/ashby, that IS the board and
+    one hop lands on it. Same-domain links are kept as the fallback; anything
+    else off-domain is dropped so we never wander onto a partner's site.
+    """
+    links = await page.evaluate("""() => [...document.querySelectorAll('a[href], iframe[src]')]
+        .map(e => ({h: e.href || e.src || '', t: (e.textContent || '') + ' ' + (e.getAttribute('aria-label') || '')}))
+        .filter(x => x.h.startsWith('http'))""")
+    on_ats, on_site = [], []
+    for link in links:
+        href, text = link["h"], link["t"]
+        if match_ats(href):
+            on_ats.append(href)
+        elif (_DEEPER.search(text) or _DEEPER.search(href)) and domain in href:
+            on_site.append(href)
+    ordered = on_ats + on_site
+    return list(dict.fromkeys(ordered))[:3]  # dedupe, cap the crawl
+
+
 async def find_careers(page, domain: str):
     href = await page.evaluate("""() => {
         const hint=/career|jobs?\\b|join.?us|hiring|opportunit|work.?with.?us/i;
@@ -233,20 +313,51 @@ async def audit(ctx, name: str, website: str) -> dict:
         try:
             await page.goto(career_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
             await dismiss_consent(page)
-            await page.wait_for_timeout(2500)
+            await settle(page)
         except Exception:
             pass
 
-    try:
-        srcs = await page.evaluate(
-            "() => [...document.querySelectorAll('iframe[src],script[src],a[href]')]"
-            ".map(e=>e.src||e.href)")
-        for s in srcs:
-            m = match_ats(s)
+    async def scan_dom():
+        try:
+            srcs = await page.evaluate(
+                "() => [...document.querySelectorAll('iframe[src],script[src],a[href]')]"
+                ".map(e=>e.src||e.href)")
+            for s in srcs:
+                m = match_ats(s)
+                if m:
+                    hits.append((m, s))
+        except Exception:
+            pass
+        if hits:
+            return
+        # Last resort on this page: scan the raw HTML. Sites that server-render
+        # their board (Ramp embeds the Ashby host inside its Next.js JSON payload)
+        # expose the ATS nowhere in an element attribute and never call it from
+        # the browser, so both the DOM sweep and the network listener miss it.
+        try:
+            m = match_ats(await page.content())
             if m:
-                hits.append((m, s))
-    except Exception:
-        pass
+                hits.append((m, "page html"))
+        except Exception:
+            pass
+
+    await scan_dom()
+
+    # Second hop: the careers page rendered but named no ATS. Follow the most
+    # board-like links from it rather than concluding "no ATS" -- a marketing
+    # landing page is the common case, not the exception.
+    if not hits and career_url:
+        try:
+            for candidate in await deeper_board_links(page, domain):
+                await page.goto(candidate, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
+                await dismiss_consent(page)
+                await settle(page)
+                await scan_dom()
+                if hits:
+                    career_url, via = candidate, f"{via}+deep"
+                    break
+        except Exception:
+            pass
 
     await page.close()
     if hits:
@@ -343,8 +454,96 @@ async def run(companies, csv_path, concurrency, checkpoint_every):
     return records
 
 
+def probe_unknowns(records, csv_path, lock):
+    """Second pass: API-probe every company browsing could not classify."""
+    todo = [(i, r) for i, r in enumerate(records)
+            if r[3] in ("Unknown/Custom", "N/A", "ERROR", "")]
+    if not todo:
+        return records
+    print(f"\nAPI-probing {len(todo)} unclassified compan(ies)...", flush=True)
+    found = 0
+    # Threaded: the probe is pure network wait, and sequentially it dominates the
+    # run (each company can cost 16 requests). Workers are few and each still
+    # pauses between its own calls, so the per-host rate stays polite.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {pool.submit(probe_record, {"name": r[0], "website": r[1]}): i for i, r in todo}
+        for done, fut in enumerate(concurrent.futures.as_completed(futures), start=1):
+            i = futures[fut]
+            hit = fut.result()
+            if hit:
+                found += 1
+                r = records[i]
+                records[i] = [hit["name"], hit["website"], r[2], hit["ats"],
+                              hit["token"], hit["via"], hit["status"]]
+                print(f"  probe HIT {hit['name']}: {hit['ats']}/{hit['token']}", flush=True)
+            if done % 50 == 0:
+                write_csv(csv_path, records, lock)
+                print(f"  ...probed {done}/{len(todo)} ({found} recovered)", flush=True)
+    write_csv(csv_path, records, lock)
+    print(f"API probe recovered {found}/{len(todo)}.", flush=True)
+    return records
+
+
+# ---------------------------------------------------------------- API probe fallback
+# Browsing answers "what does this page call?", which fails for companies that
+# proxy their board server-side (PostHog, Miro: no ATS string anywhere in the
+# page). This asks the opposite question -- "does any plausible token answer on a
+# V1 API?" -- and a 200 with postings is proof, not a guess. Verified recoveries
+# this found that browsing could not: Ramp, Miro, PostHog, Redis, Toptal, Render.
+PROBE_APIS = {
+    "greenhouse": "https://boards-api.greenhouse.io/v1/boards/{t}/jobs?content=true",
+    "lever": "https://api.lever.co/v0/postings/{t}?mode=json",
+    "lever-eu": "https://api.eu.lever.co/v0/postings/{t}?mode=json",
+    "ashby": "https://api.ashbyhq.com/posting-api/job-board/{t}?includeCompensation=true",
+}
+_PROBE_ATS = {"greenhouse": "Greenhouse", "lever": "Lever",
+              "lever-eu": "Lever", "ashby": "Ashby"}
+
+
+def _probe_count(source: str, payload) -> int:
+    if source.startswith("lever"):
+        return len(payload) if isinstance(payload, list) else 0
+    if isinstance(payload, dict):
+        return len(payload.get("jobs") or [])
+    return 0
+
+
+def probe_tokens(name: str, website: str) -> list[str]:
+    """Plausible board tokens for a company, best first.
+
+    Deliberately conservative: only forms a human would try. Non-obvious tokens
+    (harnessinc, xapo61) are unreachable this way, so a miss is never evidence
+    the company has no board.
+    """
+    host = normalize_domain(website).removeprefix("www.")
+    base = host.split(".")[0]
+    clean = re.sub(r"[^a-z0-9 ]", "", name.lower()).strip()
+    out = [clean.replace(" ", ""), clean.replace(" ", "-"), base, host]
+    seen, res = set(), []
+    for c in out:
+        if c and c not in seen and ref_ok("greenhouse", c):
+            seen.add(c)
+            res.append(c)
+    return res[:4]
+
+
+def probe_record(rec: dict, pause: float = 0.35) -> dict | None:
+    """Return an updated record if a V1 API answers for this company, else None."""
+    for tok in probe_tokens(rec["name"], rec["website"]):
+        for source, tmpl in PROBE_APIS.items():
+            try:
+                time.sleep(pause)  # same courtesy interval as the ingest pipeline
+                resp = requests.get(tmpl.format(t=tok), headers=HEADERS, timeout=20)
+                if resp.status_code != 200 or _probe_count(source, resp.json()) == 0:
+                    continue
+            except Exception:
+                continue
+            return {**rec, "ats": _PROBE_ATS[source], "token": tok,
+                    "via": "api-probe", "status": f"OK (api probe: {source})"}
+    return None
+
+
 def emit_ingestable(records, out_path):
-    _bare = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     src_map = {"Greenhouse": "greenhouse", "Lever": "lever", "Ashby": "ashby"}
     today = datetime.date.today().isoformat()
     seen, clean, review = set(), [], []
@@ -358,7 +557,7 @@ def emit_ingestable(records, out_path):
             continue
         seen.add(key)
         row = [r[0], source, token, "true", "1", f"auto-detected {today} (careers via {r[5]})"]
-        (clean if _bare.fullmatch(token) and token.lower() not in _BAD_TOKENS else review).append(row)
+        (clean if ref_ok(source, token) else review).append(row)
     with open(out_path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["company_name", "source", "board_ref", "active", "tier", "notes"])
@@ -374,7 +573,6 @@ def emit_inventory(records, out_path):
     other detected ATS is active=false inventory (ADR-0013). Custom / no-board
     companies are dropped (nothing to ingest). Returns (active_count, rows).
     """
-    _bare = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     v1 = {"greenhouse", "lever", "ashby"}
     out, seen = [], set()
     for r in records:
@@ -383,7 +581,7 @@ def emit_inventory(records, out_path):
             continue
         source = re.sub(r"[^a-z0-9]", "", ats.lower())
         if source in v1:
-            if not (_bare.fullmatch(token) and token.lower() not in _BAD_TOKENS):
+            if not ref_ok(source, token):
                 continue
             active, tier, ref = "true", "1", token
         else:
@@ -406,15 +604,17 @@ def main():
     ap.add_argument("--xlsx", required=True,
                     help="source .xlsx with Company Name / Website columns")
     ap.add_argument("--sheet", default="Company List")
-    ap.add_argument("--out", default="ats_audit_results.csv",
-                    help="full audit CSV (default: cwd)")
-    ap.add_argument("--ingestable", default="companies_ingestable.csv",
-                    help="GH/Lever/Ashby rows in the config/companies.csv schema (default: cwd)")
-    ap.add_argument("--inventory", default="companies_all.csv",
+    ap.add_argument("--out", default=str(DISCOVERY / "ats_audit_results.csv"),
+                    help="full audit CSV -- the durable cache; re-runs resume from it")
+    ap.add_argument("--ingestable", default=str(DISCOVERY / "companies_ingestable.csv"),
+                    help="GH/Lever/Ashby rows in the config/companies.csv schema")
+    ap.add_argument("--inventory", default=str(DISCOVERY / "companies_inventory.csv"),
                     help="all detected-ATS companies (V1 active + inventory) in the same schema")
     ap.add_argument("--concurrency", type=int, default=6)
     ap.add_argument("--checkpoint-every", type=int, default=20)
     ap.add_argument("--limit", type=int, default=0, help="0 = all; else first N (for testing)")
+    ap.add_argument("--no-probe", action="store_true",
+                    help="skip the API-probe pass over companies browsing could not classify")
     args = ap.parse_args()
 
     companies = load_companies(args.xlsx, args.sheet)
@@ -422,6 +622,8 @@ def main():
         companies = companies[:args.limit]
 
     records = asyncio.run(run(companies, args.out, args.concurrency, args.checkpoint_every))
+    if not args.no_probe:
+        records = probe_unknowns(records, args.out, threading.Lock())
 
     from collections import Counter
     print("\nATS:", dict(Counter(r[3] for r in records if r[3])))

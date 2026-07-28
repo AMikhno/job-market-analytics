@@ -60,10 +60,17 @@ def _footer(summary: RunSummary | None) -> str:
     """One line stating ingest health, in every digest.
 
     Always present, so a silent footer can no longer mean either "healthy" or
-    "we never checked" -- the two now read differently.
+    "we never checked" -- the two now read differently. Skipped boards are
+    appended to whatever the headline is: a board that 404s (the company moved
+    ATS, the board came down) leaves the source "ok", so it would otherwise be
+    reported as healthy and the posting stream would just quietly thin out.
     """
     if summary is None:
         return "Ingest status unknown for this digest (no run summary was found)."
+    return " ".join(p for p in (_health(summary), _skipped(summary)) if p)
+
+
+def _health(summary: RunSummary) -> str:
     if summary.failures:
         return f"Ingest FAILED for: {', '.join(summary.failures)}."
     if summary.warnings:
@@ -72,6 +79,18 @@ def _footer(summary: RunSummary | None) -> str:
     if not n:
         return "No sources ran in this ingest."
     return f"All {n} source{'s' if n != 1 else ''} healthy ({summary.board_count} boards checked)."
+
+
+def _skipped(summary: RunSummary) -> str:
+    """Redacted refs only -- the digest is private, but this string also rides
+    along into the run summary and step output. `make whois` maps them back."""
+    refs = summary.skipped_refs
+    if not refs:
+        return ""
+    return (
+        f"{len(refs)} board(s) skipped this run: {', '.join(refs)} "
+        "— identify with `make whois REF=<ref>`."
+    )
 
 
 def build_email(

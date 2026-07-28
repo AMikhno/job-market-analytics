@@ -22,6 +22,57 @@ All shipped (see ADR-0019 and `ARCHITECTURE.md` §9):
 - [x] Slack retired: GitHub-native failure email; warnings annotate + digest footer
 - [x] Actions SHA-pinned; gitleaks runs in CI (local hook is bypassable)
 - [x] Email digest of new postings (`deliver/digest.py`, watermark in `ops.digest_runs`)
+- [x] Dead-man's switch: successful runs ping healthchecks.io (`HEALTHCHECK_URL` secret), so a
+      cron GitHub has suspended alerts instead of going silent — ARCHITECTURE §6
+
+## V1.7 — company-list correctness — 🔄 in progress (2026-07-28)
+
+Triggered by auditing the list against the live APIs: of 157 active boards, **101 were
+404ing** and nothing said so. Three ingest bugs and a broken discovery loop.
+
+- [x] Ashby board refs may contain inner spaces (`Dominion Dynamics`) — own pattern +
+      percent-encoding. Was worse than a missed board: `load_companies` validates *before*
+      fetching, so such a row would have hard-failed the whole run
+- [x] Lever EU shard (`api.eu.lever.co`) — adapter falls back on 404 only; region is a
+      property of the board, not the company, so it stays out of the list
+- [x] **Skipped boards are no longer silent** — a 404 left its source `status="ok"`, so the
+      digest reported "all sources healthy" while a company dropped out. Now redacted at
+      write time and surfaced in the CI annotation, step summary and digest footer;
+      `make whois REF=…` resolves one locally
+- [x] `website` column (recovery key, not pipeline input); CI gets an **active-only
+      projection** (`make companies-variable`) — a variable caps at 48 KB
+- [x] Restaging **merges** instead of overwriting — hand-fixed refs survive a refresh
+- [x] Discovery state moved to `config/discovery/`; `make discover` is the entry point
+- [x] Discovery finds boards it used to miss: deeper hop past marketing pages, raw-HTML
+      scan, API-probe fallback. Regression set went 3/10 → 10/10
+- [ ] **Finish the 873-company re-audit and rebuild the master.** The old tool discarded
+      every company whose ATS it couldn't see — 575 of 724 — which is why the list held 141
+      rows instead of ~500. Then push `COMPANIES_CSV_CONTENT`
+- [ ] Decide what to do with companies that resolve on no V1 ATS: inventory row with the
+      real ATS, vs dropped
+
+## V1.8 — Tier 1 ATS adapters — planned (separate branch)
+
+**Survey + evidence: `docs/research/ats-feeds.md`; re-probe with
+`tools/company_discovery/ats_feed_probe.py` before starting.** Seven ATS meet ADR-0013's
+public-keyless bar *today* and are single-GET/JSON — the Ashby pattern, not the heavier
+POST/pagination contract. ~48 currently-inactive companies. Do after the company-list
+re-audit lands, since it will shift the per-ATS counts.
+
+- [ ] **BambooHR** — `{ref}.bamboohr.com/careers/list` → `{meta, result[]}`. 31 companies,
+      the best payoff-to-effort work in the project. No per-id detail call needed
+- [ ] **Workable** (`apply.workable.com/api/v1/widget/accounts/{ref}?details=true` — the v1
+      widget; the documented v3 path 404s) + **Recruitee** (`{ref}.recruitee.com/api/offers/`)
+- [ ] **BreezyHR**, **Pinpoint**, **SmartRecruiters** (only one needing `limit`/`offset`
+      pagination), **Rippling** — nearly identical, do together
+- [ ] Each: sanitized committed fixture + adapter tests + `active=true` flip for its rows.
+      The real cost is the `RawPosting` field mapping, not the HTTP call
+- [ ] Verify a **second** ref per platform first — one company's board can be misconfigured
+      in ways that look platform-wide
+
+Deferred, unchanged: **Workday** (endpoint live — 422 not 404 — but needs tenant/wdN/site
+captured for all 28 rows before any code). Not keyless, stays inventory: SuccessFactors (401),
+Teamtailor (API key), iCIMS, JazzHR, Dayforce, ADP, Phenom, Indeed.
 
 ## V2 — AI relevance (scoped, ready to build)
 
@@ -50,25 +101,27 @@ work items top-to-bottom, one conventional commit each:
 
 ## Before starting V2 (sequencing — cheap checks that could re-scope it)
 
-- [ ] **Verify the first prod run on the V1.6 workflow** (Actions page): new BigQuery-dialect
-      SQL (regex escaping, staleness rule) executes for the first time there; digest step
-      logs "disabled" until SMTP secrets exist — that's expected, not a failure
+- [x] **Verify the first prod run on the V1.6 workflow** — runs, and is landing postings from
+      real companies. SMTP secrets are set, so the digest sends (to `SMTP_USER` itself unless
+      the optional `DIGEST_TO` secret is set)
 - [ ] **Value/coverage check against real gold data**: how many active postings, how many
       title-matched, how many you'd actually apply to. If the funnel is thin, coverage —
       not scoring — is the priority. Same numbers feed the README results section
 - [ ] **openjobdata Ottawa pull** (ADR-0017's decisive gate, one notebook): does the
       aggregated dataset see Ottawa/Canada AE postings the curated list misses? Answer
       re-scopes V2 if coverage beats relevance
-- [ ] **Dead-man's switch**: GitHub suspends cron workflows after ~60 days of repo
-      inactivity — no run means no failure email. Cheapest fix: free healthchecks.io ping
-      as the last ingest.yml step (alerts when pings *stop*); interim habit: no digest for
-      3+ days → check Actions
 
 ## Operational (ongoing, human-owned)
-- [ ] Enable GitHub Pages once (Settings → Pages → Source: **GitHub Actions**) so docs.yml
-      can publish the dbt docs site on pushes to main
-- [ ] Expand the actual company list in the GitHub Actions variable (`COMPANIES_CSV_CONTENT`) —
-      secrets boundary; validate with `make validate-companies` before pasting
-- [ ] Create the digest secrets in the `production` environment: `SMTP_USER` +
-      `SMTP_PASSWORD` (Gmail app password; https://myaccount.google.com/apppasswords),
-      optional `DIGEST_TO` variable. Until set, the digest step logs "disabled" and skips.
+
+Step-by-step versions of these live in `NOTES.local.md` (gitignored personal runbook).
+
+- [x] Enable GitHub Pages (Settings → Pages → Source: **GitHub Actions**) so docs.yml
+      publishes the dbt docs site on pushes to main — done 2026-07-28
+- [ ] Push the rebuilt company list: `gh variable set COMPANIES_CSV_CONTENT <
+      config/companies.active.csv` (the **active-only projection**, never the master).
+      `make update-company-list` validates it first
+- [x] Digest secrets created in the `production` environment (`SMTP_USER` + `SMTP_PASSWORD`).
+      `DIGEST_TO` stays optional — unset, the digest mails `SMTP_USER` (`deliver/digest.py`).
+- [ ] Create the healthchecks.io check and add its ping URL as the `HEALTHCHECK_URL` **secret**
+      in the `production` environment (period 1 day, grace ≥ 6h — twice-daily cron plus DST
+      drift). Until set, the step logs "disabled" and skips; the switch is not armed.

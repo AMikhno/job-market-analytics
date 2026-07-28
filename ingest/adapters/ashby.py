@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 import requests
 
@@ -26,7 +27,11 @@ class AshbyAdapter:
         self.url_template = url_template
 
     def fetch(self, session: requests.Session, board_ref: str) -> list[RawPosting]:
-        data = get_json(session, self.url_template.format(board_ref=board_ref))
+        # Ashby board names are display names and may contain spaces
+        # ("Dominion Dynamics"), so the ref is percent-encoded into the path
+        # rather than interpolated raw. `company` below keeps the readable form.
+        url = self.url_template.format(board_ref=quote(board_ref, safe=""))
+        data = get_json(session, url)
         # Strict: a response without "jobs" is schema drift or an error body, not
         # an empty board - raise (per-company warn) instead of landing 0 rows.
         jobs: list[dict[str, Any]] = data["jobs"]
