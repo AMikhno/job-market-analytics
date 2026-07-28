@@ -25,6 +25,32 @@ All shipped (see ADR-0019 and `ARCHITECTURE.md` §9):
 - [x] Dead-man's switch: successful runs ping healthchecks.io (`HEALTHCHECK_URL` secret), so a
       cron GitHub has suspended alerts instead of going silent — ARCHITECTURE §6
 
+## V1.7 — company-list correctness — 🔄 in progress (2026-07-28)
+
+Triggered by auditing the list against the live APIs: of 157 active boards, **101 were
+404ing** and nothing said so. Three ingest bugs and a broken discovery loop.
+
+- [x] Ashby board refs may contain inner spaces (`Dominion Dynamics`) — own pattern +
+      percent-encoding. Was worse than a missed board: `load_companies` validates *before*
+      fetching, so such a row would have hard-failed the whole run
+- [x] Lever EU shard (`api.eu.lever.co`) — adapter falls back on 404 only; region is a
+      property of the board, not the company, so it stays out of the list
+- [x] **Skipped boards are no longer silent** — a 404 left its source `status="ok"`, so the
+      digest reported "all sources healthy" while a company dropped out. Now redacted at
+      write time and surfaced in the CI annotation, step summary and digest footer;
+      `make whois REF=…` resolves one locally
+- [x] `website` column (recovery key, not pipeline input); CI gets an **active-only
+      projection** (`make companies-variable`) — a variable caps at 48 KB
+- [x] Restaging **merges** instead of overwriting — hand-fixed refs survive a refresh
+- [x] Discovery state moved to `config/discovery/`; `make discover` is the entry point
+- [x] Discovery finds boards it used to miss: deeper hop past marketing pages, raw-HTML
+      scan, API-probe fallback. Regression set went 3/10 → 10/10
+- [ ] **Finish the 873-company re-audit and rebuild the master.** The old tool discarded
+      every company whose ATS it couldn't see — 575 of 724 — which is why the list held 141
+      rows instead of ~500. Then push `COMPANIES_CSV_CONTENT`
+- [ ] Decide what to do with companies that resolve on no V1 ATS: inventory row with the
+      real ATS, vs dropped
+
 ## V2 — AI relevance (scoped, ready to build)
 
 **Scope fixed by ADR-0020; implementation contract in `docs/v2-plan.md`** — execute its
