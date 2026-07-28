@@ -14,6 +14,7 @@ import concurrent.futures
 import csv
 import datetime
 import os
+import pathlib
 import re
 import threading
 import time
@@ -34,6 +35,13 @@ HEADERS = {
 OUT_HEADERS = ["Company Name", "Website", "Career Page URL", "Detected ATS",
                "Board Token", "Found Via", "Status"]
 NAV_TIMEOUT = 25000  # ms
+
+# Discovery output lives with the private config, not in Downloads. The audit
+# cache is durable state -- it is the only record of every company's website and
+# detected ATS, and it is what makes a re-run resumable. Only the *input* xlsx
+# of new candidates comes from outside the repo. Gitignored, like the list itself.
+DISCOVERY = pathlib.Path(__file__).resolve().parents[2] / "config" / "discovery"
+DISCOVERY.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------- ATS host map
 # host -> (ATS name, token capture). Order = priority; most specific first.
@@ -593,11 +601,11 @@ def main():
     ap.add_argument("--xlsx", required=True,
                     help="source .xlsx with Company Name / Website columns")
     ap.add_argument("--sheet", default="Company List")
-    ap.add_argument("--out", default="ats_audit_results.csv",
-                    help="full audit CSV (default: cwd)")
-    ap.add_argument("--ingestable", default="companies_ingestable.csv",
-                    help="GH/Lever/Ashby rows in the config/companies.csv schema (default: cwd)")
-    ap.add_argument("--inventory", default="companies_all.csv",
+    ap.add_argument("--out", default=str(DISCOVERY / "ats_audit_results.csv"),
+                    help="full audit CSV -- the durable cache; re-runs resume from it")
+    ap.add_argument("--ingestable", default=str(DISCOVERY / "companies_ingestable.csv"),
+                    help="GH/Lever/Ashby rows in the config/companies.csv schema")
+    ap.add_argument("--inventory", default=str(DISCOVERY / "companies_inventory.csv"),
                     help="all detected-ATS companies (V1 active + inventory) in the same schema")
     ap.add_argument("--concurrency", type=int, default=6)
     ap.add_argument("--checkpoint-every", type=int, default=20)

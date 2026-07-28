@@ -1,4 +1,4 @@
-.PHONY: install ingest validate-companies update-company-list companies-variable deliver dbt-deps ensure-raw dbt-dev dbt-prod dbt-test dbt-docs freshness test lint sql-lint format check
+.PHONY: install ingest validate-companies discover update-company-list companies-variable deliver dbt-deps ensure-raw dbt-dev dbt-prod dbt-test dbt-docs freshness test lint sql-lint format check
 
 install:          ## Set up the uv venv, dbt packages, and pre-commit hooks
 	uv sync --extra dev
@@ -16,8 +16,18 @@ whois:            ## Resolve a redacted CI-log ref to a company (local only). Us
 	@test -n "$(REF)" || { echo "set REF=redacted:xxxxxxxx"; exit 1; }
 	@uv run python -m ingest.whois $(REF)
 
-update-company-list: ## Stage a discovery inventory into config/companies.csv + validate. Usage: make update-company-list INV=/path/to/companies_all.csv
-	@test -n "$(INV)" || { echo "set INV=/path/to/companies_all.csv"; exit 1; }
+discover:         ## Audit new candidates into config/discovery/ (resumes; only the input comes from outside). Usage: make discover XLSX=~/Downloads/new_candidates.xlsx
+	@test -n "$(XLSX)" || { echo "set XLSX=/path/to/candidates.xlsx (Company Name / Website columns)"; exit 1; }
+	uv run --with playwright --with openpyxl --with requests --no-project \
+	  python tools/company_discovery/ats_audit.py --xlsx "$(XLSX)" $(DISCOVER_ARGS)
+	@echo "cache + inventory written to config/discovery/"
+	@echo "stage it with: make update-company-list"
+
+update-company-list: ## Stage config/discovery/companies_inventory.csv into the master + validate + project. Override with INV=/path/to/file.csv
+	$(eval INV ?= config/discovery/companies_inventory.csv)
+	@test -f "$(INV)" || { echo "no inventory at $(INV) — run 'make discover XLSX=…' first"; exit 1; }
+	@test -f config/companies.csv && cp config/companies.csv config/companies.csv.bak \
+	  && echo "previous master backed up to config/companies.csv.bak" || true
 	cp $(INV) config/companies.csv
 	$(MAKE) validate-companies
 	$(MAKE) companies-variable

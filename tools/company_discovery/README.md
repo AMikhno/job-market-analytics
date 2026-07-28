@@ -16,23 +16,43 @@ Anchored to the company's own domain, so no name-collision false positives; rend
 JS-injected boards are visible.
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-playwright install chromium
-
-python ats_audit.py --xlsx "path/to/companies.xlsx" --sheet "Company List"
-# outputs (in cwd; override with --out / --ingestable / --inventory):
-#   ats_audit_results.csv     full audit: careers URL, ATS, board token, found-via, status
-#   companies_ingestable.csv  the GH/Lever/Ashby rows (config/companies.csv schema)
-#   companies_all.csv         every detected-ATS company: V1 active=true + inventory
-#                             active=false (ADR-0013); custom / no-board companies dropped
+# from the repo root — deps are ephemeral, nothing installs into the project env
+make discover XLSX=~/Downloads/new_candidates.xlsx
+playwright install chromium   # once, if the browser is missing
 ```
-Resume-safe: re-running skips companies already in the output CSV. Checkpoints every
-`--checkpoint-every` companies.
+
+**Everything durable lands in `config/discovery/` (gitignored), never in Downloads.**
+Only the *input* xlsx of new candidates comes from outside the repo:
+
+```
+config/discovery/
+  ats_audit_results.csv       the durable cache: every company + website + careers URL +
+                              detected ATS + board token + status. Re-runs resume from it,
+                              so a new candidate list only renders the rows it hasn't seen.
+  companies_ingestable.csv    the GH/Lever/Ashby rows (config/companies.csv schema)
+  companies_inventory.csv     every detected-ATS company: V1 active=true + inventory
+                              active=false (ADR-0013)
+```
+
+Then `make update-company-list` stages the inventory into `config/companies.csv` (backing
+up the previous master) and writes the active-only CI projection.
+
+**How it finds a board**, in order — each step exists because the one before it missed real
+companies:
+1. careers link from the DOM → sitemap → `/careers` path;
+2. network requests + DOM `src`/`href` on that page;
+3. **deeper hop** into board-like links, because a `/careers` landing page is often pure
+   marketing with the board one click further on;
+4. **raw-HTML scan**, because some sites embed the ATS host in a JSON payload rather than
+   any element attribute;
+5. **API probe** of the four V1 endpoints with name/domain-derived tokens, because some
+   companies proxy their board server-side and never name the ATS in the page at all.
 
 **Caveats:** directory/portal rows (e.g. REDACTED, REDACTED) attribute a member
 company's board to themselves — drop them. `Found Via = none` rows are bot-blocked or
 consent-walled and stayed unreachable (an honest Unknown bucket, not silent wrong data).
+The API probe only tries tokens a human would guess, so a miss is never proof a company
+has no board (real refs like `REDACTED` and `REDACTED` are unreachable that way).
 
 ## Stage 2 — analytics categorization  (`categorize.ipynb`)
 **Uses Gemini via Vertex AI — draws Google Cloud credits.** Runs *after* Stage 1. Scores
@@ -46,18 +66,23 @@ no sheet ID / real company data is baked in before committing.
 detected ATS from that tab (`AUDIT_SHEET`) and writes its analytics scores to `Results`.
 
 ## Refreshing the company list (recurring)
-Adding companies is incremental — Stage 1 skips anything already audited, so a refresh
-only renders the new rows:
+Adding companies is incremental — the cache in `config/discovery/` means a refresh only
+renders rows it has never seen:
 
-1. Add companies (name + website) to the `Company List` sheet, re-export the `.xlsx`.
-2. Re-run Stage 1 with the **same** `--out` (resume skips the rest):
-   `python ats_audit.py --xlsx "…/companies.xlsx" --out ats_audit_results.csv`
-3. From the repo root, stage + validate + get the push command:
-   `make update-company-list INV=/path/to/companies_all.csv`
-4. Push it (human-authenticated): `gh variable set COMPANIES_CSV_CONTENT < config/companies.csv`
+1. Put the new candidates (Company Name + Website) in an `.xlsx`.
+2. `make discover XLSX=~/Downloads/new_candidates.xlsx`
+3. `make update-company-list` — backs up the old master, stages the inventory, validates,
+   and writes `config/companies.active.csv`.
+4. Push it (human-authenticated):
+   `gh variable set COMPANIES_CSV_CONTENT < config/companies.active.csv`
 
-`config/companies.csv` is gitignored — the real list never enters the repo; it lives only
-in your working tree and the GitHub Actions variable.
+**The variable gets the active rows only**, not the whole master: the pipeline reads
+nothing else, GitHub caps a variable at 48 KB, and the inventory is the fastest-growing
+part of the list. Columns are identical, so the projection validates like the master and
+doubles as a backup of the active set.
+
+`config/companies.csv` and `config/discovery/` are gitignored — the real list never enters
+the repo; it lives in your working tree and (the active slice of it) the Actions variable.
 
 ## Secrets / privacy
 No secret values in these files. Stage 1 takes the xlsx path as an argument. Stage 2
