@@ -1,7 +1,7 @@
 # Secrets / private config — never commit values
 .env
 config/companies.csv
-config/companies.active.csv
+config/companies.active*.csv
 config/companies.csv.bak
 config/discovery/
 # Personal runbook: the manual half of the system (gh commands, secrets setup).
