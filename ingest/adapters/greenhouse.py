@@ -13,18 +13,19 @@ from typing import Any
 
 import requests
 
-from shared.http import get_json
+from shared.http import FetchPolicy
 from shared.models import RawPosting
 
 
 class GreenhouseAdapter:
     source = "greenhouse"
 
-    def __init__(self, url_template: str) -> None:
+    def __init__(self, url_template: str, policy: FetchPolicy | None = None) -> None:
         self.url_template = url_template
+        self.policy = policy or FetchPolicy()
 
     def fetch(self, session: requests.Session, board_ref: str) -> list[RawPosting]:
-        data = get_json(session, self.url_template.format(board_ref=board_ref))
+        data = self.policy.get_json(session, self.url_template.format(board_ref=board_ref))
         # Strict: a response without "jobs" is schema drift or an error body, not
         # an empty board - raise (per-company warn) instead of landing 0 rows.
         jobs: list[dict[str, Any]] = data["jobs"]

@@ -1,8 +1,8 @@
 import pytest
 
 from ingest.adapters.lever import LeverAdapter
-from ingest.pipeline import ADAPTERS
 from ingest.sources import SOURCES, AshbySource, GreenhouseSource, LeverSource
+from shared.http import HostRateLimiter
 
 
 def test_registry_has_all_adapters() -> None:
@@ -18,11 +18,22 @@ def test_url_templates_take_a_board_ref() -> None:
         assert "{board_ref}" in src.url_template  # single placeholder, adapter-owned
 
 
-def test_pipeline_adapters_are_wired_from_the_registry() -> None:
-    # one adapter per registered source, carrying the registry's template
-    assert set(ADAPTERS) == {s.adapter for s in SOURCES}
+def test_every_source_builds_its_own_adapter() -> None:
+    # the registry owns construction, so a source carries its template, its
+    # adapter and its fetch policy together
     for src in SOURCES:
-        assert ADAPTERS[src.adapter].url_template == src.url_template
+        adapter = src.build()
+        assert adapter.source == src.adapter
+        assert adapter.url_template == src.url_template
+
+
+def test_built_adapters_carry_the_sources_fetch_policy() -> None:
+    limiter = HostRateLimiter(0.5)
+    for src in SOURCES:
+        policy = src.build(limiter).policy
+        assert policy.limiter is limiter  # one limiter shared across every board
+        assert policy.min_interval_s == src.min_interval_s
+        assert policy.timeout == (src.connect_timeout_s, src.read_timeout_s)
 
 
 def test_validate_board_ref_accepts_bare_tokens() -> None:
@@ -67,6 +78,6 @@ def test_lever_source_carries_an_eu_shard_template() -> None:
     src = LeverSource(name="lever")
     assert "api.eu.lever.co" in src.eu_url_template
     assert "{board_ref}" in src.eu_url_template
-    adapter = ADAPTERS["lever"]
+    adapter = src.build()
     assert isinstance(adapter, LeverAdapter)
     assert adapter.eu_url_template == src.eu_url_template  # wired through the registry
