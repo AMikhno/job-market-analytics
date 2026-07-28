@@ -120,17 +120,24 @@ Seven rows remain `active=false`, each with the reason recorded in the master's 
    understand the list before CI gets it (`NOTES.local.md` §3: a list can name sources or refs
    an older deployment cannot parse). Then `gh variable set COMPANIES_CSV_CONTENT <
    config/companies.active.csv` (**167 boards, ~11 KB**) and run Actions → Ingest
-2. **Expect a much longer run.** Renesas alone is ~10 minutes: 871 postings fetched one detail
-   at a time on SmartRecruiters' shared host. A slow run is not a hung one. If that annoys you,
-   deactivating that single row takes the run back to a few minutes
-3. **Value/coverage check against real gold data** — still the highest-value open question, and
-   the V1.8 numbers already point at an answer. Of **336 gold postings from the six new
-   sources**, `title_match` was **0** and only 115 had any desired-tech hit: the new coverage is
-   mostly software/other roles, not analytics. Re-run the count across *all* 167 boards, then
-   decide. **If the funnel is still thin after this much coverage work, V2 should be relevance,
-   not more sources**
-4. Then **V2** (below), or the V1.9 repair above if coverage still looks like the gap
-5. Housekeeping: arm healthchecks (`NOTES.local.md` §4); delete merged remote branches; clear the
+2. **Expect a ~11.5 minute run** (measured, 167 boards). Renesas alone is ~10 of those minutes:
+   871 postings fetched one detail at a time on SmartRecruiters' shared host. A slow run is not
+   a hung one. Deactivating that one row takes it back to a couple of minutes
+3. **Storage: raw is append-only, and it adds up.** Measured **209 MB/run → 418 MB/day → 167 GB**
+   logical steady state at the current 400-day partition expiry (free allowance: 10 GiB).
+   Greenhouse + Ashby are 85% of it; ~39% of all bytes is description text stored twice (once in
+   `raw`, once in `description_html`). Three cheap levers — stop duplicating text, expiry
+   400 → 180 days, `storage_billing_model = 'PHYSICAL'` — take it to roughly 5–10 GB without
+   changing what is fetched. Full analysis and a general proposal: **`docs/research/ingestion-cost.md`**
+4. ~~Value/coverage check against real gold data~~ — **answered 2026-07-28, measured across all
+   167 boards.** 10,170 postings fetched → **1,179 gold → 40 title-matched** (38 of those also
+   hitting a desired tech). All 40 come from Greenhouse/Ashby/Lever; the six sources added in
+   V1.8 contributed **316 gold postings and 0 title matches**. Keep rates invert with board
+   size: BambooHR keeps 77% of what it fetches, Greenhouse 8%, SmartRecruiters 0.9%.
+   **The constraint is relevance, not coverage — go to V2 scoring, not more adapters.**
+5. **V2** (below). The V1.9 list repair is worth doing but is no longer the lever —
+   it would add local boards, and local boards are already the ones that convert
+6. Housekeeping: arm healthchecks (`NOTES.local.md` §4); delete merged remote branches; clear the
    superseded scratch files in `~/Downloads`
 
 ## V2 — AI relevance (scoped, ready to build)
