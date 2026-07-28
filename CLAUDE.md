@@ -119,5 +119,18 @@ must be sanitized before they are committed.
 
 ## Pointers
 
+**Start every session with `TODO.md` § "Next session — start here".** It carries the current
+state, the decisions already made, and what is deliberately *not* being worked on.
+
+- Current state, priorities, open decisions → `TODO.md`
 - System design & roadmap → `ARCHITECTURE.md`
-- Decision records → `docs/decisions/`
+- Decision records (why, not what) → `docs/decisions/` — newest first: 0022 parallel fetch,
+  0021 list+detail (a V1 source must yield a description), 0020 V2 scope
+- Measured evidence & proposals not yet decided → `docs/research/`
+  (`ingestion-cost.md` — cost model + proposal awaiting evaluation;
+  `ats-feeds.md` — per-ATS probe results incl. an "as built" section;
+  `openjobdata.md` — the aggregated-source gate)
+- V2 implementation contract → `docs/v2-plan.md`
+
+Numbers in these docs are **measured, not estimated** — if you supersede one, measure again and
+say when. Don't trust a figure's age.
