@@ -1,13 +1,14 @@
 # Job Search Pipeline
 
 End-to-end **Analytics Engineering** project: typed Python ingestion from every ATS with a
-public keyless feed (Greenhouse, Lever, Ashby) into a **dual-target dbt project** (DuckDB
+public keyless feed (nine today — Greenhouse, Lever, Ashby, BambooHR, Recruitee, Workable,
+Pinpoint, Rippling, SmartRecruiters) into a **dual-target dbt project** (DuckDB
 dev / BigQuery prod) that dedupes, lifecycle-tracks, and rule-filters postings — then emails
 a digest of what's new. LLM relevance scoring (in-warehouse, BigQuery AI) is the scoped V2.
 
 ```mermaid
 flowchart LR
-    A[ATS APIs<br/>Greenhouse · Lever · Ashby] -->|"Python adapters<br/>(typed, tested)"| B[(raw_*_jobs<br/>append-only)]
+    A[ATS APIs<br/>9 public keyless feeds] -->|"Python adapters<br/>(typed, tested, parallel)"| B[(raw_*_jobs<br/>append-only)]
     B --> C[bronze<br/>stg views]
     C --> D[silver<br/>union · dedup · lifecycle<br/>filters + soft signals]
     D --> E[gold<br/>fct_job_postings<br/>live postings only]
@@ -67,7 +68,7 @@ make test && make dbt-test
 ## Structure
 
 ```
-ingest/      per-ATS adapters (Greenhouse, Lever, Ashby), source registry, pipeline entrypoint
+ingest/      per-ATS adapters (nine), source registry, parallel pipeline entrypoint
 shared/      config (Pydantic Settings), models, http, storage (one writer, both warehouses)
 deliver/     email digest of new postings (watermark in ops.digest_runs)
 config/      private company list (gitignored; .example committed)
