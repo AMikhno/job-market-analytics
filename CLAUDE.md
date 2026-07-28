@@ -52,8 +52,10 @@ AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
 - **Discovery output belongs in `config/discovery/`**, never `~/Downloads`: the audit cache is the
   only record of every company's website and detected ATS, and it is what makes a re-run resumable.
   Only the input candidate `.xlsx` comes from outside the repo (`make discover XLSX=…`).
-- **Filter rules are data**: deal-breaker tech, allowed locations, and the soft desired-tech /
-  desired-title signals all live in dbt seeds.
+- **Filter rules are data**: allowed locations, deal-breaker tech, and the desired-tech /
+  desired-title signals all live in dbt seeds. **`allowed_locations` is the only one that
+  removes a posting** — the tech/title seeds (positive and negative alike) rank it
+  (ADR-0015, ADR-0023).
 - **Cross-warehouse SQL**: models must run on both DuckDB (dev) and BigQuery (prod);
   dialect-specific logic goes in an `adapter.dispatch` macro (see `macros/cross_db.sql`).
 - **Conventional commits** (`feat:`, `fix:`, `chore:`, `docs:`); small, single-purpose.

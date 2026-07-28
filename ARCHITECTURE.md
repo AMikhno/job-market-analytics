@@ -20,8 +20,9 @@ no generated prose, just a ranked list of links the user clicks through. Relevan
 needs the LLM, so it is a **V2** capability.
 
 **V1 delivers** the curated dataset itself: every posting from the supported ATS, unified into
-one schema, deduplicated, with hard deal-breakers removed, ordered by recency — a trustworthy,
-queryable `gold` table built entirely from ingestion + SQL.
+one schema, deduplicated, geography-filtered, and annotated with keyword signals (positive and
+negative) that order delivery — a trustworthy, queryable `gold` table built entirely from
+ingestion + SQL.
 
 ---
 
@@ -78,8 +79,9 @@ raw on every run** (`CREATE OR REPLACE`). Consequences worth stating explicitly:
 - **Changing a model or adding a column needs no migration, ever.** The next run materializes
   the new shape over the whole retained history.
 - **Changing filter/signal seeds is retroactive by design.** Tighten `deal_breaker_tech` or
-  expand `desired_tech` and the next run re-filters *all* postings still in raw — expected
-  and desired as the rule set matures with more company data.
+  expand `desired_tech` and the next run re-scores *all* postings still in raw — expected
+  and desired as the rule set matures with more company data. Only `allowed_locations` changes
+  what is *kept*; the tech/title seeds only change ordering (ADR-0015, ADR-0023).
 - The **only stateful objects are the raw and ops tables** (append-only; `ensure_*` uses
   `CREATE IF NOT EXISTS` and will *not* alter an existing table). Rule for changing them:
   additive, nullable columns only, applied with `ALTER TABLE ADD COLUMN` (or the load job's
@@ -112,7 +114,7 @@ entity-encoded `content`.
 Pinpoint, Rippling, SmartRecruiters. Three of them carry the posting's description in the list
 (Recruitee `description` + `requirements`, Workable with `details=true`, Pinpoint across labelled
 blocks) and are single-GET like Ashby. The other three do not, and a V1 source **must** yield a
-description — silver's deal-breaker filter and desired-tech signal both read it — so BambooHR,
+description — silver's deal-breaker and desired-tech signals both read it — so BambooHR,
 SmartRecruiters and Rippling fetch each posting's detail (ADR-0021). Three payload quirks worth
 knowing: Rippling repeats a job once per location (collapsed by uuid in the adapter, or postings
 would collide on `job_key` and keep an arbitrary location), SmartRecruiters is the only paginated

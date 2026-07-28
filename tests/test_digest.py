@@ -37,6 +37,7 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
             """CREATE TABLE IF NOT EXISTS main_gold.fct_job_postings (
                 title VARCHAR, company VARCHAR, location VARCHAR, url VARCHAR,
                 desired_tech_hits BIGINT, title_match BOOLEAN,
+                deal_breaker_hits BIGINT, deal_breaker_terms VARCHAR,
                 first_seen_at TIMESTAMP, posted_or_updated_at TIMESTAMP)"""
         )
         for r in rows:
@@ -44,7 +45,7 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
             # it, while the pipeline's own ISO strings keep their UTC wall-clock.
             first_seen = r["first_seen_at"].replace(tzinfo=None)
             con.execute(
-                "INSERT INTO main_gold.fct_job_postings VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO main_gold.fct_job_postings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     r.get("title", "Analytics Engineer"),
                     r.get("company", "acme"),
@@ -52,6 +53,8 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
                     r.get("url", "https://example/x"),
                     r.get("desired_tech_hits", 0),
                     r.get("title_match", False),
+                    r.get("deal_breaker_hits", 0),
+                    r.get("deal_breaker_terms"),
                     first_seen,
                     first_seen,
                 ],
@@ -302,3 +305,35 @@ def test_ordering_puts_best_signals_first(tmp_path, monkeypatch, stub_smtp) -> N
 
     body = stub_smtp.sent[0].get_body(("plain",)).get_content()
     assert body.index("Best") < body.index("Middling") < body.index("Plain")
+
+
+def test_deal_breaker_postings_are_delivered_last_not_dropped(
+    tmp_path, monkeypatch, stub_smtp
+) -> None:
+    """ADR-0023: a deal-breaker demotes, it does not delete. A posting whose text
+    merely mentions Kafka still ships — below the clean ones, and labelled with
+    which term matched, because V1 cannot tell a nice-to-have from a requirement."""
+    settings = _settings(tmp_path)
+    fresh = NOW - timedelta(hours=1)
+    _seed_gold(
+        settings,
+        [
+            {
+                "title": "Strong but mentions Kafka",
+                "first_seen_at": fresh,
+                "title_match": True,
+                "desired_tech_hits": 6,
+                "deal_breaker_hits": 1,
+                "deal_breaker_terms": "Kafka",
+            },
+            {"title": "Clean and plain", "first_seen_at": fresh},
+        ],
+    )
+    monkeypatch.setattr(digest, "get_settings", lambda: settings)
+
+    digest.run()
+
+    body = stub_smtp.sent[0].get_body(("plain",)).get_content()
+    assert "Strong but mentions Kafka" in body  # delivered, not filtered out
+    assert body.index("Clean and plain") < body.index("Strong but mentions Kafka")
+    assert "mentions Kafka" in body  # named, so it can be judged from the line
