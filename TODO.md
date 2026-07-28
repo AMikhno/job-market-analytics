@@ -51,6 +51,29 @@ Triggered by auditing the list against the live APIs: of 157 active boards, **10
 - [ ] Decide what to do with companies that resolve on no V1 ATS: inventory row with the
       real ATS, vs dropped
 
+## V1.8 — Tier 1 ATS adapters — planned (separate branch)
+
+**Survey + evidence: `docs/research/ats-feeds.md`; re-probe with
+`tools/company_discovery/ats_feed_probe.py` before starting.** Seven ATS meet ADR-0013's
+public-keyless bar *today* and are single-GET/JSON — the Ashby pattern, not the heavier
+POST/pagination contract. ~48 currently-inactive companies. Do after the company-list
+re-audit lands, since it will shift the per-ATS counts.
+
+- [ ] **BambooHR** — `{ref}.bamboohr.com/careers/list` → `{meta, result[]}`. 31 companies,
+      the best payoff-to-effort work in the project. No per-id detail call needed
+- [ ] **Workable** (`apply.workable.com/api/v1/widget/accounts/{ref}?details=true` — the v1
+      widget; the documented v3 path 404s) + **Recruitee** (`{ref}.recruitee.com/api/offers/`)
+- [ ] **BreezyHR**, **Pinpoint**, **SmartRecruiters** (only one needing `limit`/`offset`
+      pagination), **Rippling** — nearly identical, do together
+- [ ] Each: sanitized committed fixture + adapter tests + `active=true` flip for its rows.
+      The real cost is the `RawPosting` field mapping, not the HTTP call
+- [ ] Verify a **second** ref per platform first — one company's board can be misconfigured
+      in ways that look platform-wide
+
+Deferred, unchanged: **Workday** (endpoint live — 422 not 404 — but needs tenant/wdN/site
+captured for all 28 rows before any code). Not keyless, stays inventory: SuccessFactors (401),
+Teamtailor (API key), iCIMS, JazzHR, Dayforce, ADP, Phenom, Indeed.
+
 ## V2 — AI relevance (scoped, ready to build)
 
 **Scope fixed by ADR-0020; implementation contract in `docs/v2-plan.md`** — execute its
