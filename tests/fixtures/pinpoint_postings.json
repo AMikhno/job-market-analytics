@@ -1,0 +1,59 @@
+{
+  "data": [
+    {
+      "id": "347631",
+      "title": "Analytics Engineer",
+      "url": "https://example.pinpointhq.com/en/postings/14d82933-fa60-49a1-b76e-5fefa81baac2",
+      "path": "/en/postings/14d82933-fa60-49a1-b76e-5fefa81baac2",
+      "description": "<div>Build dbt models &amp; dashboards.</div>",
+      "key_responsibilities_header": "Key responsibilities",
+      "key_responsibilities": "<ul><li>Model data in dbt</li></ul>",
+      "skills_knowledge_expertise_header": "Skills, knowledge and expertise",
+      "skills_knowledge_expertise": "<ul><li>SQL</li><li>Python</li></ul>",
+      "benefits_header": "Benefits",
+      "benefits": "<div>Flexible hours.</div>",
+      "employment_type": "full_time",
+      "employment_type_text": "Full Time",
+      "workplace_type": "hybrid",
+      "workplace_type_text": "Hybrid",
+      "department": { "id": "50507", "name": "Technical Capability" },
+      "division": null,
+      "location": {
+        "id": "44928",
+        "city": "Ottawa",
+        "name": "CAN - Ottawa",
+        "postal_code": "K1P 1J1",
+        "province": "Ontario",
+        "street_address": "1 Example Street"
+      },
+      "compensation_visible": false,
+      "compensation_minimum": null,
+      "compensation_maximum": null,
+      "compensation_currency": null,
+      "compensation_frequency": null,
+      "deadline_at": null,
+      "requisition_id": "0097",
+      "reporting_to": null,
+      "job": { "id": "361663", "requisition_id": "0097", "department": { "id": "50507", "name": "Technical Capability" } }
+    },
+    {
+      "id": "347632",
+      "title": "Site Reliability Engineer",
+      "url": "https://example.pinpointhq.com/en/postings/262ab15a-b234-480d-8a8e-75fa093744a5",
+      "description": "<div>Keep it up.</div>",
+      "key_responsibilities_header": null,
+      "key_responsibilities": null,
+      "skills_knowledge_expertise_header": null,
+      "skills_knowledge_expertise": null,
+      "benefits_header": null,
+      "benefits": null,
+      "employment_type": "part_time",
+      "employment_type_text": "Part Time",
+      "workplace_type": "remote",
+      "workplace_type_text": "Remote",
+      "department": null,
+      "location": { "id": "44930", "city": null, "name": "CAN - Remote", "province": null },
+      "deadline_at": "2026-07-31T23:59:59+01:00"
+    }
+  ]
+}
