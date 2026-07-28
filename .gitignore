@@ -2,6 +2,8 @@
 .env
 config/companies.csv
 config/companies.active.csv
+config/companies.csv.bak
+config/discovery/
 config/profile.yaml
 *.key
 *.pem
