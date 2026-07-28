@@ -31,13 +31,18 @@ log = logging.getLogger("deliver")
 
 
 def fetch_new_postings(settings: Settings, watermark: str) -> list[dict[str, object]]:
-    """Gold postings first seen after the watermark, best signals first."""
+    """Gold postings first seen after the watermark, best signals first.
+
+    Deal-breakers sort last rather than being absent (ADR-0023): a posting whose
+    text merely mentions Kafka is still worth seeing below the clean ones, and V1
+    cannot tell a nice-to-have from a requirement.
+    """
     sql = f"""
         select title, company, location, url, desired_tech_hits, title_match,
-               first_seen_at
+               deal_breaker_hits, deal_breaker_terms, first_seen_at
         from {storage.gold_table(settings)}
         where first_seen_at > cast(? as timestamp)
-        order by title_match desc, desired_tech_hits desc,
+        order by deal_breaker_hits asc, title_match desc, desired_tech_hits desc,
                  posted_or_updated_at desc nulls last
     """
     return storage.query_rows(sql, params=[watermark], settings=settings)
@@ -115,6 +120,11 @@ def build_email(
         signals = f"tech hits: {r['desired_tech_hits']}"
         if r["title_match"]:
             signals += ", title match"
+        # Named, not just counted: "Kafka" as a nice-to-have reads very
+        # differently from a posting built on Spark + Flink, and only you can
+        # tell which from the line.
+        if r.get("deal_breaker_terms"):
+            signals += f", mentions {r['deal_breaker_terms']}"
         text_lines.append(f"- {title} @ {company} ({location}) [{signals}]\n  {url}")
         html_items.append(
             f'<li><a href="{html.escape(url, quote=True)}">{html.escape(title)}</a>'
