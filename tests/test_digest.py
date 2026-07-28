@@ -220,6 +220,45 @@ def test_footer_singular_source(tmp_path) -> None:
     assert digest._footer(one) == "All 1 source healthy (3 boards checked)."
 
 
+def test_footer_reports_skipped_boards_even_when_healthy() -> None:
+    """A skipped board leaves its source "ok", so it used to be invisible: the
+    footer said "all sources healthy" while a company dropped out of the list."""
+    summary = RunSummary(
+        sources=[
+            SourceSummary(
+                source="ashby",
+                rows=40,
+                status="ok",
+                company_count=7,
+                skipped_refs=["redacted:ad589ceb"],
+            )
+        ]
+    )
+
+    footer = digest._footer(summary)
+
+    assert "All 1 source healthy" in footer  # headline still reported
+    assert "1 board(s) skipped" in footer
+    assert "redacted:ad589ceb" in footer
+    assert "make whois" in footer
+
+
+def test_footer_skipped_refs_are_never_raw() -> None:
+    """The footer text also reaches the run summary and the public step output,
+    so it must carry digests only -- never a board_ref."""
+    summary = RunSummary(
+        sources=[SourceSummary(source="ashby", rows=1, status="ok", skipped_refs=["redacted:ff01"])]
+    )
+    assert "dominion" not in digest._footer(summary).lower()
+
+
+def test_footer_omits_the_skipped_clause_when_there_are_none() -> None:
+    clean = RunSummary(
+        sources=[SourceSummary(source="lever", rows=9, status="ok", company_count=2)]
+    )
+    assert "skipped" not in digest._footer(clean)
+
+
 def test_healthy_digest_states_health_explicitly(tmp_path, monkeypatch, stub_smtp) -> None:
     """A clean run must say so, not fall silent."""
     settings = _settings(tmp_path)

@@ -61,6 +61,17 @@ jobs:
             echo "::warning::Low/zero volume from: $warns"
             echo ":warning: Low/zero volume from: $warns" >> "$GITHUB_STEP_SUMMARY"
           fi
+          # Boards that failed while their source stayed "ok" (company moved ATS,
+          # board taken down). These leave the run green, so without this they
+          # are invisible until the posting stream thins out. Refs are already
+          # redacted in the summary -- safe for this public log; `make whois`
+          # resolves one locally against the private list.
+          skipped=$(jq -r '[.sources[].skipped_refs[]] | join(", ")' ingest_summary.json)
+          if [ -n "$skipped" ]; then
+            echo "::warning::Skipped boards (redacted): $skipped"
+            echo ":warning: Skipped boards (redacted, use \`make whois REF=…\`): $skipped" \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Fail fast on BigQuery dialect errors (compile, no mutations)
         env:
