@@ -117,18 +117,37 @@ These APIs have no cross-company or location search — you query one company's 
 time by its board reference, and filter location/title yourself (which is what silver does). The
 curated company list is **private config** in `config/companies.csv` (gitignored; committed only
 as `config/companies.example.csv`), read by the **Python ingest** — it is *not* a dbt seed (see
-ADR-0011). Columns: `company_name, source, board_ref, active, tier, notes`. `board_ref` is the
-ATS-specific path fragment the adapter interprets — a bare token for Greenhouse/Lever/Ashby
-(`boards.greenhouse.io/<board_ref>`, `jobs.lever.co/<board_ref>`, `jobs.ashbyhq.com/<board_ref>`),
-but multi-segment for boards that need it (e.g. Workday's tenant/instance/site); see ADR-0012.
-Each active `board_ref` is format-checked against its source's rule at load time (a pasted URL or
-stray slash fails loudly before any fetch). Companies on ATS without an adapter yet (Workday,
-BambooHR, iCIMS, …) are kept as `active=false` so the inventory stays complete.
+ADR-0011). Columns: `company_name, source, board_ref, active, tier, website, notes`. `board_ref` is
+the ATS-specific path fragment the adapter interprets — a bare token for Greenhouse/Lever
+(`boards.greenhouse.io/<board_ref>`, `jobs.lever.co/<board_ref>`), but multi-segment for boards
+that need it (e.g. Workday's tenant/instance/site); see ADR-0012. **Ashby is the exception**: its
+board names are display names and may contain single inner spaces
+(`jobs.ashbyhq.com/Dominion%20Dynamics`), so it owns a looser rule and its adapter percent-encodes
+the ref. Each active `board_ref` is format-checked against its source's rule at load time (a pasted
+URL or stray slash fails loudly before any fetch) — note this happens *before* fetching, so a
+malformed ref fails the whole run rather than skipping one board. Companies on ATS without an
+adapter yet (Workday, BambooHR, iCIMS, …) are kept as `active=false` so the inventory stays
+complete. `website` is not read by the pipeline: it is the **recovery key** that lets discovery
+re-derive a `board_ref` after a company moves ATS.
 
-Discovery is **manual, not automated** (there's no reliable discovery API): a Jupyter notebook
-(`tools/company_discovery/`, ADR-0018) detects each company's ATS and writes a short description,
-run by hand ~monthly on new companies. Its output populates the private list; it also classifies
-each company as openjobdata-covered vs needing custom collection (ADR-0017).
+**The master list and the CI projection are different artifacts.** `config/companies.csv` holds
+everything — active boards, inventory, websites, notes. The pipeline reads only `active=true` rows,
+so `make companies-variable` writes `config/companies.active.csv` (identical columns, active rows
+only) and *that* is what goes into the `COMPANIES_CSV_CONTENT` variable: GitHub caps a variable at
+48 KB, and the inventory is the fastest-growing part of the list. Restaging a discovery run
+**merges** rather than overwrites (`ingest/merge_companies.py`) — the master wins on every field,
+blanks are filled, and an ATS move is reported as a conflict for a human rather than silently
+applied, so a hand-corrected ref like `REDACTED` survives every refresh.
+
+Discovery is **manual, not automated** (there's no reliable discovery API): `make discover
+XLSX=…` renders each company's own site and reads the ATS it actually calls
+(`tools/company_discovery/ats_audit.py`, ADR-0018), run by hand on new candidates. Detecting a
+board takes five escalating steps — careers link, network/DOM sweep, a **deeper hop** past
+marketing landing pages, a **raw-HTML scan** for boards embedded in a JSON payload, and finally an
+**API probe** of the V1 endpoints — because each rung was added after the one before it silently
+discarded real companies. Everything durable (the resumable audit cache, the emitted inventory)
+lands in `config/discovery/`, gitignored beside the list; only the input candidate file comes from
+outside the repo. A Colab notebook then classifies each company for analytics relevance (ADR-0017).
 
 ### Keys and dedup
 

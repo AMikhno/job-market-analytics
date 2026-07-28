@@ -29,12 +29,28 @@ AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
   boundaries (the one entry point — API JSON — is parsed into a `RawPosting` in the adapter).
 - **One adapter per access method, one scraper per genuinely unique site.**
 - **Source definitions** live in `ingest/sources.py` (Pydantic registry), NOT YAML.
-- **The company list is private config** (gitignored locally): real list in `config/companies.csv`,
-  committed only as `config/companies.example.csv`. It targets public job boards, so in CI it is a
-  GitHub Actions **variable** (`COMPANIES_CSV_CONTENT`), *not* a secret — only credentials (BigQuery,
-  SMTP) are secrets. One row per company per board; put companies on unsupported ATS in with
-  `active=false`. Never commit the real list. Run `make validate-companies` before pasting a list
-  into the variable — it format-checks every `board_ref` so a bad row fails locally, not mid-run.
+- **The company list is private config** (gitignored locally): the master is
+  `config/companies.csv`, committed only as `config/companies.example.csv`. It targets public job
+  boards, so in CI it is a GitHub Actions **variable** (`COMPANIES_CSV_CONTENT`), *not* a secret —
+  only credentials (BigQuery, SMTP) are secrets. One row per company per board; put companies on
+  unsupported ATS in with `active=false`. Never commit the real list.
+  - **The master and the CI projection are different files.** The pipeline reads only
+    `active=true`, so `make companies-variable` writes `config/companies.active.csv` (same columns,
+    active rows only) and *that* goes into the variable — a variable caps at 48 KB and the
+    inventory grows fastest. Never paste the master in.
+  - **`website` is a column** and is not pipeline input: it is the recovery key that lets discovery
+    re-derive a `board_ref` after a company moves ATS. Don't drop it to save space.
+  - **Restaging merges, never overwrites** (`make update-company-list` → `ingest/merge_companies.py`):
+    the master wins on every field, blanks get filled, and an ATS move is reported as a conflict
+    for a human. Hand-corrected refs (`REDACTED`, not `harness`) must survive a refresh.
+  - Run `make validate-companies` before pushing the variable — it format-checks every `board_ref`
+    so a bad row fails locally, not mid-run. Note it validates **before** any fetch, so a malformed
+    ref fails the *entire* run; a merely wrong-but-well-formed ref 404s and skips one board.
+  - **Ashby refs may contain single inner spaces** (`REDACTED`) — its board names are
+    display names. Greenhouse/Lever stay strict bare tokens.
+- **Discovery output belongs in `config/discovery/`**, never `~/Downloads`: the audit cache is the
+  only record of every company's website and detected ATS, and it is what makes a re-run resumable.
+  Only the input candidate `.xlsx` comes from outside the repo (`make discover XLSX=…`).
 - **Filter rules are data**: deal-breaker tech, allowed locations, and the soft desired-tech /
   desired-title signals all live in dbt seeds.
 - **Cross-warehouse SQL**: models must run on both DuckDB (dev) and BigQuery (prod);
@@ -98,7 +114,7 @@ must be sanitized before they are committed.
 
 ## Commands
 
-`make install · ingest · validate-companies · deliver · dbt-dev · dbt-prod · dbt-test · freshness · test · lint · format · check`
+`make install · ingest · validate-companies · discover · update-company-list · companies-variable · deliver · dbt-dev · dbt-prod · dbt-test · freshness · test · lint · format · check · whois`
 
 ## Pointers
 

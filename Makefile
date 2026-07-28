@@ -23,12 +23,12 @@ discover:         ## Audit new candidates into config/discovery/ (resumes; only 
 	@echo "cache + inventory written to config/discovery/"
 	@echo "stage it with: make update-company-list"
 
-update-company-list: ## Stage config/discovery/companies_inventory.csv into the master + validate + project. Override with INV=/path/to/file.csv
+update-company-list: ## Merge config/discovery/companies_inventory.csv into the master + validate + project. Override with INV=/path/to/file.csv
 	$(eval INV ?= config/discovery/companies_inventory.csv)
 	@test -f "$(INV)" || { echo "no inventory at $(INV) — run 'make discover XLSX=…' first"; exit 1; }
 	@test -f config/companies.csv && cp config/companies.csv config/companies.csv.bak \
 	  && echo "previous master backed up to config/companies.csv.bak" || true
-	cp $(INV) config/companies.csv
+	uv run python -m ingest.merge_companies config/companies.csv $(INV)
 	$(MAKE) validate-companies
 	$(MAKE) companies-variable
 
