@@ -1,0 +1,27 @@
+{
+  "meta": { "totalCount": 2 },
+  "result": [
+    {
+      "id": "82",
+      "jobOpeningName": "Analytics Engineer",
+      "departmentId": "18708",
+      "departmentLabel": "Data",
+      "employmentStatusLabel": "Full-Time",
+      "location": { "city": null, "state": null },
+      "atsLocation": { "country": "Canada", "state": null, "province": "Ontario", "city": "Ottawa" },
+      "isRemote": true,
+      "locationType": "1"
+    },
+    {
+      "id": "83",
+      "jobOpeningName": "Frontend Software Engineer",
+      "departmentId": "18583",
+      "departmentLabel": "Product",
+      "employmentStatusLabel": "Full-Time",
+      "location": { "city": null, "state": null },
+      "atsLocation": { "country": "Canada", "state": null, "province": null, "city": null },
+      "isRemote": null,
+      "locationType": "1"
+    }
+  ]
+}

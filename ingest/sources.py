@@ -23,6 +23,7 @@ from typing import Annotated, ClassVar, Literal
 from pydantic import BaseModel, Field
 
 from ingest.adapters.ashby import AshbyAdapter
+from ingest.adapters.bamboohr import BambooHRAdapter
 from ingest.adapters.base import SourceAdapter
 from ingest.adapters.greenhouse import GreenhouseAdapter
 from ingest.adapters.lever import LeverAdapter
@@ -114,10 +115,25 @@ class AshbySource(SourceBase):
         return AshbyAdapter(self.url_template, self.policy(limiter))
 
 
-Source = Annotated[GreenhouseSource | LeverSource | AshbySource, Field(discriminator="adapter")]
+class BambooHRSource(SourceBase):
+    adapter: Literal["bamboohr"] = "bamboohr"
+    url_template: str = "https://{board_ref}.bamboohr.com/careers/list"
+    # The list has no description, URL or date, so every posting costs a second
+    # GET (ADR-0021). Both calls hit this company's own subdomain.
+    detail_url_template: str = "https://{board_ref}.bamboohr.com/careers/{job_id}/detail"
+
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        return BambooHRAdapter(self.url_template, self.detail_url_template, self.policy(limiter))
+
+
+Source = Annotated[
+    GreenhouseSource | LeverSource | AshbySource | BambooHRSource,
+    Field(discriminator="adapter"),
+]
 
 SOURCES: list[Source] = [
     GreenhouseSource(name="greenhouse"),
     LeverSource(name="lever"),
     AshbySource(name="ashby"),
+    BambooHRSource(name="bamboohr"),
 ]
