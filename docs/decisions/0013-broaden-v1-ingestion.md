@@ -1,6 +1,8 @@
 # 0013 — V1 ingestion broadens beyond Greenhouse + Lever
 
-**Status:** accepted (supersedes the scope limit in ADR-0005)
+**Status:** accepted (supersedes the scope limit in ADR-0005); the per-ATS feasibility notes
+below are **superseded in part by the 2026-07-28 survey** at the end of this file —
+`docs/research/ats-feeds.md` has the evidence.
 
 ADR-0005 restricted V1 to Greenhouse and Lever because both expose public, keyless JSON
 APIs and V1 needs no credentials. That reasoning constrains the *mechanism*, not the
@@ -13,9 +15,14 @@ is public and keyless and returns a single `{"jobs": [...]}` response with no pa
 its adapter mirrors Greenhouse/Lever exactly (one GET, map each item). Unlike Greenhouse,
 Ashby's `descriptionHtml` is already real HTML, so it is passed through, not unescaped.
 
-**Tentative V2, in feasibility order (from live API research).** V1.5 broadened ingestion to
-Ashby and is complete; the remaining adapters below are deferred to V2 (tentative) rather than
-built now — they are heavier and, for Workday, cannot be schema-verified without live POST calls:
+**Tentative V2, in feasibility order (from live API research).**
+> ⚠️ **Two of the three claims in this block were wrong** — kept as written because an ADR is a
+> record of what was decided and why, not a wiki page. Read the 2026-07-28 update below before
+> acting on any of it.
+
+V1.5 broadened ingestion to Ashby and is complete; the remaining adapters below are deferred to
+V2 (tentative) rather than built now — they are heavier and, for Workday, cannot be
+schema-verified without live POST calls:
 
 - **BambooHR** — public `{company}.bamboohr.com/careers/list` plus a per-id
   `/careers/{id}/detail`. Two-step and undocumented; the internal shape shifts between
