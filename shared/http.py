@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import threading
 import time
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -99,6 +100,30 @@ class HostRateLimiter:
         delay = slot - now
         if delay > 0:
             time.sleep(delay)
+
+
+@dataclass(frozen=True)
+class FetchPolicy:
+    """How one source talks to its API: timeouts, politeness, shared limiter.
+
+    Held by the adapter (built from the source registry) so every call site
+    inside an adapter is just `policy.get_json(session, url)` — a platform that
+    needs a longer read budget or a gentler interval says so once, in
+    ingest/sources.py, rather than at each of its request sites.
+    """
+
+    timeout: tuple[float, float] = DEFAULT_TIMEOUT
+    min_interval_s: float = 0.5
+    limiter: HostRateLimiter | None = None
+
+    def get_json(self, session: requests.Session, url: str) -> Any:
+        return get_json(
+            session,
+            url,
+            min_interval_s=self.min_interval_s,
+            limiter=self.limiter,
+            timeout=self.timeout,
+        )
 
 
 def get_json(
