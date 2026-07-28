@@ -11,8 +11,11 @@ public turned out to be authenticated or removed, which is exactly why this is m
 
 Reproduce with `tools/company_discovery/ats_feed_probe.py` (reads refs from the private list).
 
-Counts are companies in the 141-row master as of this date; the 873-company re-audit will shift
-them, probably upward for Tier 1, since small companies favour BambooHR and Workable.
+**Counts updated 2026-07-28 after the 873-company re-audit.** They are companies sitting
+`active=false` in the rebuilt 285-row master — i.e. the companies each adapter would unlock.
+The master now runs **123 active boards** (Greenhouse 57, Ashby 56, Lever 10), all verified
+resolving. The prediction that Tier 1 would grow held: BambooHR went 31 → 33 and Recruitee
+5 → 6, though the biggest mover was Teamtailor (1 → 6), which is Tier 3.
 
 ---
 
@@ -23,16 +26,17 @@ fixture and tests — the `ingest/adapters/ashby.py` pattern verbatim, no new ac
 
 | ATS | Endpoint | Probe result | Companies |
 |---|---|---|---:|
-| **BambooHR** | `https://{ref}.bamboohr.com/careers/list` | 200, `{meta, result[]}` — solace 26, REDACTED 4, REDACTED 2, REDACTED 1 | **31** |
+| **BambooHR** | `https://{ref}.bamboohr.com/careers/list` | 200, `{meta, result[]}` — solace 26, REDACTED 4, REDACTED 2, REDACTED 1 | **33** |
+| **Recruitee** | `https://{ref}.recruitee.com/api/offers/` | 200, 167 offers (REDACTED) | **6** |
 | **Workable** | `https://apply.workable.com/api/v1/widget/accounts/{ref}?details=true` | 200 JSON (REDACTED-inc) | **5** |
-| **Recruitee** | `https://{ref}.recruitee.com/api/offers/` | 200, 167 offers (REDACTED) | **5** |
+| **Rippling** | `https://api.rippling.com/platform/api/ats/v1/board/{ref}/jobs` | 200, 28 jobs (REDACTED) | 3 |
 | **BreezyHR** | `https://{ref}.breezy.hr/json` | 200 JSON (REDACTED) | 2 |
 | **Pinpoint** | `https://{ref}.pinpointhq.com/postings.json` | 200, 37 postings (bmt) | 2 |
 | **SmartRecruiters** | `https://api.smartrecruiters.com/v1/companies/{ref}/postings?limit=100` | 200, 100 (capped — paginated) | 2 |
-| **Rippling** | `https://api.rippling.com/platform/api/ats/v1/board/{ref}/jobs` | 200, 28 jobs (REDACTED) | 1 |
 
-**~48 companies** unlockable. BambooHR alone is 31 — the highest payoff-to-effort work available
-in the project. SmartRecruiters is the only one needing pagination (`limit`/`offset`).
+**53 companies** unlockable — a **43% increase** on the 123 boards now running. BambooHR alone
+is 33, still the highest payoff-to-effort work in the project. SmartRecruiters is the only one
+needing pagination (`limit`/`offset`).
 
 Note Workable's **v1 widget** endpoint is the working one; the `api/v3/accounts/{ref}/jobs` path
 that appears in newer docs returned 404 for every ref tried.
@@ -44,30 +48,31 @@ per-adapter cost is the `RawPosting` mapping and its fixture, not the HTTP call.
 
 | ATS | Finding | Companies |
 |---|---|---:|
-| **Workday** | `POST /wday/cxs/{tenant}/{site}/jobs` returned **422, not 404** — the endpoint is live and keyless, but needs a POST body, offset pagination, **and** a multi-segment ref (tenant / wd-number / site). The list stores tenant only (`REDACTED`, `REDACTED`), so every row needs its site captured before any code runs. This is the case ADR-0012's `board_ref` design was written for. | **28** |
-| **Eightfold** | 403 on `api/apply/v2/jobs` for both refs. Possibly fixable with correct domain param/headers; unproven. | 2 |
-| **Jobvite, Oracle HCM, Paylocity** | **Untested — no usable `board_ref` stored** (blank refs). Cannot be judged until discovery captures one. | 9 |
+| **Workday** | `POST /wday/cxs/{tenant}/{site}/jobs` returned **422, not 404** — the endpoint is live and keyless, but needs a POST body, offset pagination, **and** a multi-segment ref (tenant / wd-number / site). The list stores tenant only (`REDACTED`, `REDACTED`), so every row needs its site captured before any code runs. This is the case ADR-0012's `board_ref` design was written for. | **30** |
+| **Eightfold** | 403 on `api/apply/v2/jobs` for both refs. Possibly fixable with correct domain param/headers; unproven. | 3 |
+| **Jobvite, Oracle HCM, Paylocity** | **Untested — no usable `board_ref` stored** (blank refs). Cannot be judged until discovery captures one. | 11 |
 
 ## Tier 3 — not viable for V1 (stays inventory-only)
 
 | ATS | Finding | Companies |
 |---|---|---:|
 | **Dayforce** | 404 on the candidate-portal API; the v2 path redirect-loops. Per-tenant portal, no public feed. | 10 |
-| **Indeed** | Aggregator, ToS-restricted. Already parked (ADR-0013). | 9 |
+| **Indeed** | Aggregator, ToS-restricted. Already parked (ADR-0013). | 10 |
+| **Phenom** | 404; endpoint is per-tenant and inconsistent. | 9 |
 | **ADP** | 500 from the public staffing endpoint. | 6 |
-| **Phenom** | 404; endpoint is per-tenant and inconsistent. | 4 |
-| **iCIMS** | HTML only, no keyless API — confirms ADR-0013's existing verdict. | 3 |
-| **JazzHR** | No JSON or RSS feed found (`/apply/jobs.json` 404, `/rss` returns HTML). API needs a key. | 3 |
-| **SuccessFactors** | **401** — OData requires auth. Definitively not keyless. | 2 |
-| **Teamtailor** | `jobs.json` 404; the public API requires a per-company `X-Api-Key`. | 1 |
+| **iCIMS** | HTML only, no keyless API — confirms ADR-0013's existing verdict. | 6 |
+| **Teamtailor** | `jobs.json` 404; the public API requires a per-company `X-Api-Key`. | 6 |
+| **JazzHR** | No JSON or RSS feed found (`/apply/jobs.json` 404, `/rss` returns HTML). API needs a key. | 5 |
+| **SuccessFactors** | **401** — OData requires auth. Definitively not keyless. | 5 |
+| **UKG** | 404 on the opportunities endpoint. | 5 |
 
 ---
 
 ## Suggested order
 
-1. **BambooHR** — 31 companies, one small adapter.
-2. **Workable + Recruitee** — 10 more, same pattern.
-3. **BreezyHR, Pinpoint, SmartRecruiters, Rippling** — 7 more; do them together, they are nearly
+1. **BambooHR** — 33 companies, one small adapter.
+2. **Recruitee + Workable** — 11 more, same pattern.
+3. **Rippling, BreezyHR, Pinpoint, SmartRecruiters** — 9 more; do them together, they are nearly
    identical.
 4. **Workday** — decide separately. It needs a ref-schema pass across 28 rows *before* any code,
    and it is a new adapter class rather than a copy of an existing one.

@@ -37,7 +37,7 @@ flowchart LR
   Identity Federation (keyless); GH Actions SHA-pinned (`id-token: write` hygiene);
   gitleaks in CI; the company list and candidate profile are private config, never
   committed.
-- **Tests gate every commit.** 53 pytest tests (95%+ coverage, enforced), 50 dbt
+- **Tests gate every commit.** 110 pytest tests (95%+ coverage, enforced), 40 dbt
   schema/unit tests, mypy `--strict`, sqlfluff, plus a CI parse of the prod target — a
   fork-safe pipeline with no secrets in CI.
 - **Every non-obvious choice has an ADR** — 20 so far, in `docs/decisions/`.

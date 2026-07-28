@@ -25,7 +25,7 @@ All shipped (see ADR-0019 and `ARCHITECTURE.md` §9):
 - [x] Dead-man's switch: successful runs ping healthchecks.io (`HEALTHCHECK_URL` secret), so a
       cron GitHub has suspended alerts instead of going silent — ARCHITECTURE §6
 
-## V1.7 — company-list correctness — 🔄 in progress (2026-07-28)
+## V1.7 — company-list correctness — ✅ COMPLETE (2026-07-28, PR #12)
 
 Triggered by auditing the list against the live APIs: of 157 active boards, **101 were
 404ing** and nothing said so. Three ingest bugs and a broken discovery loop.
@@ -45,34 +45,52 @@ Triggered by auditing the list against the live APIs: of 157 active boards, **10
 - [x] Discovery state moved to `config/discovery/`; `make discover` is the entry point
 - [x] Discovery finds boards it used to miss: deeper hop past marketing pages, raw-HTML
       scan, API-probe fallback. Regression set went 3/10 → 10/10
-- [ ] **Finish the 873-company re-audit and rebuild the master.** The old tool discarded
-      every company whose ATS it couldn't see — 575 of 724 — which is why the list held 141
-      rows instead of ~500. Then push `COMPANIES_CSV_CONTENT`
-- [ ] Decide what to do with companies that resolve on no V1 ATS: inventory row with the
-      real ATS, vs dropped
+- [x] **873-company re-audit + master rebuilt.** The old tool discarded every company whose
+      ATS it couldn't see (575 of 724), which is why the list held 141 rows. Result: **285
+      rows, 123 active boards, all verified resolving, 8,885 postings visible** (was 13
+      active / ~500). Variable pushed; merged to main as PR #12
+- [x] Companies on a non-V1 ATS stay as `active=false` inventory rows with their real ATS
 
 ## V1.8 — Tier 1 ATS adapters — planned (separate branch)
 
 **Survey + evidence: `docs/research/ats-feeds.md`; re-probe with
 `tools/company_discovery/ats_feed_probe.py` before starting.** Seven ATS meet ADR-0013's
 public-keyless bar *today* and are single-GET/JSON — the Ashby pattern, not the heavier
-POST/pagination contract. ~48 currently-inactive companies. Do after the company-list
-re-audit lands, since it will shift the per-ATS counts.
+POST/pagination contract. Counts below are post-re-audit: **53 inactive companies**, a 43%
+increase on the 123 boards now running.
 
-- [ ] **BambooHR** — `{ref}.bamboohr.com/careers/list` → `{meta, result[]}`. 31 companies,
+- [ ] **BambooHR** — `{ref}.bamboohr.com/careers/list` → `{meta, result[]}`. **33 companies**,
       the best payoff-to-effort work in the project. No per-id detail call needed
-- [ ] **Workable** (`apply.workable.com/api/v1/widget/accounts/{ref}?details=true` — the v1
-      widget; the documented v3 path 404s) + **Recruitee** (`{ref}.recruitee.com/api/offers/`)
-- [ ] **BreezyHR**, **Pinpoint**, **SmartRecruiters** (only one needing `limit`/`offset`
-      pagination), **Rippling** — nearly identical, do together
+- [ ] **Recruitee** (`{ref}.recruitee.com/api/offers/`, 6) + **Workable**
+      (`apply.workable.com/api/v1/widget/accounts/{ref}?details=true` — the v1 widget; the
+      documented v3 path 404s, 5)
+- [ ] **Rippling** (3), **BreezyHR** (2), **Pinpoint** (2), **SmartRecruiters** (2 — the only
+      one needing `limit`/`offset` pagination) — nearly identical, do together
 - [ ] Each: sanitized committed fixture + adapter tests + `active=true` flip for its rows.
       The real cost is the `RawPosting` field mapping, not the HTTP call
 - [ ] Verify a **second** ref per platform first — one company's board can be misconfigured
       in ways that look platform-wide
 
 Deferred, unchanged: **Workday** (endpoint live — 422 not 404 — but needs tenant/wdN/site
-captured for all 28 rows before any code). Not keyless, stays inventory: SuccessFactors (401),
-Teamtailor (API key), iCIMS, JazzHR, Dayforce, ADP, Phenom, Indeed.
+captured for all **30** rows before any code). Not keyless, stays inventory: SuccessFactors
+(401), Teamtailor (API key, now 6 companies), iCIMS, JazzHR, UKG, Dayforce, ADP, Phenom, Indeed.
+
+## Next session — start here
+
+1. **Check the first prod run with 123 boards** (Actions → Ingest). First time in prod for the
+   Ashby percent-encoding, the Lever EU fallback, and the healthchecks step. Expect a much
+   larger ingest; watch for a `Skipped boards (redacted:…)` annotation and resolve any with
+   `make whois REF=…`
+2. **Value/coverage check against real gold data** — now the highest-value open question.
+   Coverage went 13 → 123 boards, but most new companies are US-only and the silver location
+   gate drops non-Canadian postings, so 8,885 visible postings will *not* become 8,885 gold
+   rows. Count: active gold postings, title-matched, and how many you'd actually apply to.
+   **If the funnel is still thin after this much coverage work, V2 should be relevance, not
+   more sources** — and these numbers feed the README results section either way
+3. Then either **V1.8** (above) or **V2** (below), depending on what step 2 says
+4. Housekeeping: arm healthchecks (`NOTES.local.md` §4); delete the merged
+   `chore/uv-and-permissions` and `feat/company-list-correctness` remote branches; clear the
+   superseded scratch files in `~/Downloads`
 
 ## V2 — AI relevance (scoped, ready to build)
 
