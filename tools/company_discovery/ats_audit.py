@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import concurrent.futures
 import csv
 import datetime
 import os
@@ -122,7 +123,7 @@ CONSENT_TEXT = re.compile(
     r"^\s*(accept( all| cookies)?|allow all|i agree|agree|got it|ok(ay)?)\s*$", re.I)
 
 
-async def settle(page, idle_ms: int = 9000) -> None:
+async def settle(page, idle_ms: int = 4500) -> None:
     """Wait for the board to actually load, not a fixed guess.
 
     Most modern careers pages fetch their postings by XHR *after* first paint.
@@ -450,13 +451,23 @@ def probe_unknowns(records, csv_path, lock):
         return records
     print(f"\nAPI-probing {len(todo)} unclassified compan(ies)...", flush=True)
     found = 0
-    for i, r in todo:
-        hit = probe_record({"name": r[0], "website": r[1]})
-        if hit:
-            found += 1
-            records[i] = [hit["name"], hit["website"], r[2], hit["ats"],
-                          hit["token"], hit["via"], hit["status"]]
-            print(f"  probe HIT {hit['name']}: {hit['ats']}/{hit['token']}", flush=True)
+    # Threaded: the probe is pure network wait, and sequentially it dominates the
+    # run (each company can cost 16 requests). Workers are few and each still
+    # pauses between its own calls, so the per-host rate stays polite.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {pool.submit(probe_record, {"name": r[0], "website": r[1]}): i for i, r in todo}
+        for done, fut in enumerate(concurrent.futures.as_completed(futures), start=1):
+            i = futures[fut]
+            hit = fut.result()
+            if hit:
+                found += 1
+                r = records[i]
+                records[i] = [hit["name"], hit["website"], r[2], hit["ats"],
+                              hit["token"], hit["via"], hit["status"]]
+                print(f"  probe HIT {hit['name']}: {hit['ats']}/{hit['token']}", flush=True)
+            if done % 50 == 0:
+                write_csv(csv_path, records, lock)
+                print(f"  ...probed {done}/{len(todo)} ({found} recovered)", flush=True)
     write_csv(csv_path, records, lock)
     print(f"API probe recovered {found}/{len(todo)}.", flush=True)
     return records
