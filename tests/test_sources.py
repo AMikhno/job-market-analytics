@@ -7,7 +7,7 @@ from shared.http import HostRateLimiter
 
 def test_registry_has_all_adapters() -> None:
     adapters = {s.adapter for s in SOURCES}
-    assert adapters == {"greenhouse", "lever", "ashby"}
+    assert adapters == {"greenhouse", "lever", "ashby", "bamboohr"}
 
 
 def test_url_templates_take_a_board_ref() -> None:

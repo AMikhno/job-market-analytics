@@ -19,3 +19,13 @@ def lever_payload() -> list:
 @pytest.fixture
 def ashby_payload() -> dict:
     return json.loads((FIXTURES / "ashby_jobs.json").read_text())
+
+
+@pytest.fixture
+def bamboohr_list_payload() -> dict:
+    return json.loads((FIXTURES / "bamboohr_list.json").read_text())
+
+
+@pytest.fixture
+def bamboohr_detail_payload() -> dict:
+    return json.loads((FIXTURES / "bamboohr_detail.json").read_text())
