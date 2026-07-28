@@ -1,6 +1,7 @@
-company_name,source,board_ref,active,tier,notes
-Lever (demo board),lever,lever,true,1,verified public board — smoke test
-ExampleGreenhouseCo,greenhouse,REPLACE_WITH_GH_TOKEN,false,1,placeholder — copy this file to config/companies.csv and edit
-ExampleWorkdayCo,workday,examplewd/wd5/External,false,2,adapter not built yet — board_ref carries tenant/instance/site for multi-parameter boards
-ExampleBambooCo,bamboohr,examplebamboo,false,2,adapter not built yet — board_ref is the company subdomain
-Ashby (demo board),ashby,ashby,true,1,verified public board — smoke test
+company_name,source,board_ref,active,tier,website,notes
+Lever (demo board),lever,lever,true,1,lever.co,verified public board — smoke test
+ExampleGreenhouseCo,greenhouse,REPLACE_WITH_GH_TOKEN,false,1,example.com,placeholder — copy this file to config/companies.csv and edit
+ExampleAshbySpacedCo,ashby,Example Co,false,1,example-co.com,Ashby board names are display names — single inner spaces are valid
+ExampleWorkdayCo,workday,examplewd/wd5/External,false,2,examplewd.com,adapter not built yet — board_ref carries tenant/instance/site for multi-parameter boards
+ExampleBambooCo,bamboohr,examplebamboo,false,2,examplebamboo.com,adapter not built yet — board_ref is the company subdomain
+Ashby (demo board),ashby,ashby,true,1,ashbyhq.com,verified public board — smoke test

@@ -1,6 +1,12 @@
 # Secrets / private config — never commit values
 .env
 config/companies.csv
+config/companies.active*.csv
+config/companies.csv.bak
+config/discovery/
+# Personal runbook: the manual half of the system (gh commands, secrets setup).
+# No secret values in it, but it is Ana's notes, not project documentation.
+NOTES.local.md
 config/profile.yaml
 *.key
 *.pem

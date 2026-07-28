@@ -19,8 +19,14 @@ from typing import Annotated, ClassVar, Literal
 from pydantic import BaseModel, Field
 
 # A bare board token: letters/digits then letters/digits/dot/underscore/hyphen.
-# No slashes, spaces, or URL punctuation. Fits Greenhouse, Lever, and Ashby.
+# No slashes, spaces, or URL punctuation. Fits Greenhouse and Lever.
 _BARE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+# Ashby board names are display names, so they may contain single inner spaces
+# ("REDACTED" -> jobs.ashbyhq.com/Dominion%20Dynamics). Verified against
+# the live API: the spaced name returns postings; every de-spaced variant 404s.
+# Still no slashes or URL punctuation, and no leading/trailing space.
+_ASHBY_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?: [A-Za-z0-9._-]+)*$")
 
 
 class SourceBase(BaseModel):
@@ -30,6 +36,7 @@ class SourceBase(BaseModel):
     # board_ref *format* rule, owned by the source (ADR-0012). Default is a bare
     # token; a multi-segment ATS (e.g. Workday's tenant/instance/site) overrides.
     board_ref_pattern: ClassVar[re.Pattern[str]] = _BARE_TOKEN
+    board_ref_hint: ClassVar[str] = "a bare board token (no slashes, spaces, or URL)"
 
     def validate_board_ref(self, board_ref: str) -> None:
         """Raise ValueError if board_ref is malformed for this source.
@@ -40,7 +47,7 @@ class SourceBase(BaseModel):
         if not self.board_ref_pattern.fullmatch(board_ref):
             raise ValueError(
                 f"invalid board_ref {board_ref!r} for source {self.name!r}: "
-                "expected a bare board token (no slashes, spaces, or URL)"
+                f"expected {self.board_ref_hint}"
             )
 
 
@@ -52,12 +59,21 @@ class GreenhouseSource(SourceBase):
 class LeverSource(SourceBase):
     adapter: Literal["lever"] = "lever"
     url_template: str = "https://api.lever.co/v0/postings/{board_ref}?mode=json"
+    # Lever hosts some boards on an EU shard; the US host 404s for those, and the
+    # board is not discoverable from the ref (REDACTED is one). The API shape is
+    # identical, so the adapter falls back to this host on a 404 rather than the
+    # list carrying a region -- an NA company on an EU board just works.
+    eu_url_template: str = "https://api.eu.lever.co/v0/postings/{board_ref}?mode=json"
 
 
 class AshbySource(SourceBase):
     adapter: Literal["ashby"] = "ashby"
     url_template: str = (
         "https://api.ashbyhq.com/posting-api/job-board/{board_ref}?includeCompensation=true"
+    )
+    board_ref_pattern: ClassVar[re.Pattern[str]] = _ASHBY_TOKEN
+    board_ref_hint: ClassVar[str] = (
+        "an Ashby job-board name (single inner spaces allowed; no slashes or URL)"
     )
 
 
