@@ -1,0 +1,57 @@
+{
+  "permissions": {
+    "defaultMode": "default",
+    "allow": [
+      "Bash(uv run *)",
+      "Bash(uv sync *)",
+      "Bash(uv lock *)",
+      "Bash(uv venv *)",
+      "Bash(make *)",
+      "Bash(GCP_PROJECT=ci-fake-project uv run dbt parse --target prod)",
+      "Bash(git status)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git branch *)",
+      "Bash(git checkout *)",
+      "Bash(git stash *)",
+      "Bash(git fetch *)",
+      "Bash(git pull *)",
+      "Bash(git merge *)",
+      "Bash(git rebase *)",
+      "Bash(git push *)",
+      "Bash(git ls-remote *)",
+      "Bash(git rev-list *)",
+      "Bash(grep *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./config/profile.yaml)",
+      "Read(./**/*.key)",
+      "Read(./**/*.pem)",
+      "Read(./**/keyfile*.json)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(sed *)",
+      "Bash(awk *)",
+      "Bash(strings *)",
+      "Bash(xxd *)",
+      "Bash(pip *)",
+      "Bash(pip3 *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(uv pip install *)",
+      "Bash(gh *)",
+      "Bash(git push --force *)",
+      "Bash(env)",
+      "Bash(env *)"
+    ]
+  },
+  "env": {
+    "PIP_REQUIRE_VIRTUALENV": "true"
+  }
+}
