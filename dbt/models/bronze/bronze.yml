@@ -27,3 +27,67 @@ models:
       - name: url
         description: Canonical jobUrl to the live posting.
         data_tests: [not_null]
+  - name: stg_bamboohr__jobs
+    description: >
+      Typed staging over the BambooHR raw landing — one row per posting.
+      Descriptions and dates come from the per-posting detail call (ADR-0021);
+      the careers list carries neither.
+    columns:
+      - name: external_id
+        description: BambooHR job opening id, as text; unique within the board.
+        data_tests: [not_null]
+      - name: url
+        description: jobOpeningShareUrl, or the careers/{id} path if absent.
+        data_tests: [not_null]
+  - name: stg_recruitee__jobs
+    description: Typed staging over the Recruitee raw landing — one row per posting.
+    columns:
+      - name: external_id
+        description: Recruitee offer id, as text; unique within the board.
+        data_tests: [not_null]
+      - name: url
+        description: Canonical careers_url to the live posting.
+        data_tests: [not_null]
+  - name: stg_workable__jobs
+    description: Typed staging over the Workable raw landing — one row per posting.
+    columns:
+      - name: external_id
+        description: Workable shortcode (the id its own URLs use); unique within the board.
+        data_tests: [not_null]
+      - name: url
+        description: Canonical apply.workable.com link to the live posting.
+        data_tests: [not_null]
+  - name: stg_pinpoint__jobs
+    description: >
+      Typed staging over the Pinpoint raw landing — one row per posting.
+      posted_or_updated_at is null by design: postings.json carries no post date.
+    columns:
+      - name: external_id
+        description: Pinpoint posting id, as text; unique within the board.
+        data_tests: [not_null]
+      - name: url
+        description: Canonical posting URL on the company's Pinpoint board.
+        data_tests: [not_null]
+  - name: stg_rippling__jobs
+    description: >
+      Typed staging over the Rippling raw landing — one row per posting.
+      The API repeats a job per location; the adapter collapses those, so
+      external_id is unique here.
+    columns:
+      - name: external_id
+        description: Rippling job uuid, as text; unique within the board.
+        data_tests: [not_null]
+      - name: url
+        description: Canonical ats.rippling.com link to the live posting.
+        data_tests: [not_null]
+  - name: stg_smartrecruiters__jobs
+    description: >
+      Typed staging over the SmartRecruiters raw landing — one row per posting,
+      across every page of the paginated list.
+    columns:
+      - name: external_id
+        description: SmartRecruiters posting id, as text; unique within the board.
+        data_tests: [not_null]
+      - name: url
+        description: Public postingUrl (the list only carries an API ref).
+        data_tests: [not_null]
