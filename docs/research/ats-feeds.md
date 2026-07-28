@@ -19,6 +19,14 @@ resolving. The prediction that Tier 1 would grow held: BambooHR went 31 → 33 a
 
 ---
 
+> **Re-probed 2026-07-28 before building the adapters, and the "same shape" verdict below did not
+> survive contact.** Only Recruitee, Workable and Pinpoint carry the posting's **description** in
+> the list response. BambooHR, SmartRecruiters and Rippling need a per-posting detail call for it
+> (and, for BambooHR and SmartRecruiters, for the public URL too); BreezyHR has no keyless
+> description at all and is deferred. Two further payload facts this table missed: Rippling
+> repeats a job once per location, and Pinpoint publishes no post date. See ADR-0021, and the
+> "As built" section at the end of this file.
+
 ## Tier 1 — cheap: same shape as Greenhouse/Lever/Ashby
 
 Single keyless `GET`, JSON body, bare-token ref. Each is a ~30-line adapter plus a sanitized
@@ -85,3 +93,34 @@ per-adapter cost is the `RawPosting` mapping and its fixture, not the HTTP call.
 - A 200 with zero records is not proof of a working feed (an empty stub board looks identical);
   Tier 1 verdicts all had **non-zero** records except where noted.
 - Endpoints move. Re-run the probe before starting, rather than trusting this file's age.
+
+---
+
+## As built (2026-07-28) — what the second probe found
+
+Every platform below was re-probed against a **second** live ref before its adapter was written,
+which is what caught the differences from the table above.
+
+| ATS | Description | Public URL | Post date | Other |
+|---|---|---|---|---|
+| BambooHR | detail only | detail only (`jobOpeningShareUrl`) | detail only | `state` and `province` used interchangeably; some boards fill only the country |
+| Recruitee | list (`description` + `requirements`) | list | list | `published_at` is `"… UTC"`, not ISO 8601 |
+| Workable | list (`details=true`) | list | list | account-level `description` is a company blurb — not the job's; unset fields are `""`, not null |
+| Pinpoint | list, split across labelled blocks | list | **none published** | only `deadline_at` exists; landed date stays null |
+| Rippling | detail (`description.role`) | list | detail | list emits **one row per job × location**, sharing a uuid |
+| SmartRecruiters | detail (`jobAd.sections`) | detail (`postingUrl`) | list | only paginated source (`limit`/`offset`, `totalFound`); `fullLocation` leaves an empty slot for a missing region |
+
+**BreezyHR — no keyless description exists.** Four paths tried on a live board:
+`/{ref}.breezy.hr/json` (200, list without description), `/json/{id}` (**302 → `/`**),
+the posting page `/p/{friendly_id}` (200 HTML, but a client-rendered shell whose markup still
+contains `%BREADCRUMB_JOB_OPENINGS%`-style placeholders), and `api.breezy.hr/v3/company/{ref}/positions`
+(**400**, key required). Deferred to V1.9 — see TODO.
+
+**First full ingest (2026-07-28, 43 trial boards, 8 workers, 10m28s):** 1,324 postings, **0 with
+an empty description**. Per source: SmartRecruiters 871, Recruitee 173, BambooHR 155, Workable 70,
+Pinpoint 44, Rippling 11. One board skipped (a BambooHR ref that 302s to a non-JSON page).
+
+Through the dbt DAG that became **336 gold postings** — SmartRecruiters 2, Recruitee 160,
+BambooHR 119, Workable 33, Pinpoint 20, Rippling 2. The 871 → 2 collapse is the location gate
+doing its job on a global board, and it is why a shared-host board that large is a poor trade
+(~10 minutes of the run for two postings).

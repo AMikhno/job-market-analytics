@@ -44,7 +44,7 @@ dbt-deps:         ## Install dbt package dependencies (dbt_utils)
 	cd dbt && uv run dbt deps
 
 ensure-raw:       ## Create empty raw tables so dbt can build without an ingest run
-	uv run python -c "from shared.config import get_settings; from shared import storage; storage.ensure_raw_tables(get_settings())"
+	uv run python -c "from ingest.pipeline import ensure_raw_tables; ensure_raw_tables()"
 
 dbt-dev: dbt-deps  ## Build the dbt DAG against local DuckDB
 	cd dbt && uv run dbt build --target dev

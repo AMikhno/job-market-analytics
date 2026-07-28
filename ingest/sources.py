@@ -9,6 +9,10 @@ source of truth for board URL templates (adapters are constructed from it).
 list. Greenhouse/Lever/Ashby take a bare token; a future multi-parameter ATS (e.g.
 Workday's tenant/instance/site) defines its own template and teaches its adapter
 to split the ref.
+
+A source also *builds* its adapter (`build()`), so a new ATS is registered in one
+place instead of three: the URL template, the fetch policy (timeouts, per-host
+interval) and the constructor call all live on the source object.
 """
 
 from __future__ import annotations
@@ -17,6 +21,18 @@ import re
 from typing import Annotated, ClassVar, Literal
 
 from pydantic import BaseModel, Field
+
+from ingest.adapters.ashby import AshbyAdapter
+from ingest.adapters.bamboohr import BambooHRAdapter
+from ingest.adapters.base import SourceAdapter
+from ingest.adapters.greenhouse import GreenhouseAdapter
+from ingest.adapters.lever import LeverAdapter
+from ingest.adapters.pinpoint import PinpointAdapter
+from ingest.adapters.recruitee import RecruiteeAdapter
+from ingest.adapters.rippling import RipplingAdapter
+from ingest.adapters.smartrecruiters import SmartRecruitersAdapter
+from ingest.adapters.workable import WorkableAdapter
+from shared.http import FetchPolicy, HostRateLimiter
 
 # A bare board token: letters/digits then letters/digits/dot/underscore/hyphen.
 # No slashes, spaces, or URL punctuation. Fits Greenhouse and Lever.
@@ -33,10 +49,28 @@ class SourceBase(BaseModel):
     name: str
     active: bool = True
 
+    # How this source's requests are paced and bounded. The interval is applied
+    # *per host* (shared/http.py), so ATS that give every company its own
+    # subdomain effectively pay it once per board rather than once per request.
+    min_interval_s: float = 0.5
+    connect_timeout_s: float = 10.0
+    read_timeout_s: float = 30.0
+
     # board_ref *format* rule, owned by the source (ADR-0012). Default is a bare
     # token; a multi-segment ATS (e.g. Workday's tenant/instance/site) overrides.
     board_ref_pattern: ClassVar[re.Pattern[str]] = _BARE_TOKEN
     board_ref_hint: ClassVar[str] = "a bare board token (no slashes, spaces, or URL)"
+
+    def policy(self, limiter: HostRateLimiter | None = None) -> FetchPolicy:
+        return FetchPolicy(
+            timeout=(self.connect_timeout_s, self.read_timeout_s),
+            min_interval_s=self.min_interval_s,
+            limiter=limiter,
+        )
+
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        """Construct this source's adapter. Overridden by every subclass."""
+        raise NotImplementedError
 
     def validate_board_ref(self, board_ref: str) -> None:
         """Raise ValueError if board_ref is malformed for this source.
@@ -55,6 +89,9 @@ class GreenhouseSource(SourceBase):
     adapter: Literal["greenhouse"] = "greenhouse"
     url_template: str = "https://boards-api.greenhouse.io/v1/boards/{board_ref}/jobs?content=true"
 
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        return GreenhouseAdapter(self.url_template, self.policy(limiter))
+
 
 class LeverSource(SourceBase):
     adapter: Literal["lever"] = "lever"
@@ -64,6 +101,9 @@ class LeverSource(SourceBase):
     # identical, so the adapter falls back to this host on a 404 rather than the
     # list carrying a region -- an NA company on an EU board just works.
     eu_url_template: str = "https://api.eu.lever.co/v0/postings/{board_ref}?mode=json"
+
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        return LeverAdapter(self.url_template, self.eu_url_template, self.policy(limiter))
 
 
 class AshbySource(SourceBase):
@@ -76,11 +116,98 @@ class AshbySource(SourceBase):
         "an Ashby job-board name (single inner spaces allowed; no slashes or URL)"
     )
 
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        return AshbyAdapter(self.url_template, self.policy(limiter))
 
-Source = Annotated[GreenhouseSource | LeverSource | AshbySource, Field(discriminator="adapter")]
+
+class BambooHRSource(SourceBase):
+    adapter: Literal["bamboohr"] = "bamboohr"
+    url_template: str = "https://{board_ref}.bamboohr.com/careers/list"
+    # The list has no description, URL or date, so every posting costs a second
+    # GET (ADR-0021). Both calls hit this company's own subdomain.
+    detail_url_template: str = "https://{board_ref}.bamboohr.com/careers/{job_id}/detail"
+
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        return BambooHRAdapter(self.url_template, self.detail_url_template, self.policy(limiter))
+
+
+class RecruiteeSource(SourceBase):
+    adapter: Literal["recruitee"] = "recruitee"
+    url_template: str = "https://{board_ref}.recruitee.com/api/offers/"
+
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        return RecruiteeAdapter(self.url_template, self.policy(limiter))
+
+
+class WorkableSource(SourceBase):
+    adapter: Literal["workable"] = "workable"
+    # The v1 *widget* endpoint. The documented v3 path (api/v3/accounts/{ref}/jobs)
+    # 404s for every ref tried; details=true is what inlines each description.
+    url_template: str = "https://apply.workable.com/api/v1/widget/accounts/{board_ref}?details=true"
+
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        return WorkableAdapter(self.url_template, self.policy(limiter))
+
+
+class PinpointSource(SourceBase):
+    adapter: Literal["pinpoint"] = "pinpoint"
+    url_template: str = "https://{board_ref}.pinpointhq.com/postings.json"
+
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        return PinpointAdapter(self.url_template, self.policy(limiter))
+
+
+class RipplingSource(SourceBase):
+    adapter: Literal["rippling"] = "rippling"
+    url_template: str = "https://api.rippling.com/platform/api/ats/v1/board/{board_ref}/jobs"
+    # The list repeats a job once per location and carries no description, so
+    # postings are collapsed by uuid and each unique one is fetched (ADR-0021).
+    detail_url_template: str = (
+        "https://api.rippling.com/platform/api/ats/v1/board/{board_ref}/jobs/{job_uuid}"
+    )
+
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        return RipplingAdapter(self.url_template, self.detail_url_template, self.policy(limiter))
+
+
+class SmartRecruitersSource(SourceBase):
+    adapter: Literal["smartrecruiters"] = "smartrecruiters"
+    url_template: str = "https://api.smartrecruiters.com/v1/companies/{board_ref}/postings?limit={limit}&offset={offset}"
+    detail_url_template: str = (
+        "https://api.smartrecruiters.com/v1/companies/{board_ref}/postings/{posting_id}"
+    )
+    page_size: int = 100  # the API's own cap
+    # The only paginated Tier 1 source, and every company shares one host, so a
+    # large board is a long serial walk -- give its reads more room.
+    read_timeout_s: float = 60.0
+
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        return SmartRecruitersAdapter(
+            self.url_template, self.detail_url_template, self.policy(limiter), self.page_size
+        )
+
+
+Source = Annotated[
+    GreenhouseSource
+    | LeverSource
+    | AshbySource
+    | BambooHRSource
+    | RecruiteeSource
+    | WorkableSource
+    | PinpointSource
+    | RipplingSource
+    | SmartRecruitersSource,
+    Field(discriminator="adapter"),
+]
 
 SOURCES: list[Source] = [
     GreenhouseSource(name="greenhouse"),
     LeverSource(name="lever"),
     AshbySource(name="ashby"),
+    BambooHRSource(name="bamboohr"),
+    RecruiteeSource(name="recruitee"),
+    WorkableSource(name="workable"),
+    PinpointSource(name="pinpoint"),
+    RipplingSource(name="rippling"),
+    SmartRecruitersSource(name="smartrecruiters"),
 ]

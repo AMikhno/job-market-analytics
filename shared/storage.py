@@ -14,11 +14,14 @@ from pathlib import Path
 from shared.config import Settings
 from shared.models import IngestRun, RawPosting
 
-_RAW_TABLE = {
-    "greenhouse": "raw_greenhouse_jobs",
-    "lever": "raw_lever_jobs",
-    "ashby": "raw_ashby_jobs",
-}
+
+def raw_table(source: str) -> str:
+    """Landing table for a source. Derived, not hand-maintained: registering a
+    source used to mean remembering a lookup dict here too, and forgetting it
+    failed at *write* time, after a successful fetch. Names are unchanged
+    (greenhouse -> raw_greenhouse_jobs)."""
+    return f"raw_{source}_jobs"
+
 
 # Canonical raw column order (must match the dict built in _posting_rows).
 RAW_COLUMNS = [
@@ -60,8 +63,11 @@ _DIGEST_BQ_SCHEMA = [
 ]
 
 
-def ensure_raw_tables(settings: Settings) -> None:
+def ensure_raw_tables(settings: Settings, sources: Sequence[str]) -> None:
     """Idempotently provision the landing objects the pipeline writes to.
+
+    `sources` comes from the caller (the registry lives in ingest/, which sits
+    above this module) — one table per source.
 
     Dev: empty DuckDB raw tables so dbt can build even with no ingest run.
     Prod: the *_raw / *_ops datasets and tables, with ingestion-time
@@ -69,7 +75,7 @@ def ensure_raw_tables(settings: Settings) -> None:
     No hand-run cloud setup: a fresh project provisions itself on first run.
     """
     if settings.is_prod:
-        _ensure_bigquery_objects(settings)
+        _ensure_bigquery_objects(settings, sources)
         return
     import duckdb
 
@@ -77,13 +83,13 @@ def ensure_raw_tables(settings: Settings) -> None:
     con = duckdb.connect(settings.duckdb_path)
     try:
         cols = ", ".join(f"{c} VARCHAR" for c in RAW_COLUMNS)
-        for table in _RAW_TABLE.values():
-            con.execute(f"CREATE TABLE IF NOT EXISTS {table} ({cols})")
+        for source in sources:
+            con.execute(f"CREATE TABLE IF NOT EXISTS {raw_table(source)} ({cols})")
     finally:
         con.close()
 
 
-def _ensure_bigquery_objects(settings: Settings) -> None:
+def _ensure_bigquery_objects(settings: Settings, sources: Sequence[str]) -> None:
     from google.cloud import bigquery
 
     client = bigquery.Client(project=settings.gcp_project, location=settings.bq_location)
@@ -95,9 +101,9 @@ def _ensure_bigquery_objects(settings: Settings) -> None:
         client.create_dataset(dataset, exists_ok=True)
 
     expiry_ms = settings.bq_raw_partition_expiry_days * 24 * 60 * 60 * 1000
-    for table_name in _RAW_TABLE.values():
+    for source in sources:
         table = bigquery.Table(
-            f"{raw_dataset}.{table_name}",
+            f"{raw_dataset}.{raw_table(source)}",
             schema=[bigquery.SchemaField(c, "STRING") for c in RAW_COLUMNS],
         )
         table.time_partitioning = bigquery.TimePartitioning(
@@ -160,9 +166,9 @@ def land(postings: Sequence[RawPosting], *, source: str, run_id: str, settings: 
         return 0
     _write(
         rows,
-        duckdb_table=_RAW_TABLE[source],
+        duckdb_table=raw_table(source),
         bq_dataset=f"{settings.bq_dataset}_raw",
-        bq_table=_RAW_TABLE[source],
+        bq_table=raw_table(source),
         bq_schema=[(c, "STRING") for c in RAW_COLUMNS],
         settings=settings,
     )

@@ -24,3 +24,43 @@ sources:
         freshness:
           warn_after: { count: 12, period: hour }
           error_after: { count: 30, period: hour }
+      - name: raw_bamboohr_jobs
+        description: Append-only BambooHR landings (all columns STRING; bronze casts).
+        loaded_at_field: "cast(ingested_at as timestamp)"
+        freshness:
+          warn_after: { count: 12, period: hour }
+          error_after: { count: 30, period: hour }
+      - name: raw_recruitee_jobs
+        description: Append-only Recruitee landings (all columns STRING; bronze casts).
+        loaded_at_field: "cast(ingested_at as timestamp)"
+        freshness:
+          warn_after: { count: 12, period: hour }
+          error_after: { count: 30, period: hour }
+      - name: raw_workable_jobs
+        description: Append-only Workable landings (all columns STRING; bronze casts).
+        loaded_at_field: "cast(ingested_at as timestamp)"
+        freshness:
+          warn_after: { count: 12, period: hour }
+          error_after: { count: 30, period: hour }
+      - name: raw_pinpoint_jobs
+        description: Append-only Pinpoint landings (all columns STRING; bronze casts).
+        loaded_at_field: "cast(ingested_at as timestamp)"
+        freshness:
+          warn_after: { count: 12, period: hour }
+          error_after: { count: 30, period: hour }
+      # These two got their freshness gate only once a real board was verified —
+      # `dbt source freshness` errors on an *empty* table and takes the whole
+      # prod run with it, and both sources initially had no usable ref (blank
+      # Rippling refs; a SmartRecruiters stub returning totalFound=0).
+      - name: raw_rippling_jobs
+        description: Append-only Rippling landings (all columns STRING; bronze casts).
+        loaded_at_field: "cast(ingested_at as timestamp)"
+        freshness:
+          warn_after: { count: 12, period: hour }
+          error_after: { count: 30, period: hour }
+      - name: raw_smartrecruiters_jobs
+        description: Append-only SmartRecruiters landings (all columns STRING; bronze casts).
+        loaded_at_field: "cast(ingested_at as timestamp)"
+        freshness:
+          warn_after: { count: 12, period: hour }
+          error_after: { count: 30, period: hour }

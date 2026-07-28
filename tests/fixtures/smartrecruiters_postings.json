@@ -1,0 +1,47 @@
+{
+  "offset": 0,
+  "limit": 2,
+  "totalFound": 3,
+  "content": [
+    {
+      "id": "744000140252429",
+      "name": "Analytics Engineer",
+      "uuid": "9d97dc94-5a19-4a05-9a99-c6b2a79c3109",
+      "refNumber": "20030100_2026-07-07",
+      "company": { "identifier": "Example", "name": "Example Inc." },
+      "releasedDate": "2026-07-28T14:02:33.326Z",
+      "location": {
+        "city": "Ottawa",
+        "region": "Ontario",
+        "country": "ca",
+        "remote": false,
+        "hybrid": true,
+        "fullLocation": "Ottawa, Ontario, Canada"
+      },
+      "department": { "label": "Data" },
+      "function": { "id": "engineering", "label": "Engineering" },
+      "typeOfEmployment": { "id": "permanent", "label": "Full-time" },
+      "experienceLevel": { "id": "associate", "label": "Associate" },
+      "visibility": "PUBLIC",
+      "ref": "https://api.smartrecruiters.com/v1/companies/example/postings/744000140252429"
+    },
+    {
+      "id": "744000140258181",
+      "name": "Site Reliability Engineer",
+      "uuid": "aa23c705-36ab-4992-995f-2c210cf739b2",
+      "company": { "identifier": "Example", "name": "Example Inc." },
+      "releasedDate": "2026-07-28T14:31:19.845Z",
+      "location": {
+        "city": "Munich",
+        "country": "de",
+        "remote": true,
+        "hybrid": false,
+        "fullLocation": "Munich, , Germany"
+      },
+      "department": {},
+      "typeOfEmployment": { "id": "permanent", "label": "Full-time" },
+      "visibility": "PUBLIC",
+      "ref": "https://api.smartrecruiters.com/v1/companies/example/postings/744000140258181"
+    }
+  ]
+}
