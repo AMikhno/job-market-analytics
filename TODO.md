@@ -89,10 +89,14 @@ work items top-to-bottom, one conventional commit each:
       re-scopes V2 if coverage beats relevance
 
 ## Operational (ongoing, human-owned)
-- [ ] Enable GitHub Pages once (Settings → Pages → Source: **GitHub Actions**) so docs.yml
-      can publish the dbt docs site on pushes to main
-- [ ] Expand the actual company list in the GitHub Actions variable (`COMPANIES_CSV_CONTENT`) —
-      secrets boundary; validate with `make validate-companies` before pasting
+
+Step-by-step versions of these live in `NOTES.local.md` (gitignored personal runbook).
+
+- [x] Enable GitHub Pages (Settings → Pages → Source: **GitHub Actions**) so docs.yml
+      publishes the dbt docs site on pushes to main — done 2026-07-28
+- [ ] Push the rebuilt company list: `gh variable set COMPANIES_CSV_CONTENT <
+      config/companies.active.csv` (the **active-only projection**, never the master).
+      `make update-company-list` validates it first
 - [x] Digest secrets created in the `production` environment (`SMTP_USER` + `SMTP_PASSWORD`).
       `DIGEST_TO` stays optional — unset, the digest mails `SMTP_USER` (`deliver/digest.py`).
 - [ ] Create the healthchecks.io check and add its ping URL as the `HEALTHCHECK_URL` **secret**
