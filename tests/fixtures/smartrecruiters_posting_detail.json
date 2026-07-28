@@ -1,0 +1,29 @@
+{
+  "id": "744000140252429",
+  "name": "Analytics Engineer",
+  "uuid": "9d97dc94-5a19-4a05-9a99-c6b2a79c3109",
+  "company": { "identifier": "Example", "name": "Example Inc." },
+  "releasedDate": "2026-07-28T14:02:33.326Z",
+  "location": {
+    "city": "Ottawa",
+    "region": "Ontario",
+    "country": "ca",
+    "remote": false,
+    "hybrid": true,
+    "fullLocation": "Ottawa, Ontario, Canada"
+  },
+  "typeOfEmployment": { "id": "permanent", "label": "Full-time" },
+  "jobAd": {
+    "sections": {
+      "companyDescription": { "title": "Company Description", "text": "<p>Example Inc. does example things.</p>" },
+      "jobDescription": { "title": "Job Description", "text": "<p>Build <strong>dbt</strong> models &amp; dashboards.</p>" },
+      "qualifications": { "title": "Qualifications", "text": "<ul><li>SQL</li><li>Python</li></ul>" },
+      "additionalInformation": { "title": "Additional Information", "text": "" }
+    }
+  },
+  "active": true,
+  "visibility": "PUBLIC",
+  "postingUrl": "https://jobs.smartrecruiters.com/Example/744000140252429-analytics-engineer",
+  "applyUrl": "https://jobs.smartrecruiters.com/Example/744000140252429-analytics-engineer?oga=true",
+  "language": { "code": "en", "label": "English" }
+}
