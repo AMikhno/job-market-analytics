@@ -459,9 +459,17 @@ async def run(companies, csv_path, concurrency, checkpoint_every):
 
 
 def probe_unknowns(records, csv_path, lock):
-    """Second pass: API-probe every company browsing could not classify."""
+    """Second pass: API-probe every company we cannot yet *fetch*.
+
+    That means two cases, not one: browsing found no ATS at all, **or** it named
+    the ATS but could not extract a board token. The second case used to be
+    skipped, which quietly produced the worst kind of row — one that looks
+    classified ("Recruitee") but has nothing to fetch, so it can never be
+    activated and never shows up as a failure either. Field Effect, REDACTED
+    and REDACTED all sat in the list that way.
+    """
     todo = [(i, r) for i, r in enumerate(records)
-            if r[3] in ("Unknown/Custom", "N/A", "ERROR", "")]
+            if r[3] in ("Unknown/Custom", "N/A", "ERROR", "") or not (r[4] or "").strip()]
     if not todo:
         return records
     print(f"\nAPI-probing {len(todo)} unclassified compan(ies)...", flush=True)
