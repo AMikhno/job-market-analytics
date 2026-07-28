@@ -25,6 +25,17 @@ built now — they are heavier and, for Workday, cannot be schema-verified witho
   carries `tenant/wdN/site`. It cannot use today's single-GET `get_json`, so it depends on a
   generalized adapter/HTTP contract (POST + pagination + detail) built alongside it.
 
+**Update 2026-07-28 — surveyed with live probes; see `docs/research/ats-feeds.md`.** Applying
+this ADR's own bar (public + keyless) to all ~25 inventory ATS found **seven that qualify today**
+and are single-GET/JSON, i.e. the Greenhouse/Lever/Ashby shape rather than the heavier contract
+above: **BambooHR, Workable, Recruitee, BreezyHR, Pinpoint, SmartRecruiters, Rippling** — roughly
+48 companies currently sitting inactive. BambooHR in particular needs only `careers/list`
+(`{meta, result[]}`), not the two-step detail call assumed here. That makes them V1 work by this
+ADR's existing rule, not V2. Workday's endpoint was confirmed live (422, not 404) but keeps its
+deferred status: it still needs the multi-segment ref captured for all 28 rows first.
+Definitively **not** keyless, so inventory-only stands: SuccessFactors (401), Teamtailor
+(per-company API key), iCIMS, JazzHR, Dayforce, ADP, Phenom.
+
 **Deferred — iCIMS.** There is no clean public, keyless API: the Job Portal API needs
 customer context, the standard feed requires OAuth2, and public career sites are scrape-only
 and shape-sensitive. Ingesting it would either break the "no credentials in V1" boundary
