@@ -21,6 +21,10 @@ select
     -- as a streaming role, and V1 cannot tell them apart.
     deal_breaker_hits,
     deal_breaker_terms,
+    -- What the digest sorts on (ADR-0024). recency_rank stays alongside it: the
+    -- two answer different questions ("best fit" vs "newest") and both are useful
+    -- to query directly.
+    match_score,
     row_number() over (
         order by posted_or_updated_at desc nulls last, job_key asc
     ) as recency_rank

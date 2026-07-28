@@ -58,6 +58,12 @@ models:
       - name: deal_breaker_terms
         description: Which deal-breaker terms matched (sorted, comma-separated); null when none.
         data_type: varchar
+      - name: match_score
+        description: >
+          Best-fit ordering key, shown in the digest beside the signals that
+          produced it (ADR-0024). Higher is better; may be negative.
+        data_type: bigint
+        data_tests: [not_null]
       - name: recency_rank
         description: 1 = most recent by posted_or_updated_at; dense unique ordering for the digest.
         data_type: bigint

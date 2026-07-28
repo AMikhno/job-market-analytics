@@ -116,6 +116,15 @@ select
     -- Negative signal, never a filter (ADR-0023). 0 = clean.
     coalesce(dbm.deal_breaker_hits, 0) as deal_breaker_hits,
     dbm.deal_breaker_terms,
+    -- The one number delivery orders on (ADR-0024). Every input is visible in
+    -- the digest line beside it, so the ranking explains itself; the weights are
+    -- vars, so tuning them needs no code change. May go negative.
+    (
+        coalesce(dtc.desired_tech_hits, 0)
+        + {{ var('match_title_bonus', 2) }}
+        * case when coalesce(tm.title_match, false) then 1 else 0 end
+        - {{ var('match_deal_breaker_penalty', 1) }} * coalesce(dbm.deal_breaker_hits, 0)
+    ) as match_score,
     -- Active = still on the board as of that board's latest ingest, AND that
     -- board is itself still being ingested. Without the second clause, a board
     -- removed from the company list (or 404-ing forever - per-company failures
