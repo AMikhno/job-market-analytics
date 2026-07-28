@@ -1,0 +1,16 @@
+{
+  "uuid": "7527c74e-2e0a-432d-99da-6b3f4042f325",
+  "name": "Analytics Engineer",
+  "description": {
+    "company": "<meta><p>Why Example: we do example things.</p>",
+    "role": "<meta><p>Build <strong>dbt</strong> models &amp; dashboards.</p>"
+  },
+  "workLocations": ["Ottawa, Canada", "Toronto, Canada", "Canada"],
+  "employmentType": { "label": "SALARIED_FT" },
+  "isRemote": false,
+  "department": { "name": "Data", "base_department": "Data", "department_tree": ["Data"] },
+  "createdOn": "2026-07-07T05:34:53.457000-07:00",
+  "boardURL": "https://ats.rippling.com/example/jobs",
+  "url": "https://ats.rippling.com/example/jobs/7527c74e-2e0a-432d-99da-6b3f4042f325",
+  "jsonLd": null
+}

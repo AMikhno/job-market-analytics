@@ -29,6 +29,8 @@ from ingest.adapters.greenhouse import GreenhouseAdapter
 from ingest.adapters.lever import LeverAdapter
 from ingest.adapters.pinpoint import PinpointAdapter
 from ingest.adapters.recruitee import RecruiteeAdapter
+from ingest.adapters.rippling import RipplingAdapter
+from ingest.adapters.smartrecruiters import SmartRecruitersAdapter
 from ingest.adapters.workable import WorkableAdapter
 from shared.http import FetchPolicy, HostRateLimiter
 
@@ -155,6 +157,36 @@ class PinpointSource(SourceBase):
         return PinpointAdapter(self.url_template, self.policy(limiter))
 
 
+class RipplingSource(SourceBase):
+    adapter: Literal["rippling"] = "rippling"
+    url_template: str = "https://api.rippling.com/platform/api/ats/v1/board/{board_ref}/jobs"
+    # The list repeats a job once per location and carries no description, so
+    # postings are collapsed by uuid and each unique one is fetched (ADR-0021).
+    detail_url_template: str = (
+        "https://api.rippling.com/platform/api/ats/v1/board/{board_ref}/jobs/{job_uuid}"
+    )
+
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        return RipplingAdapter(self.url_template, self.detail_url_template, self.policy(limiter))
+
+
+class SmartRecruitersSource(SourceBase):
+    adapter: Literal["smartrecruiters"] = "smartrecruiters"
+    url_template: str = "https://api.smartrecruiters.com/v1/companies/{board_ref}/postings?limit={limit}&offset={offset}"
+    detail_url_template: str = (
+        "https://api.smartrecruiters.com/v1/companies/{board_ref}/postings/{posting_id}"
+    )
+    page_size: int = 100  # the API's own cap
+    # The only paginated Tier 1 source, and every company shares one host, so a
+    # large board is a long serial walk -- give its reads more room.
+    read_timeout_s: float = 60.0
+
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        return SmartRecruitersAdapter(
+            self.url_template, self.detail_url_template, self.policy(limiter), self.page_size
+        )
+
+
 Source = Annotated[
     GreenhouseSource
     | LeverSource
@@ -162,7 +194,9 @@ Source = Annotated[
     | BambooHRSource
     | RecruiteeSource
     | WorkableSource
-    | PinpointSource,
+    | PinpointSource
+    | RipplingSource
+    | SmartRecruitersSource,
     Field(discriminator="adapter"),
 ]
 
@@ -174,4 +208,6 @@ SOURCES: list[Source] = [
     RecruiteeSource(name="recruitee"),
     WorkableSource(name="workable"),
     PinpointSource(name="pinpoint"),
+    RipplingSource(name="rippling"),
+    SmartRecruitersSource(name="smartrecruiters"),
 ]

@@ -15,6 +15,8 @@ def test_registry_has_all_adapters() -> None:
         "recruitee",
         "workable",
         "pinpoint",
+        "rippling",
+        "smartrecruiters",
     }
 
 
