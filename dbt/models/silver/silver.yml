@@ -100,6 +100,13 @@ models:
           none did. Named rather than merely counted so a posting can be judged
           ("Kafka" as a nice-to-have vs a streaming role) without opening it.
         data_type: varchar
+      - name: match_score
+        description: >
+          desired_tech_hits + match_title_bonus*(title_match) −
+          match_deal_breaker_penalty*deal_breaker_hits. The single key delivery
+          orders on (ADR-0024); may be negative. Weights are dbt vars.
+        data_type: bigint
+        data_tests: [not_null]
       - name: is_active
         description: >
           True while the posting is present in its board's latest ingest AND that
@@ -166,6 +173,40 @@ unit_tests:
         - {job_key: k2, deal_breaker_hits: 0, deal_breaker_terms: }
         - {job_key: k3, deal_breaker_hits: 1, deal_breaker_terms: Kafka}
         - {job_key: k4, deal_breaker_hits: 2, deal_breaker_terms: "Kafka, Spark"}
+
+  - name: match_score_combines_the_signals_into_one_ordering_key
+    description: >
+      match_score = desired_tech_hits + bonus*(title_match) − penalty*hits
+      (ADR-0024), with the default bonus 2 / penalty 1. A strong posting carrying
+      one incidental deal-breaker must still outrank a weak clean one — that is
+      the whole point of scoring rather than sorting on the flag first.
+    model: silver_jobs
+    given:
+      - input: ref('int_jobs__unioned')
+        rows:
+          # 2 tech + title bonus 2 - 1 deal-breaker = 3
+          - {job_key: strong_flagged, source: lever, company: acme, title: Analytics Engineer,
+             clean_text: "dbt and SQL, some Kafka", location: "Ottawa, Canada",
+             ingested_at: 2026-07-02 10:00:00}
+          # 0 tech, no title, clean = 0
+          - {job_key: weak_clean, source: lever, company: acme, title: Chef,
+             clean_text: "cooking", location: "Ottawa, Canada", ingested_at: 2026-07-02 10:00:00}
+          # 2 tech, no title, clean = 2
+          - {job_key: mid_clean, source: lever, company: acme, title: Cook,
+             clean_text: "dbt and SQL", location: "Ottawa, Canada", ingested_at: 2026-07-02 10:00:00}
+      - input: ref('deal_breaker_tech')
+        rows: [{tech: Kafka}]
+      - input: ref('allowed_locations')
+        rows: [{pattern: Canada}]
+      - input: ref('desired_tech')
+        rows: [{tech: dbt}, {tech: SQL}]
+      - input: ref('desired_titles')
+        rows: [{pattern: Analytics}]
+    expect:
+      rows:
+        - {job_key: strong_flagged, match_score: 3}
+        - {job_key: weak_clean, match_score: 0}
+        - {job_key: mid_clean, match_score: 2}
 
   - name: location_gate_keeps_null_bare_remote_and_canada
     description: >

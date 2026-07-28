@@ -31,19 +31,19 @@ log = logging.getLogger("deliver")
 
 
 def fetch_new_postings(settings: Settings, watermark: str) -> list[dict[str, object]]:
-    """Gold postings first seen after the watermark, best signals first.
+    """Gold postings first seen after the watermark, best fit first.
 
-    Deal-breakers sort last rather than being absent (ADR-0023): a posting whose
-    text merely mentions Kafka is still worth seeing below the clean ones, and V1
-    cannot tell a nice-to-have from a requirement.
+    Ordered by the single `match_score` (ADR-0024) rather than by several keys in
+    priority order. The old form sorted on title_match before desired_tech_hits,
+    so the tech count printed on each line reset partway down the email — the
+    visible number was not the sort key. Now it is.
     """
     sql = f"""
-        select title, company, location, url, desired_tech_hits, title_match,
-               deal_breaker_hits, deal_breaker_terms, first_seen_at
+        select title, company, location, url, match_score, desired_tech_hits,
+               title_match, deal_breaker_hits, deal_breaker_terms, first_seen_at
         from {storage.gold_table(settings)}
         where first_seen_at > cast(? as timestamp)
-        order by deal_breaker_hits asc, title_match desc, desired_tech_hits desc,
-                 posted_or_updated_at desc nulls last
+        order by match_score desc, posted_or_updated_at desc nulls last
     """
     return storage.query_rows(sql, params=[watermark], settings=settings)
 
@@ -117,7 +117,9 @@ def build_email(
         title, company = str(r["title"]), str(r["company"])
         location = str(r["location"]) if r["location"] is not None else "location unknown"
         url = str(r["url"])
-        signals = f"tech hits: {r['desired_tech_hits']}"
+        # The score leads, then the parts that produced it — the list is ordered
+        # by that first number, so the ranking is checkable from the line itself.
+        signals = f"match {r['match_score']} — tech hits: {r['desired_tech_hits']}"
         if r["title_match"]:
             signals += ", title match"
         # Named, not just counted: "Kafka" as a nice-to-have reads very
