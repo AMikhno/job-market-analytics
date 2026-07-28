@@ -81,11 +81,32 @@ def test_ensure_raw_tables_creates_all_empty(tmp_path) -> None:
     import duckdb
 
     settings = Settings(_env_file=None, duckdb_path=str(tmp_path / "j.duckdb"))
-    storage.ensure_raw_tables(settings)
+    storage.ensure_raw_tables(settings, ["greenhouse", "lever", "ashby"])
     con = duckdb.connect(str(tmp_path / "j.duckdb"))
     try:
         for tbl in ("raw_greenhouse_jobs", "raw_lever_jobs", "raw_ashby_jobs"):
             assert con.execute(f"select count(*) from {tbl}").fetchone()[0] == 0
+    finally:
+        con.close()
+
+
+def test_pipeline_provisions_a_table_for_every_registered_source(tmp_path, monkeypatch) -> None:
+    """Adding a source must not need a second edit here: the table list comes
+    from the registry, so a missing table can't be discovered at write time."""
+    import duckdb
+
+    from ingest import pipeline
+    from ingest.sources import SOURCES
+
+    monkeypatch.setenv("PIPELINE_TARGET", "dev")
+    monkeypatch.setenv("DUCKDB_PATH", str(tmp_path / "j.duckdb"))
+    pipeline.ensure_raw_tables()
+
+    con = duckdb.connect(str(tmp_path / "j.duckdb"))
+    try:
+        for src in SOURCES:
+            table = storage.raw_table(src.adapter)
+            assert con.execute(f"select count(*) from {table}").fetchone()[0] == 0
     finally:
         con.close()
 
@@ -140,7 +161,7 @@ def _patch_client(monkeypatch) -> None:
 def test_ensure_raw_tables_provisions_bigquery(monkeypatch) -> None:
     _patch_client(monkeypatch)
 
-    storage.ensure_raw_tables(_prod_settings())
+    storage.ensure_raw_tables(_prod_settings(), ["greenhouse", "lever", "ashby"])
 
     (client,) = _FakeBQClient.instances
     assert client.datasets == ["proj.jobs_raw", "proj.jobs_ops"]

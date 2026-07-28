@@ -1,0 +1,22 @@
+{
+  "meta": { "jobOpeningStatus": "Open" },
+  "result": {
+    "jobOpening": {
+      "jobOpeningShareUrl": "https://example.bamboohr.com/careers/82",
+      "jobOpeningName": "Analytics Engineer",
+      "jobOpeningStatus": "Open",
+      "departmentId": "18708",
+      "departmentLabel": "Data",
+      "employmentStatusLabel": "Full-Time",
+      "location": { "city": null, "state": null, "postalCode": null, "addressCountry": null },
+      "atsLocation": { "country": "Canada", "countryId": "2", "state": null, "city": "Ottawa" },
+      "description": "<p>Build <strong>dbt</strong> models &amp; dashboards.</p>",
+      "compensation": "$110,000 - $150,000",
+      "datePosted": "2026-05-11",
+      "minimumExperience": "Mid-level",
+      "locationType": "1",
+      "seekPromoted": false
+    },
+    "formFields": { "firstName": { "isRequired": true, "label": "First Name" } }
+  }
+}

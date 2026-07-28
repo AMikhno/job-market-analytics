@@ -1,0 +1,26 @@
+{
+  "offset": 2,
+  "limit": 2,
+  "totalFound": 3,
+  "content": [
+    {
+      "id": "744000140260459",
+      "name": "Data Platform Engineer",
+      "uuid": "5e08bc93-b331-4868-9180-1c00c65f5bee",
+      "company": { "identifier": "Example", "name": "Example Inc." },
+      "releasedDate": "2026-07-28T14:31:36.088Z",
+      "location": {
+        "city": "Toronto",
+        "region": "Ontario",
+        "country": "ca",
+        "remote": false,
+        "hybrid": false,
+        "fullLocation": "Toronto, Ontario, Canada"
+      },
+      "department": { "label": "Data" },
+      "typeOfEmployment": { "id": "permanent", "label": "Full-time" },
+      "visibility": "PUBLIC",
+      "ref": "https://api.smartrecruiters.com/v1/companies/example/postings/744000140260459"
+    }
+  ]
+}

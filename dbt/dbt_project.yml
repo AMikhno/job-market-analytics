@@ -13,6 +13,16 @@ vars:
   # postings go inactive. ~2 missed runs of grace at the twice-daily cadence.
   board_staleness_hours: 36
 
+  # match_score = desired_tech_hits + bonus*(title_match) - penalty*deal_breaker_hits.
+  # One number, shown in the digest and used to order it (ADR-0024), so the score
+  # a posting displays is the reason it sits where it does.
+  # Technologies carry the weight because the target titles are too varied to
+  # enumerate (Snowflake developer, BI migration, AI productivity analyst); the
+  # title bonus is a nudge, not a gate. **Integers only** — the models declare
+  # match_score as an integer type under the dbt contract.
+  match_title_bonus: 2
+  match_deal_breaker_penalty: 1
+
 # Three medallion zones = dbt staging -> intermediate -> marts.
 # Folder defaults below; per-model overrides live in-model:
 #   - int_jobs__unioned        -> view  (free; ephemeral would block unit tests)

@@ -10,6 +10,18 @@ with unioned as (
     select * from {{ ref('stg_lever__jobs') }}
     union all
     select * from {{ ref('stg_ashby__jobs') }}
+    union all
+    select * from {{ ref('stg_bamboohr__jobs') }}
+    union all
+    select * from {{ ref('stg_recruitee__jobs') }}
+    union all
+    select * from {{ ref('stg_workable__jobs') }}
+    union all
+    select * from {{ ref('stg_pinpoint__jobs') }}
+    union all
+    select * from {{ ref('stg_rippling__jobs') }}
+    union all
+    select * from {{ ref('stg_smartrecruiters__jobs') }}
 ),
 
 keyed as (

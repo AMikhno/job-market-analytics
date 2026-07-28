@@ -16,22 +16,23 @@ from urllib.parse import quote
 
 import requests
 
-from shared.http import get_json
+from shared.http import FetchPolicy
 from shared.models import RawPosting
 
 
 class AshbyAdapter:
     source = "ashby"
 
-    def __init__(self, url_template: str) -> None:
+    def __init__(self, url_template: str, policy: FetchPolicy | None = None) -> None:
         self.url_template = url_template
+        self.policy = policy or FetchPolicy()
 
     def fetch(self, session: requests.Session, board_ref: str) -> list[RawPosting]:
         # Ashby board names are display names and may contain spaces
         # ("Dominion Dynamics"), so the ref is percent-encoded into the path
         # rather than interpolated raw. `company` below keeps the readable form.
         url = self.url_template.format(board_ref=quote(board_ref, safe=""))
-        data = get_json(session, url)
+        data = self.policy.get_json(session, url)
         # Strict: a response without "jobs" is schema drift or an error body, not
         # an empty board - raise (per-company warn) instead of landing 0 rows.
         jobs: list[dict[str, Any]] = data["jobs"]

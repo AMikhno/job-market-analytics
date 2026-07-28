@@ -20,7 +20,7 @@ from typing import Any
 
 import requests
 
-from shared.http import get_json
+from shared.http import FetchPolicy
 from shared.models import RawPosting
 from shared.redact import redact_ref
 
@@ -30,9 +30,15 @@ log = logging.getLogger("ingest")
 class LeverAdapter:
     source = "lever"
 
-    def __init__(self, url_template: str, eu_url_template: str | None = None) -> None:
+    def __init__(
+        self,
+        url_template: str,
+        eu_url_template: str | None = None,
+        policy: FetchPolicy | None = None,
+    ) -> None:
         self.url_template = url_template
         self.eu_url_template = eu_url_template
+        self.policy = policy or FetchPolicy()
 
     def _get(self, session: requests.Session, board_ref: str) -> Any:
         """Fetch from the US shard, falling back to the EU shard on a 404.
@@ -43,12 +49,12 @@ class LeverAdapter:
         from the first call, so a real outage is never masked as a missing board.
         """
         try:
-            return get_json(session, self.url_template.format(board_ref=board_ref))
+            return self.policy.get_json(session, self.url_template.format(board_ref=board_ref))
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else None
             if status != 404 or not self.eu_url_template:
                 raise
-        payload = get_json(session, self.eu_url_template.format(board_ref=board_ref))
+        payload = self.policy.get_json(session, self.eu_url_template.format(board_ref=board_ref))
         # Always redacted: this repo's CI logs are public, and unlike the
         # pipeline's own log lines there is no Settings here to consult.
         log.info("lever board_ref=%s served by the EU shard", redact_ref(board_ref))

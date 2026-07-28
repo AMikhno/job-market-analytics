@@ -7,9 +7,17 @@ so a malformed list is caught here instead of 404-skipping mid-run.
 
     make validate-companies
 
-Exits non-zero if any row is malformed or any board_ref is invalid for a
-registered source. Rows on ATS without an adapter yet (inventory-only) parse but
-skip the format check — there is no rule to apply until the adapter exists.
+Exits non-zero if any row is malformed, or if an **active** row's board_ref is
+invalid for a registered source. Rows on ATS without an adapter yet
+(inventory-only) parse but skip the format check — there is no rule to apply
+until the adapter exists.
+
+Inactive rows are checked but only *reported*, never failed: an inventory row
+whose board has not been discovered yet legitimately carries a blank board_ref,
+and it is never fetched. Failing on those would mean that shipping an adapter
+for an ATS retroactively invalidated the inventory rows already sitting on it
+— which is exactly what happened when Rippling and Workable gained adapters
+while three Rippling rows still had no ref.
 """
 
 from __future__ import annotations
@@ -30,8 +38,14 @@ log = logging.getLogger("validate_companies")
 
 def validate_company_list(settings: Settings | None = None) -> list[str]:
     """Return a list of human-readable problems (empty means the list is valid)."""
+    return _scan(settings)[0]
+
+
+def _scan(settings: Settings | None = None) -> tuple[list[str], list[str]]:
+    """Return (problems, notices): failures on active rows, notes on inventory."""
     settings = settings or get_settings()
     problems: list[str] = []
+    notices: list[str] = []
     counts: Counter[str] = Counter()
 
     with _companies_path(settings).open(newline="") as fh:
@@ -49,15 +63,20 @@ def validate_company_list(settings: Settings | None = None) -> list[str]:
             try:
                 src.validate_board_ref(company.board_ref)
             except ValueError as exc:
-                problems.append(f"row {line_no} ({company.company_name}): {exc}")
+                # Only an *active* row can build a URL or hard-fail a run; an
+                # inactive one is inventory waiting on discovery.
+                target = problems if company.active else notices
+                target.append(f"row {line_no} ({company.company_name}): {exc}")
 
     log.info("scanned %d row(s): %s", sum(counts.values()), dict(counts))
-    return problems
+    return problems, notices
 
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    problems = validate_company_list()
+    problems, notices = _scan()
+    for notice in notices:
+        log.warning("inactive row, not fetched: %s", notice)
     if problems:
         for problem in problems:
             log.error(problem)

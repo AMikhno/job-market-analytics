@@ -2,8 +2,10 @@ version: 2
 models:
   - name: fct_job_postings
     description: >
-      Curated, deduplicated, rule-filtered postings still live on their boards.
-      The V1 output: recency-ranked links to apply to.
+      Curated, deduplicated, location-filtered postings still live on their boards.
+      The V1 output: recency-ranked links to apply to, carrying the positive
+      (desired_tech_hits / title_match) and negative (deal_breaker_*) signals that
+      delivery ranks on. Only the location rule removes a posting.
     # Contract enforced on the DuckDB dev target (see silver_jobs for the rationale).
     config:
       contract:
@@ -46,6 +48,21 @@ models:
       - name: title_match
         description: True if the title matches a targeted role (soft signal; sort/filter downstream).
         data_type: boolean
+        data_tests: [not_null]
+      - name: deal_breaker_hits
+        description: >
+          Distinct deal-breaker techs named in the posting; 0 = clean. Negative
+          signal, never a filter (ADR-0023) — delivery sorts these last.
+        data_type: bigint
+        data_tests: [not_null]
+      - name: deal_breaker_terms
+        description: Which deal-breaker terms matched (sorted, comma-separated); null when none.
+        data_type: varchar
+      - name: match_score
+        description: >
+          Best-fit ordering key, shown in the digest beside the signals that
+          produced it (ADR-0024). Higher is better; may be negative.
+        data_type: bigint
         data_tests: [not_null]
       - name: recency_rank
         description: 1 = most recent by posted_or_updated_at; dense unique ordering for the digest.

@@ -1,7 +1,12 @@
 -- Dedup to the current row per posting, derive its lifecycle (is it still on the
--- board?), then drop hard deal-breakers using only structured + keyword signals
--- (no LLM in V1). Deal-breaker tech and the Canada location marker are seed-driven,
+-- board?), then annotate it with keyword signals (no LLM in V1). Deal-breaker
+-- tech, desired tech/titles and the Canada location marker are all seed-driven,
 -- so the rules are data, not hardcoded SQL.
+--
+-- Location is the only hard filter left. Deal-breaker tech used to drop a posting
+-- outright; it is now a negative *signal* (ADR-0023) because a single mention
+-- anywhere in the text -- including a "nice to have" line -- was deleting roles
+-- that matched on everything else.
 with lifecycle as (
     select
         *,
@@ -33,12 +38,17 @@ deduped as (
     ) = 1
 ),
 
--- a posting is disqualified if its text contains ANY deal-breaker tech (word match)
-tech_hits as (
-    select d.job_key
+-- Deal-breaker tech named anywhere in the posting text (word match). Counted and
+-- named, not filtered: `deal_breaker_hits` = how many distinct terms appear, and
+-- `deal_breaker_terms` says which, so a posting can be judged rather than vanish.
+deal_breaker_matches as (
+    select
+        d.job_key,
+        count(t.tech) as deal_breaker_hits,
+        string_agg(t.tech, ', ' order by t.tech) as deal_breaker_terms
     from deduped d
-    cross join {{ ref('deal_breaker_tech') }} t
-    where {{ regexp_word_ci('d.clean_text', 't.tech') }}
+    inner join {{ ref('deal_breaker_tech') }} t
+        on {{ regexp_word_ci('d.clean_text', 't.tech') }}
     group by d.job_key
 ),
 
@@ -103,6 +113,18 @@ select
     d.last_seen_at,
     coalesce(dtc.desired_tech_hits, 0) as desired_tech_hits,
     coalesce(tm.title_match, false) as title_match,
+    -- Negative signal, never a filter (ADR-0023). 0 = clean.
+    coalesce(dbm.deal_breaker_hits, 0) as deal_breaker_hits,
+    dbm.deal_breaker_terms,
+    -- The one number delivery orders on (ADR-0024). Every input is visible in
+    -- the digest line beside it, so the ranking explains itself; the weights are
+    -- vars, so tuning them needs no code change. May go negative.
+    (
+        coalesce(dtc.desired_tech_hits, 0)
+        + {{ var('match_title_bonus', 2) }}
+        * case when coalesce(tm.title_match, false) then 1 else 0 end
+        - {{ var('match_deal_breaker_penalty', 1) }} * coalesce(dbm.deal_breaker_hits, 0)
+    ) as match_score,
     -- Active = still on the board as of that board's latest ingest, AND that
     -- board is itself still being ingested. Without the second clause, a board
     -- removed from the company list (or 404-ing forever - per-company failures
@@ -119,6 +141,5 @@ select
 from deduped d
 left join desired_tech_counts dtc on d.job_key = dtc.job_key
 left join title_matches tm on d.job_key = tm.job_key
-where
-    d.job_key not in (select tech_hits.job_key from tech_hits)
-    and d.job_key in (select location_ok.job_key from location_ok)
+left join deal_breaker_matches dbm on d.job_key = dbm.job_key
+where d.job_key in (select location_ok.job_key from location_ok)

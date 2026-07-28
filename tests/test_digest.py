@@ -37,6 +37,8 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
             """CREATE TABLE IF NOT EXISTS main_gold.fct_job_postings (
                 title VARCHAR, company VARCHAR, location VARCHAR, url VARCHAR,
                 desired_tech_hits BIGINT, title_match BOOLEAN,
+                deal_breaker_hits BIGINT, deal_breaker_terms VARCHAR,
+                match_score BIGINT,
                 first_seen_at TIMESTAMP, posted_or_updated_at TIMESTAMP)"""
         )
         for r in rows:
@@ -44,7 +46,7 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
             # it, while the pipeline's own ISO strings keep their UTC wall-clock.
             first_seen = r["first_seen_at"].replace(tzinfo=None)
             con.execute(
-                "INSERT INTO main_gold.fct_job_postings VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO main_gold.fct_job_postings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     r.get("title", "Analytics Engineer"),
                     r.get("company", "acme"),
@@ -52,6 +54,15 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
                     r.get("url", "https://example/x"),
                     r.get("desired_tech_hits", 0),
                     r.get("title_match", False),
+                    r.get("deal_breaker_hits", 0),
+                    r.get("deal_breaker_terms"),
+                    # mirrors silver's formula (bonus 2 / penalty 1) unless pinned
+                    r.get(
+                        "match_score",
+                        r.get("desired_tech_hits", 0)
+                        + (2 if r.get("title_match", False) else 0)
+                        - r.get("deal_breaker_hits", 0),
+                    ),
                     first_seen,
                     first_seen,
                 ],
@@ -169,6 +180,7 @@ def test_email_escapes_posting_fields_and_includes_warnings(tmp_path) -> None:
             "company": "a&b",
             "location": None,
             "url": "https://example/x?a=1&b=2",
+            "match_score": 4,
             "desired_tech_hits": 2,
             "title_match": True,
             "first_seen_at": NOW,
@@ -302,3 +314,80 @@ def test_ordering_puts_best_signals_first(tmp_path, monkeypatch, stub_smtp) -> N
 
     body = stub_smtp.sent[0].get_body(("plain",)).get_content()
     assert body.index("Best") < body.index("Middling") < body.index("Plain")
+
+
+def test_deal_breaker_demotes_but_does_not_delete_or_outrank_fit(
+    tmp_path, monkeypatch, stub_smtp
+) -> None:
+    """ADR-0023 + ADR-0024: a deal-breaker costs a posting points, it does not
+    remove it and it does not send it to the bottom regardless of fit. A strong
+    match carrying one incidental "Kafka" still outranks a weak clean posting —
+    but loses to its own twin without the mention."""
+    settings = _settings(tmp_path)
+    fresh = NOW - timedelta(hours=1)
+    _seed_gold(
+        settings,
+        [
+            {
+                "title": "Strong but mentions Kafka",
+                "first_seen_at": fresh,
+                "title_match": True,
+                "desired_tech_hits": 6,
+                "deal_breaker_hits": 1,
+                "deal_breaker_terms": "Kafka",
+            },  # 6 + 2 - 1 = 7
+            {
+                "title": "Strong and clean",
+                "first_seen_at": fresh,
+                "title_match": True,
+                "desired_tech_hits": 6,
+            },  # 6 + 2 = 8
+            {"title": "Clean and plain", "first_seen_at": fresh},  # 0
+        ],
+    )
+    monkeypatch.setattr(digest, "get_settings", lambda: settings)
+
+    digest.run()
+
+    body = stub_smtp.sent[0].get_body(("plain",)).get_content()
+    assert "Strong but mentions Kafka" in body  # delivered, not filtered out
+    assert (
+        body.index("Strong and clean")
+        < body.index("Strong but mentions Kafka")
+        < body.index("Clean and plain")
+    )
+    assert "mentions Kafka" in body  # named, so it can be judged from the line
+
+
+def test_digest_line_shows_the_score_it_is_sorted_by(tmp_path, monkeypatch, stub_smtp) -> None:
+    """The printed number has to be the sort key. Before ADR-0024 the line showed
+    tech hits while the sort led on title_match, so the visible number reset
+    partway down the email and the ordering looked arbitrary."""
+    settings = _settings(tmp_path)
+    fresh = NOW - timedelta(hours=1)
+    _seed_gold(
+        settings,
+        [
+            {"title": "Tech only", "first_seen_at": fresh, "desired_tech_hits": 8},  # 8
+            {
+                "title": "Title only",
+                "first_seen_at": fresh,
+                "title_match": True,
+                "desired_tech_hits": 0,
+            },  # 2
+        ],
+    )
+    monkeypatch.setattr(digest, "get_settings", lambda: settings)
+
+    digest.run()
+
+    body = stub_smtp.sent[0].get_body(("plain",)).get_content()
+    # a title match no longer jumps the queue ahead of a much stronger tech match
+    assert body.index("Tech only") < body.index("Title only")
+    assert "match 8 — tech hits: 8" in body
+    assert "match 2 — tech hits: 0, title match" in body
+    # the scores read down the page in descending order
+    scores = [
+        int(line.split("match ")[1].split(" ")[0]) for line in body.splitlines() if "match " in line
+    ]
+    assert scores == sorted(scores, reverse=True)

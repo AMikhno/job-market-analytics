@@ -6,8 +6,9 @@ Context and conventions for AI agents (and humans) working on this repo.
 
 Automated job-matching pipeline. **V1 (current) is ingestion + dbt transformations
 only** — no LLM, no embeddings, no scoring. Python pulls postings from every ATS with
-a public, keyless feed (Greenhouse, Lever, Ashby today; more ATS are tentative V2 — see
-ADR-0013) into per-source raw tables; one dbt project transforms them through
+a public, keyless feed (Greenhouse, Lever, Ashby, BambooHR, Recruitee, Workable, Pinpoint,
+Rippling and SmartRecruiters today — ADR-0013/0021; Workday and the auth-gated ATS stay
+inventory-only) into per-source raw tables; one dbt project transforms them through
 bronze → silver → gold into a deduplicated, rule-filtered table of postings.
 AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
 
@@ -51,8 +52,10 @@ AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
 - **Discovery output belongs in `config/discovery/`**, never `~/Downloads`: the audit cache is the
   only record of every company's website and detected ATS, and it is what makes a re-run resumable.
   Only the input candidate `.xlsx` comes from outside the repo (`make discover XLSX=…`).
-- **Filter rules are data**: deal-breaker tech, allowed locations, and the soft desired-tech /
-  desired-title signals all live in dbt seeds.
+- **Filter rules are data**: allowed locations, deal-breaker tech, and the desired-tech /
+  desired-title signals all live in dbt seeds. **`allowed_locations` is the only one that
+  removes a posting** — the tech/title seeds (positive and negative alike) rank it
+  (ADR-0015, ADR-0023).
 - **Cross-warehouse SQL**: models must run on both DuckDB (dev) and BigQuery (prod);
   dialect-specific logic goes in an `adapter.dispatch` macro (see `macros/cross_db.sql`).
 - **Conventional commits** (`feat:`, `fix:`, `chore:`, `docs:`); small, single-purpose.
@@ -118,5 +121,18 @@ must be sanitized before they are committed.
 
 ## Pointers
 
+**Start every session with `TODO.md` § "Next session — start here".** It carries the current
+state, the decisions already made, and what is deliberately *not* being worked on.
+
+- Current state, priorities, open decisions → `TODO.md`
 - System design & roadmap → `ARCHITECTURE.md`
-- Decision records → `docs/decisions/`
+- Decision records (why, not what) → `docs/decisions/` — newest first: 0022 parallel fetch,
+  0021 list+detail (a V1 source must yield a description), 0020 V2 scope
+- Measured evidence & proposals not yet decided → `docs/research/`
+  (`ingestion-cost.md` — cost model + proposal awaiting evaluation;
+  `ats-feeds.md` — per-ATS probe results incl. an "as built" section;
+  `openjobdata.md` — the aggregated-source gate)
+- V2 implementation contract → `docs/v2-plan.md`
+
+Numbers in these docs are **measured, not estimated** — if you supersede one, measure again and
+say when. Don't trust a figure's age.

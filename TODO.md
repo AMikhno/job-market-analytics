@@ -51,45 +51,102 @@ Triggered by auditing the list against the live APIs: of 157 active boards, **10
       active / ~500). Variable pushed; merged to main as PR #12
 - [x] Companies on a non-V1 ATS stay as `active=false` inventory rows with their real ATS
 
-## V1.8 — Tier 1 ATS adapters — planned (separate branch)
+## V1.8 — Tier 1 ATS adapters — ✅ COMPLETE (2026-07-28, branch `feat/tier1-ats-adapters`)
 
-**Survey + evidence: `docs/research/ats-feeds.md`; re-probe with
-`tools/company_discovery/ats_feed_probe.py` before starting.** Seven ATS meet ADR-0013's
-public-keyless bar *today* and are single-GET/JSON — the Ashby pattern, not the heavier
-POST/pagination contract. Counts below are post-re-audit: **53 inactive companies**, a 43%
-increase on the 123 boards now running.
+Six of the surveyed seven shipped; **161 active boards, up from 123**. See ADR-0021/0022 and the
+"As built" section of `docs/research/ats-feeds.md`.
 
-- [ ] **BambooHR** — `{ref}.bamboohr.com/careers/list` → `{meta, result[]}`. **33 companies**,
-      the best payoff-to-effort work in the project. No per-id detail call needed
-- [ ] **Recruitee** (`{ref}.recruitee.com/api/offers/`, 6) + **Workable**
-      (`apply.workable.com/api/v1/widget/accounts/{ref}?details=true` — the v1 widget; the
-      documented v3 path 404s, 5)
-- [ ] **Rippling** (3), **BreezyHR** (2), **Pinpoint** (2), **SmartRecruiters** (2 — the only
-      one needing `limit`/`offset` pagination) — nearly identical, do together
-- [ ] Each: sanitized committed fixture + adapter tests + `active=true` flip for its rows.
-      The real cost is the `RawPosting` field mapping, not the HTTP call
-- [ ] Verify a **second** ref per platform first — one company's board can be misconfigured
-      in ways that look platform-wide
+- [x] **BambooHR** (33 rows, 32 resolving) — list + per-posting detail
+- [x] **Recruitee**, **Workable**, **Pinpoint** — single GET, description in the list
+- [x] **Rippling** (collapses its per-location duplicate rows) and **SmartRecruiters**
+      (`limit`/`offset` pagination) — both list + detail
+- [x] **A V1 source must yield a description** (ADR-0021). Three of the six omit it from the
+      list, and silver's deal-breaker filter + desired-tech signal both read it, so a list-only
+      row would be permanently unfilterable. Verified: **0 empty descriptions** in 1,324 postings
+- [x] **Parallel board fetch, per-host rate limiting** (ADR-0022) — needed once requests scale
+      with postings rather than boards
+- [x] Sanitized fixtures + adapter tests for each; every platform re-probed against a second
+      live ref first (which is what caught the detail-call, duplicate-row and no-date surprises)
+- [x] `make validate-companies` no longer fails on an *inactive* row with a blank ref — shipping
+      an adapter used to retroactively invalidate the inventory rows already on that ATS
 
-Deferred, unchanged: **Workday** (endpoint live — 422 not 404 — but needs tenant/wdN/site
-captured for all **30** rows before any code). Not keyless, stays inventory: SuccessFactors
-(401), Teamtailor (API key, now 6 companies), iCIMS, JazzHR, UKG, Dayforce, ADP, Phenom, Indeed.
+**BreezyHR moved to V1.9** (below). Workday unchanged: endpoint live (422, not 404) but needs
+tenant/wdN/site captured for all 30 rows, plus a POST paginator. Not keyless, stays inventory:
+SuccessFactors (401), Teamtailor (API key), iCIMS, JazzHR, UKG, Dayforce, ADP, Phenom, Indeed.
+
+## V1.8b — company-list repair (done 2026-07-28, same branch)
+
+Verifying against live boards turned up list problems no adapter could fix, and a **root cause
+in the discovery tool**: its API-probe fallback only knew Greenhouse/Lever/Ashby, so a company
+on any of the six new ATS could never be recovered by probe — which is exactly why five boards
+sat in the list with a blank or wrong ref while their APIs answered on the first guess.
+
+- [x] **Probe every V1 endpoint** in `ats_audit.py`, not just three; `emit_ingestable`'s
+      ATS→source map likewise (a stale entry there silently drops a supported company)
+- [x] **`website` now survives discovery.** The audit cache always had it, but both inventory
+      writers omitted the column, so all 285 master rows carried a blank recovery key —
+      the one field `NOTES.local.md` and CLAUDE.md both describe as the way back after an ATS
+      move. Backfilled 282/285 from the cache (the 3 misses are Brookstreet Hotel sub-venues)
+- [x] **`career`, `careers`, `widget`, `job-widget` added to `_BAD_TOKENS`** — the exact junk
+      refs that produced three 404ing Recruitee rows and a SmartRecruiters stub
+- [x] **5 refs recovered and identity-checked against each board's own payload**: `pythian` +
+      `argyle` (Rippling), `sectigo` (SmartRecruiters — 41 postings; the stored `job-widget`
+      was a stub), `trafilea` (Recruitee, 43), `fidus` (Workable, 34). Renesas activated too
+      (871 postings, ~10 min/run, 2 past the location gate — a deliberate call)
+- [x] Freshness gates added for `raw_rippling_jobs` / `raw_smartrecruiters_jobs`, now that both
+      have a verified board. **167 active boards**
+
+## V1.9 — the rows discovery still can't place, then BreezyHR
+
+**Re-discovery run 2026-07-28** (browser audit + API probe over all nine V1 endpoints) against
+all seven. It fixed **one**; the reason for each of the other six is now recorded in the
+master's `notes` so nobody repeats the same dead ends. **168 active boards.**
+
+- [x] **TPC Training → `certus`, activated and renamed `Certus (TPC Training)`.** Their careers
+      page links to `certus.com/careers`, i.e. the parent brand's Recruitee board — unlike the
+      Huawei case, the board belongs to the same corporate group. Verified live, 6 postings
+- [ ] **CMC Microsystems and Kanata North portal** — the browser reproduced `huaweicanada` from
+      *both* independently. Both are ecosystem pages listing **member-company** jobs, which is
+      the failure mode `tools/company_discovery/README.md` already warns about. CMC needs a
+      human to find its own careers system; the portal row is a candidate for deletion (it is
+      not an employer). The Huawei board itself is real and was the biggest contributor in
+      testing (173 postings → 160 gold) if you ever want it as its own row
+- [ ] **Field Effect, RBR Global** — Recruitee **confirmed** from their careers pages, but no
+      board token is extractable and the API probe missed every guessable name. Cheapest fix is
+      a human opening the careers page with the network tab and reading the board name off it
+- [ ] **Buxton** — the crawl from `buxtonco.com` landed on `audiense.com/about/careers` (a
+      different company) and found no token. Treat its detected ATS as unverified
+- [ ] **Kivuto** — BambooHR confirmed from `kivuto.com/careers`, but
+      `kivuto.bamboohr.com/careers/list` **302s to bamboohr.com**: the tenant is closed. There is
+      no live board; this row cannot be fixed, only removed or re-pointed
+- [ ] **BreezyHR** (2 companies) — only if a description becomes reachable. Four keyless paths
+      tried and documented in `docs/research/ats-feeds.md`; today the list alone would land
+      untextable rows (ADR-0021)
 
 ## Next session — start here
 
-1. **Check the first prod run with 123 boards** (Actions → Ingest). First time in prod for the
-   Ashby percent-encoding, the Lever EU fallback, and the healthchecks step. Expect a much
-   larger ingest; watch for a `Skipped boards (redacted:…)` annotation and resolve any with
-   `make whois REF=…`
-2. **Value/coverage check against real gold data** — now the highest-value open question.
-   Coverage went 13 → 123 boards, but most new companies are US-only and the silver location
-   gate drops non-Canadian postings, so 8,885 visible postings will *not* become 8,885 gold
-   rows. Count: active gold postings, title-matched, and how many you'd actually apply to.
-   **If the funnel is still thin after this much coverage work, V2 should be relevance, not
-   more sources** — and these numbers feed the README results section either way
-3. Then either **V1.8** (above) or **V2** (below), depending on what step 2 says
-4. Housekeeping: arm healthchecks (`NOTES.local.md` §4); delete the merged
-   `chore/uv-and-permissions` and `feat/company-list-correctness` remote branches; clear the
+1. **Merge the branch first, then push the variable** — in that order. Deployed code has to
+   understand the list before CI gets it (`NOTES.local.md` §3: a list can name sources or refs
+   an older deployment cannot parse). Then `gh variable set COMPANIES_CSV_CONTENT <
+   config/companies.active.csv` (**168 boards, ~13 KB**) and run Actions → Ingest
+2. **Expect a ~11.5 minute run** (measured, 167 boards). Renesas alone is ~10 of those minutes:
+   871 postings fetched one detail at a time on SmartRecruiters' shared host. A slow run is not
+   a hung one. Deactivating that one row takes it back to a couple of minutes
+3. **Storage: raw is append-only, and it adds up.** Measured **209 MB/run → 418 MB/day → 167 GB**
+   logical steady state at the current 400-day partition expiry (free allowance: 10 GiB).
+   Greenhouse + Ashby are 85% of it; ~39% of all bytes is description text stored twice (once in
+   `raw`, once in `description_html`). Three cheap levers — stop duplicating text, expiry
+   400 → 180 days, `storage_billing_model = 'PHYSICAL'` — take it to roughly 5–10 GB without
+   changing what is fetched. Full analysis and a general proposal: **`docs/research/ingestion-cost.md`**
+4. ~~Value/coverage check against real gold data~~ — **answered 2026-07-28, measured across all
+   167 boards.** 10,170 postings fetched → **1,179 gold → 40 title-matched** (38 of those also
+   hitting a desired tech). All 40 come from Greenhouse/Ashby/Lever; the six sources added in
+   V1.8 contributed **316 gold postings and 0 title matches**. Keep rates invert with board
+   size: BambooHR keeps 77% of what it fetches, Greenhouse 8%, SmartRecruiters 0.9%.
+   **The constraint is relevance, not coverage — go to V2 scoring, not more adapters.**
+5. **V2** (below). The V1.9 list repair is worth doing but is no longer the lever —
+   it would add local boards, and local boards are already the ones that convert
+6. Housekeeping: arm healthchecks (`NOTES.local.md` §4); delete merged remote branches; clear the
    superseded scratch files in `~/Downloads`
 
 ## V2 — AI relevance (scoped, ready to build)
@@ -137,7 +194,8 @@ Step-by-step versions of these live in `NOTES.local.md` (gitignored personal run
       publishes the dbt docs site on pushes to main — done 2026-07-28
 - [ ] Push the rebuilt company list: `gh variable set COMPANIES_CSV_CONTENT <
       config/companies.active.csv` (the **active-only projection**, never the master).
-      `make update-company-list` validates it first
+      `make update-company-list` validates it first. Now **168 boards / ~13 KB** after V1.8 —
+      and only *after* the branch is merged (`NOTES.local.md` §3)
 - [x] Digest secrets created in the `production` environment (`SMTP_USER` + `SMTP_PASSWORD`).
       `DIGEST_TO` stays optional — unset, the digest mails `SMTP_USER` (`deliver/digest.py`).
 - [ ] Create the healthchecks.io check and add its ping URL as the `HEALTHCHECK_URL` **secret**
