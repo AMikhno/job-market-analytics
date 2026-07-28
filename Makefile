@@ -1,4 +1,4 @@
-.PHONY: install ingest validate-companies update-company-list deliver dbt-deps ensure-raw dbt-dev dbt-prod dbt-test dbt-docs freshness test lint sql-lint format check
+.PHONY: install ingest validate-companies update-company-list companies-variable deliver dbt-deps ensure-raw dbt-dev dbt-prod dbt-test dbt-docs freshness test lint sql-lint format check
 
 install:          ## Set up the uv venv, dbt packages, and pre-commit hooks
 	uv sync --extra dev
@@ -20,8 +20,12 @@ update-company-list: ## Stage a discovery inventory into config/companies.csv + 
 	@test -n "$(INV)" || { echo "set INV=/path/to/companies_all.csv"; exit 1; }
 	cp $(INV) config/companies.csv
 	$(MAKE) validate-companies
-	@echo "validated. push it (human-authenticated):"
-	@echo "  gh variable set COMPANIES_CSV_CONTENT < config/companies.csv"
+	$(MAKE) companies-variable
+
+companies-variable: ## Write the active-only projection CI needs + print the push command
+	uv run python -m ingest.export_companies > config/companies.active.csv
+	@echo "push it (human-authenticated):"
+	@echo "  gh variable set COMPANIES_CSV_CONTENT < config/companies.active.csv"
 
 deliver:          ## Email the digest of new gold postings (no-op without SMTP creds)
 	uv run python -m deliver.digest

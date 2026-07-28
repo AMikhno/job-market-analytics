@@ -25,6 +25,11 @@ class Company(BaseModel):
     board_ref: str = Field(validation_alias=AliasChoices("board_ref", "company_slug"))
     active: bool = False
     tier: int = 1
+    # The company's own domain. Not read by the pipeline -- it is the *recovery
+    # key*: when a company moves ATS, its website is what lets the discovery tool
+    # re-derive a board_ref. Losing it is why a dead board previously meant
+    # hunting for the original spreadsheet. Optional, so older lists still parse.
+    website: str = ""
     notes: str = ""
 
     @field_validator("*", mode="before")
@@ -35,11 +40,11 @@ class Company(BaseModel):
         # and " true"/" 1" would fail bool/int parsing. Strip every string cell first.
         return value.strip() if isinstance(value, str) else value
 
-    @field_validator("active", "tier", "notes", mode="before")
+    @field_validator("active", "tier", "website", "notes", mode="before")
     @classmethod
     def _blank_csv_cell_means_default(cls, value: object, info: Any) -> object:
         if value in ("", None):
-            return {"active": False, "tier": 1, "notes": ""}[info.field_name]
+            return {"active": False, "tier": 1, "website": "", "notes": ""}[info.field_name]
         return value
 
 
