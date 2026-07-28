@@ -40,6 +40,14 @@ class Settings(BaseSettings):
     # instead of emailing the entire gold table.
     digest_lookback_hours: int = Field(default=26)
 
+    # Boards are fetched concurrently. Politeness is enforced per *host*
+    # (shared/http.py), so this only bounds how many boards are in flight —
+    # raising it does not make any single ATS's API be hit harder.
+    fetch_workers: int = Field(default=8)
+    # Default seconds between two requests to the same host; a source can widen
+    # its own interval in the registry (ingest/sources.py).
+    fetch_min_interval_s: float = Field(default=0.5)
+
     # A source returning fewer than this many rows is a (non-failing) warning.
     low_volume_threshold: int = Field(default=1)
     # Where the run summary is written for the workflow to read.
