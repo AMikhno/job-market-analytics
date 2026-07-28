@@ -98,18 +98,27 @@ sat in the list with a blank or wrong ref while their APIs answered on the first
 
 ## V1.9 — the rows discovery still can't place, then BreezyHR
 
-Seven rows remain `active=false`, each with the reason recorded in the master's `notes`:
+**Re-discovery run 2026-07-28** (browser audit + API probe over all nine V1 endpoints) against
+all seven. It fixed **one**; the reason for each of the other six is now recorded in the
+master's `notes` so nobody repeats the same dead ends. **168 active boards.**
 
-- [ ] **Two rows point at `huaweicanada`** — one named *CMC Microsystems*, one *Kanata North
-      portal* (an ecosystem site, not an employer). The board itself is real and the single
-      biggest contributor in testing (173 postings, 160 to gold). Decide: rename one row to
-      Huawei Canada, or re-discover both. **Do not activate as-is** — postings would land under
-      the wrong company name
-- [ ] **TPC Training's `certus`** resolves but reports `company_name: "Certus"` — same
-      mismapping shape. Re-discover (or add Certus as its own company)
-- [ ] **Field Effect, RBR Global, Buxton, Kivuto** — no ref derivable from their websites; they
-      have likely moved ATS. Now worth a re-run: with the probe covering all nine V1 endpoints
-      and websites restored, `make discover` can find what it previously could not
+- [x] **TPC Training → `certus`, activated and renamed `Certus (TPC Training)`.** Their careers
+      page links to `certus.com/careers`, i.e. the parent brand's Recruitee board — unlike the
+      Huawei case, the board belongs to the same corporate group. Verified live, 6 postings
+- [ ] **CMC Microsystems and Kanata North portal** — the browser reproduced `huaweicanada` from
+      *both* independently. Both are ecosystem pages listing **member-company** jobs, which is
+      the failure mode `tools/company_discovery/README.md` already warns about. CMC needs a
+      human to find its own careers system; the portal row is a candidate for deletion (it is
+      not an employer). The Huawei board itself is real and was the biggest contributor in
+      testing (173 postings → 160 gold) if you ever want it as its own row
+- [ ] **Field Effect, RBR Global** — Recruitee **confirmed** from their careers pages, but no
+      board token is extractable and the API probe missed every guessable name. Cheapest fix is
+      a human opening the careers page with the network tab and reading the board name off it
+- [ ] **Buxton** — the crawl from `buxtonco.com` landed on `audiense.com/about/careers` (a
+      different company) and found no token. Treat its detected ATS as unverified
+- [ ] **Kivuto** — BambooHR confirmed from `kivuto.com/careers`, but
+      `kivuto.bamboohr.com/careers/list` **302s to bamboohr.com**: the tenant is closed. There is
+      no live board; this row cannot be fixed, only removed or re-pointed
 - [ ] **BreezyHR** (2 companies) — only if a description becomes reachable. Four keyless paths
       tried and documented in `docs/research/ats-feeds.md`; today the list alone would land
       untextable rows (ADR-0021)
@@ -119,7 +128,7 @@ Seven rows remain `active=false`, each with the reason recorded in the master's 
 1. **Merge the branch first, then push the variable** — in that order. Deployed code has to
    understand the list before CI gets it (`NOTES.local.md` §3: a list can name sources or refs
    an older deployment cannot parse). Then `gh variable set COMPANIES_CSV_CONTENT <
-   config/companies.active.csv` (**167 boards, ~11 KB**) and run Actions → Ingest
+   config/companies.active.csv` (**168 boards, ~13 KB**) and run Actions → Ingest
 2. **Expect a ~11.5 minute run** (measured, 167 boards). Renesas alone is ~10 of those minutes:
    871 postings fetched one detail at a time on SmartRecruiters' shared host. A slow run is not
    a hung one. Deactivating that one row takes it back to a couple of minutes
@@ -185,7 +194,7 @@ Step-by-step versions of these live in `NOTES.local.md` (gitignored personal run
       publishes the dbt docs site on pushes to main — done 2026-07-28
 - [ ] Push the rebuilt company list: `gh variable set COMPANIES_CSV_CONTENT <
       config/companies.active.csv` (the **active-only projection**, never the master).
-      `make update-company-list` validates it first. Now **167 boards / ~11 KB** after V1.8 —
+      `make update-company-list` validates it first. Now **168 boards / ~13 KB** after V1.8 —
       and only *after* the branch is merged (`NOTES.local.md` §3)
 - [x] Digest secrets created in the `production` environment (`SMTP_USER` + `SMTP_PASSWORD`).
       `DIGEST_TO` stays optional — unset, the digest mails `SMTP_USER` (`deliver/digest.py`).

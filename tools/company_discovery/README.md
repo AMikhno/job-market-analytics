@@ -51,8 +51,14 @@ companies:
    Greenhouse/Lever/Ashby, five companies sat in the master with a blank or wrong ref although
    their board answered on the first token a human would guess.
 
+A company whose ATS is detected but whose **board token cannot be extracted** goes through the
+API probe too — a row that names a platform but has nothing to fetch is worse than an honest
+Unknown, because it looks classified and can never be activated.
+
 **Caveats:** directory/portal rows (e.g. Hub350, Kanata North portal) attribute a member
-company's board to themselves — drop them. `Found Via = none` rows are bot-blocked or
+company's board to themselves — drop them. This is not rare and it is not a bug you can fix by
+re-running: a 2026-07-28 re-audit reproduced `huaweicanada` from *both* discovertechnata.com and
+cmc.ca, because that is genuinely what those pages embed. `Found Via = none` rows are bot-blocked or
 consent-walled and stayed unreachable (an honest Unknown bucket, not silent wrong data).
 The API probe only tries tokens a human would guess, so a miss is never proof a company
 has no board (real refs like `harnessinc` and `xapo61` are unreachable that way).
