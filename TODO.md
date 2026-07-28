@@ -74,44 +74,63 @@ Six of the surveyed seven shipped; **161 active boards, up from 123**. See ADR-0
 tenant/wdN/site captured for all 30 rows, plus a POST paginator. Not keyless, stays inventory:
 SuccessFactors (401), Teamtailor (API key), iCIMS, JazzHR, UKG, Dayforce, ADP, Phenom, Indeed.
 
-## V1.9 — company-list repair, then BreezyHR
+## V1.8b — company-list repair (done 2026-07-28, same branch)
 
-Verifying V1.8 against live boards turned up list problems that no adapter can fix. **13 of the
-51 Tier 1 rows were left `active=false`**; each needs a human or a discovery re-run:
+Verifying against live boards turned up list problems no adapter could fix, and a **root cause
+in the discovery tool**: its API-probe fallback only knew Greenhouse/Lever/Ashby, so a company
+on any of the six new ATS could never be recovered by probe — which is exactly why five boards
+sat in the list with a blank or wrong ref while their APIs answered on the first guess.
 
-- [ ] **Recruitee is mis-mapped, all 6 rows.** `career` (3 rows: Field Effect, REDACTED,
-      REDACTED) 404s — it is a URL path fragment, not a subdomain. Worse, **`REDACTED` is
-      attached to *REDACTED* and to a "REDACTED" row**: activating either
-      would land Huawei's 167 postings under another company's name. `REDACTED` (TPC Training)
-      resolves but is unverified. Re-run discovery for these before touching `active`
-- [ ] **Rippling: 3 blank refs** (REDACTED, REDACTED, REDACTED). REDACTED's real ref is `REDACTED` —
-      verified live, 11 postings, 2 reaching gold. The other two need discovery
-- [ ] **SmartRecruiters: neither row is usable.** REDACTED's `job-widget` is a stub (200,
-      `totalFound: 0`). Renesas resolves but is a **poor trade**: 871 postings, ~10 minutes of
-      the run on a shared host, **2** surviving the location gate. Decide deliberately
-- [ ] **BambooHR `REDACTED`** 302s to a non-JSON page (correctly skipped and reported)
-- [ ] **Workable `REDACTED Systems`** has no ref
-- [ ] Add the `sources.yml` freshness block for `raw_rippling_jobs` / `raw_smartrecruiters_jobs`
-      **in the same change that activates a real board** — freshness errors on an empty table and
-      would take the whole prod run down with it
+- [x] **Probe every V1 endpoint** in `ats_audit.py`, not just three; `emit_ingestable`'s
+      ATS→source map likewise (a stale entry there silently drops a supported company)
+- [x] **`website` now survives discovery.** The audit cache always had it, but both inventory
+      writers omitted the column, so all 285 master rows carried a blank recovery key —
+      the one field `NOTES.local.md` and CLAUDE.md both describe as the way back after an ATS
+      move. Backfilled 282/285 from the cache (the 3 misses are REDACTED sub-venues)
+- [x] **`career`, `careers`, `widget`, `job-widget` added to `_BAD_TOKENS`** — the exact junk
+      refs that produced three 404ing Recruitee rows and a SmartRecruiters stub
+- [x] **5 refs recovered and identity-checked against each board's own payload**: `REDACTED` +
+      `REDACTED` (Rippling), `REDACTED` (SmartRecruiters — 41 postings; the stored `job-widget`
+      was a stub), `REDACTED` (Recruitee, 43), `REDACTED` (Workable, 34). Renesas activated too
+      (871 postings, ~10 min/run, 2 past the location gate — a deliberate call)
+- [x] Freshness gates added for `raw_rippling_jobs` / `raw_smartrecruiters_jobs`, now that both
+      have a verified board. **167 active boards**
+
+## V1.9 — the rows discovery still can't place, then BreezyHR
+
+Seven rows remain `active=false`, each with the reason recorded in the master's `notes`:
+
+- [ ] **Two rows point at `REDACTED`** — one named *REDACTED*, one *Kanata North
+      portal* (an ecosystem site, not an employer). The board itself is real and the single
+      biggest contributor in testing (173 postings, 160 to gold). Decide: rename one row to
+      Huawei Canada, or re-discover both. **Do not activate as-is** — postings would land under
+      the wrong company name
+- [ ] **TPC Training's `REDACTED`** resolves but reports `company_name: "REDACTED"` — same
+      mismapping shape. Re-discover (or add REDACTED as its own company)
+- [ ] **Field Effect, REDACTED, REDACTED, REDACTED** — no ref derivable from their websites; they
+      have likely moved ATS. Now worth a re-run: with the probe covering all nine V1 endpoints
+      and websites restored, `make discover` can find what it previously could not
 - [ ] **BreezyHR** (2 companies) — only if a description becomes reachable. Four keyless paths
       tried and documented in `docs/research/ats-feeds.md`; today the list alone would land
       untextable rows (ADR-0021)
 
 ## Next session — start here
 
-1. **Push the rebuilt list and watch one prod run.** `gh variable set COMPANIES_CSV_CONTENT <
-   config/companies.active.csv` (161 boards, 10 KB), then Actions → Ingest. First prod run for
-   the parallel fetch, the per-host limiter and six new sources; watch the
-   `Skipped boards (redacted:…)` annotation and the freshness gate
-2. **Value/coverage check against real gold data** — still the highest-value open question, and
+1. **Merge the branch first, then push the variable** — in that order. Deployed code has to
+   understand the list before CI gets it (`NOTES.local.md` §3: a list can name sources or refs
+   an older deployment cannot parse). Then `gh variable set COMPANIES_CSV_CONTENT <
+   config/companies.active.csv` (**167 boards, ~11 KB**) and run Actions → Ingest
+2. **Expect a much longer run.** Renesas alone is ~10 minutes: 871 postings fetched one detail
+   at a time on SmartRecruiters' shared host. A slow run is not a hung one. If that annoys you,
+   deactivating that single row takes the run back to a few minutes
+3. **Value/coverage check against real gold data** — still the highest-value open question, and
    the V1.8 numbers already point at an answer. Of **336 gold postings from the six new
    sources**, `title_match` was **0** and only 115 had any desired-tech hit: the new coverage is
-   mostly software/other roles, not analytics. Re-run the count across *all* 161 boards, then
+   mostly software/other roles, not analytics. Re-run the count across *all* 167 boards, then
    decide. **If the funnel is still thin after this much coverage work, V2 should be relevance,
    not more sources**
-3. Then **V2** (below), or the V1.9 list repair above if coverage still looks like the gap
-4. Housekeeping: arm healthchecks (`NOTES.local.md` §4); delete merged remote branches; clear the
+4. Then **V2** (below), or the V1.9 repair above if coverage still looks like the gap
+5. Housekeeping: arm healthchecks (`NOTES.local.md` §4); delete merged remote branches; clear the
    superseded scratch files in `~/Downloads`
 
 ## V2 — AI relevance (scoped, ready to build)
@@ -159,7 +178,8 @@ Step-by-step versions of these live in `NOTES.local.md` (gitignored personal run
       publishes the dbt docs site on pushes to main — done 2026-07-28
 - [ ] Push the rebuilt company list: `gh variable set COMPANIES_CSV_CONTENT <
       config/companies.active.csv` (the **active-only projection**, never the master).
-      `make update-company-list` validates it first. Now **161 boards / ~10 KB** after V1.8
+      `make update-company-list` validates it first. Now **167 boards / ~11 KB** after V1.8 —
+      and only *after* the branch is merged (`NOTES.local.md` §3)
 - [x] Digest secrets created in the `production` environment (`SMTP_USER` + `SMTP_PASSWORD`).
       `DIGEST_TO` stays optional — unset, the digest mails `SMTP_USER` (`deliver/digest.py`).
 - [ ] Create the healthchecks.io check and add its ping URL as the `HEALTHCHECK_URL` **secret**

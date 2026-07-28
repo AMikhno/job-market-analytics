@@ -83,7 +83,11 @@ _BAD_TOKENS = {"v1", "v0", "api", "embed", "jobs", "job", "boards", "board", "ww
                "posting-api", "job-board", "postings", "companies", "for", "js",
                # captured from account/app URLs rather than a board path -- REDACTED
                # and Veeam both yielded "users", which 404s as a Greenhouse board
-               "users", "user", "auth", "login", "signup", "account", "accounts"}
+               "users", "user", "auth", "login", "signup", "account", "accounts",
+               # path fragments of a careers URL, not a board name: three Recruitee
+               # rows landed with "career" (404 on every board), and a
+               # SmartRecruiters row with the stub account "job-widget"
+               "career", "careers", "widget", "job-widget", "list", "offers", "detail"}
 
 # board_ref format rules, mirroring ingest/sources.py. Ashby board names are
 # display names and may carry single inner spaces (verified: the API accepts
@@ -490,21 +494,49 @@ def probe_unknowns(records, csv_path, lock):
 # page). This asks the opposite question -- "does any plausible token answer on a
 # V1 API?" -- and a 200 with postings is proof, not a guess. Verified recoveries
 # this found that browsing could not: REDACTED, REDACTED, REDACTED, Redis, REDACTED, Render.
+# Every V1 endpoint, so the probe can recover a board the DOM sweep missed.
+# Covering only Greenhouse/Lever/Ashby is why five boards sat in the list with a
+# blank or wrong ref while their APIs answered on the first guess: REDACTED,
+# REDACTED (Rippling), REDACTED (SmartRecruiters), REDACTED (Recruitee) and REDACTED
+# (Workable) were all recovered by hand-probing exactly these URLs.
 PROBE_APIS = {
     "greenhouse": "https://boards-api.greenhouse.io/v1/boards/{t}/jobs?content=true",
     "lever": "https://api.lever.co/v0/postings/{t}?mode=json",
     "lever-eu": "https://api.eu.lever.co/v0/postings/{t}?mode=json",
     "ashby": "https://api.ashbyhq.com/posting-api/job-board/{t}?includeCompensation=true",
+    "bamboohr": "https://{t}.bamboohr.com/careers/list",
+    "recruitee": "https://{t}.recruitee.com/api/offers/",
+    "workable": "https://apply.workable.com/api/v1/widget/accounts/{t}?details=true",
+    "pinpoint": "https://{t}.pinpointhq.com/postings.json",
+    "rippling": "https://api.rippling.com/platform/api/ats/v1/board/{t}/jobs",
+    "smartrecruiters": "https://api.smartrecruiters.com/v1/companies/{t}/postings?limit=1",
 }
 _PROBE_ATS = {"greenhouse": "Greenhouse", "lever": "Lever",
-              "lever-eu": "Lever", "ashby": "Ashby"}
+              "lever-eu": "Lever", "ashby": "Ashby", "bamboohr": "BambooHR",
+              "recruitee": "Recruitee", "workable": "Workable", "pinpoint": "Pinpoint",
+              "rippling": "Rippling", "smartrecruiters": "SmartRecruiters"}
+
+# Where each payload keeps its records. None = the response is a bare JSON array.
+_PROBE_LIST_KEY = {
+    "greenhouse": "jobs", "ashby": "jobs", "workable": "jobs",
+    "lever": None, "lever-eu": None, "rippling": None,
+    "bamboohr": "result", "recruitee": "offers", "pinpoint": "data",
+    "smartrecruiters": "content",
+}
 
 
 def _probe_count(source: str, payload) -> int:
-    if source.startswith("lever"):
+    """Records in a probe response. Zero means "not this company's board".
+
+    A 200 with no records is not a hit: SmartRecruiters answers 200 with
+    totalFound=0 for a stub account (`job-widget` sat in the list that way), and
+    an empty board is indistinguishable from a wrong one.
+    """
+    key = _PROBE_LIST_KEY.get(source, "jobs")
+    if key is None:
         return len(payload) if isinstance(payload, list) else 0
     if isinstance(payload, dict):
-        return len(payload.get("jobs") or [])
+        return len(payload.get(key) or [])
     return 0
 
 
@@ -543,8 +575,30 @@ def probe_record(rec: dict, pause: float = 0.35) -> dict | None:
     return None
 
 
+# ATS with a V1 adapter, so discovery may switch their rows on directly. Mirrors
+# ingest/sources.py (SOURCES) -- duplicated deliberately: this tool runs
+# CI-quarantined with --no-project and cannot import the package (ADR-0018).
+# Keep in step when a source is added there.
+V1_SOURCES = {
+    "greenhouse", "lever", "ashby", "bamboohr",
+    "recruitee", "workable", "pinpoint", "rippling", "smartrecruiters",
+}
+
+# The company-list schema, in order. `website` is the recovery key that lets a
+# later audit re-derive a board_ref after a company moves ATS -- it was being
+# collected into the audit cache and then dropped here, so every row merged into
+# the master arrived without one.
+LIST_HEADERS = ["company_name", "source", "board_ref", "active", "tier", "website", "notes"]
+
+
 def emit_ingestable(records, out_path):
-    src_map = {"Greenhouse": "greenhouse", "Lever": "lever", "Ashby": "ashby"}
+    # Detected-ATS label -> source name, for every ATS with a V1 adapter. Stale
+    # entries here are invisible: a company on a supported ATS just silently
+    # never reaches the ingestable list.
+    src_map = {"Greenhouse": "greenhouse", "Lever": "lever", "Ashby": "ashby",
+               "BambooHR": "bamboohr", "Recruitee": "recruitee", "Workable": "workable",
+               "Pinpoint": "pinpoint", "Rippling": "rippling",
+               "SmartRecruiters": "smartrecruiters"}
     today = datetime.date.today().isoformat()
     seen, clean, review = set(), [], []
     for r in records:
@@ -556,11 +610,12 @@ def emit_ingestable(records, out_path):
         if not token or key in seen:
             continue
         seen.add(key)
-        row = [r[0], source, token, "true", "1", f"auto-detected {today} (careers via {r[5]})"]
+        row = [r[0], source, token, "true", "1", r[1],
+               f"auto-detected {today} (careers via {r[5]})"]
         (clean if ref_ok(source, token) else review).append(row)
     with open(out_path, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["company_name", "source", "board_ref", "active", "tier", "notes"])
+        w.writerow(LIST_HEADERS)
         for row in sorted(clean, key=lambda x: (x[1], x[0].lower())):
             w.writerow(row)
     return clean, review
@@ -569,18 +624,17 @@ def emit_ingestable(records, out_path):
 def emit_inventory(records, out_path):
     """Every company on a *detected* ATS -> config/companies.csv schema.
 
-    V1 (Greenhouse/Lever/Ashby) is active=true with a validated bare token; every
-    other detected ATS is active=false inventory (ADR-0013). Custom / no-board
+    An ATS with a V1 adapter is active=true with a validated ref; every other
+    detected ATS is active=false inventory (ADR-0013). Custom / no-board
     companies are dropped (nothing to ingest). Returns (active_count, rows).
     """
-    v1 = {"greenhouse", "lever", "ashby"}
     out, seen = [], set()
     for r in records:
         ats, token = r[3], (r[4] or "").strip()
         if ats in ("Unknown/Custom", "N/A", "ERROR", ""):
             continue
         source = re.sub(r"[^a-z0-9]", "", ats.lower())
-        if source in v1:
+        if source in V1_SOURCES:
             if not ref_ok(source, token):
                 continue
             active, tier, ref = "true", "1", token
@@ -590,11 +644,11 @@ def emit_inventory(records, out_path):
         if key in seen:
             continue
         seen.add(key)
-        out.append([r[0], source, ref, active, tier, f"{ats}; careers via {r[5]}"])
+        out.append([r[0], source, ref, active, tier, r[1], f"{ats}; careers via {r[5]}"])
     out.sort(key=lambda x: (x[3] != "true", x[1], x[0].lower()))   # active first
     with open(out_path, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["company_name", "source", "board_ref", "active", "tier", "notes"])
+        w.writerow(LIST_HEADERS)
         w.writerows(out)
     return sum(1 for x in out if x[3] == "true"), out
 

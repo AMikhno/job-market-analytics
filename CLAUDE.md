@@ -6,8 +6,9 @@ Context and conventions for AI agents (and humans) working on this repo.
 
 Automated job-matching pipeline. **V1 (current) is ingestion + dbt transformations
 only** — no LLM, no embeddings, no scoring. Python pulls postings from every ATS with
-a public, keyless feed (Greenhouse, Lever, Ashby today; more ATS are tentative V2 — see
-ADR-0013) into per-source raw tables; one dbt project transforms them through
+a public, keyless feed (Greenhouse, Lever, Ashby, BambooHR, Recruitee, Workable, Pinpoint,
+Rippling and SmartRecruiters today — ADR-0013/0021; Workday and the auth-gated ATS stay
+inventory-only) into per-source raw tables; one dbt project transforms them through
 bronze → silver → gold into a deduplicated, rule-filtered table of postings.
 AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
 

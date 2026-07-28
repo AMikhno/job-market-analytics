@@ -45,8 +45,11 @@ companies:
    marketing with the board one click further on;
 4. **raw-HTML scan**, because some sites embed the ATS host in a JSON payload rather than
    any element attribute;
-5. **API probe** of the four V1 endpoints with name/domain-derived tokens, because some
-   companies proxy their board server-side and never name the ATS in the page at all.
+5. **API probe** of **every** V1 endpoint (nine today) with name/domain-derived tokens, because
+   some companies proxy their board server-side and never name the ATS in the page at all.
+   Keep this list in step with `ingest/sources.py`: while the probe knew only
+   Greenhouse/Lever/Ashby, five companies sat in the master with a blank or wrong ref although
+   their board answered on the first token a human would guess.
 
 **Caveats:** directory/portal rows (e.g. REDACTED, REDACTED) attribute a member
 company's board to themselves — drop them. `Found Via = none` rows are bot-blocked or
