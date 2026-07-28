@@ -1,0 +1,51 @@
+{
+  "offers": [
+    {
+      "id": 2684982,
+      "slug": "analytics-engineer",
+      "title": "Analytics Engineer",
+      "description": "<p>Build dbt models &amp; dashboards.</p>",
+      "requirements": "<ul><li>SQL</li><li>Python</li></ul>",
+      "careers_url": "https://example.recruitee.com/o/analytics-engineer",
+      "careers_apply_url": "https://example.recruitee.com/o/analytics-engineer/c/new",
+      "department": "Data Platform Lab",
+      "location": "Ottawa, Ontario, Canada",
+      "city": "Ottawa",
+      "state_code": "ON",
+      "state_name": "Ontario",
+      "country": "Canada",
+      "country_code": "CA",
+      "postal_code": "K1P 1J1",
+      "remote": false,
+      "hybrid": true,
+      "on_site": false,
+      "employment_type_code": "fulltime_permanent",
+      "experience_code": "mid_level",
+      "category_code": "information_technology",
+      "status": "published",
+      "published_at": "2026-07-22 14:20:52 UTC",
+      "updated_at": "2026-07-22 14:20:52 UTC",
+      "salary": { "min": null, "max": null, "period": null, "currency": null }
+    },
+    {
+      "id": 2682052,
+      "slug": "staff-data-engineer",
+      "title": "Staff Data Engineer",
+      "description": "<p>Own the warehouse.</p>",
+      "requirements": "",
+      "careers_url": "https://example.recruitee.com/o/staff-data-engineer",
+      "department": "Data Platform Lab",
+      "location": null,
+      "city": "Vancouver",
+      "state_code": "BC",
+      "state_name": "British Columbia",
+      "country": "Canada",
+      "remote": true,
+      "hybrid": false,
+      "on_site": false,
+      "employment_type_code": "fulltime",
+      "status": "published",
+      "published_at": "2026-07-17 18:22:11 UTC"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "name": "Example Inc.",
+  "description": "<p>We are a company that does company things.</p>",
+  "jobs": [
+    {
+      "title": "Analytics Engineer",
+      "shortcode": "2003E0ABE6",
+      "code": "",
+      "employment_type": "Full-time",
+      "telecommuting": true,
+      "department": "Data",
+      "url": "https://apply.workable.com/j/2003E0ABE6",
+      "shortlink": "https://apply.workable.com/j/2003E0ABE6",
+      "application_url": "https://apply.workable.com/j/2003E0ABE6/apply",
+      "published_on": "2026-07-15",
+      "created_at": "2026-07-15",
+      "country": "Canada",
+      "city": "Kanata",
+      "state": "Ontario",
+      "education": null,
+      "experience": "Mid-level",
+      "function": "Engineering",
+      "industry": "Computer Software",
+      "locations": [
+        { "country": "Canada", "countryCode": "CA", "city": "Kanata", "region": "Ontario", "hidden": false }
+      ],
+      "description": "<p>Build <strong>dbt</strong> models &amp; dashboards.</p>"
+    }
+  ]
+}

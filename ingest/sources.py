@@ -27,6 +27,9 @@ from ingest.adapters.bamboohr import BambooHRAdapter
 from ingest.adapters.base import SourceAdapter
 from ingest.adapters.greenhouse import GreenhouseAdapter
 from ingest.adapters.lever import LeverAdapter
+from ingest.adapters.pinpoint import PinpointAdapter
+from ingest.adapters.recruitee import RecruiteeAdapter
+from ingest.adapters.workable import WorkableAdapter
 from shared.http import FetchPolicy, HostRateLimiter
 
 # A bare board token: letters/digits then letters/digits/dot/underscore/hyphen.
@@ -126,8 +129,40 @@ class BambooHRSource(SourceBase):
         return BambooHRAdapter(self.url_template, self.detail_url_template, self.policy(limiter))
 
 
+class RecruiteeSource(SourceBase):
+    adapter: Literal["recruitee"] = "recruitee"
+    url_template: str = "https://{board_ref}.recruitee.com/api/offers/"
+
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        return RecruiteeAdapter(self.url_template, self.policy(limiter))
+
+
+class WorkableSource(SourceBase):
+    adapter: Literal["workable"] = "workable"
+    # The v1 *widget* endpoint. The documented v3 path (api/v3/accounts/{ref}/jobs)
+    # 404s for every ref tried; details=true is what inlines each description.
+    url_template: str = "https://apply.workable.com/api/v1/widget/accounts/{board_ref}?details=true"
+
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        return WorkableAdapter(self.url_template, self.policy(limiter))
+
+
+class PinpointSource(SourceBase):
+    adapter: Literal["pinpoint"] = "pinpoint"
+    url_template: str = "https://{board_ref}.pinpointhq.com/postings.json"
+
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        return PinpointAdapter(self.url_template, self.policy(limiter))
+
+
 Source = Annotated[
-    GreenhouseSource | LeverSource | AshbySource | BambooHRSource,
+    GreenhouseSource
+    | LeverSource
+    | AshbySource
+    | BambooHRSource
+    | RecruiteeSource
+    | WorkableSource
+    | PinpointSource,
     Field(discriminator="adapter"),
 ]
 
@@ -136,4 +171,7 @@ SOURCES: list[Source] = [
     LeverSource(name="lever"),
     AshbySource(name="ashby"),
     BambooHRSource(name="bamboohr"),
+    RecruiteeSource(name="recruitee"),
+    WorkableSource(name="workable"),
+    PinpointSource(name="pinpoint"),
 ]

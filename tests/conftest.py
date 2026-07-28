@@ -29,3 +29,18 @@ def bamboohr_list_payload() -> dict:
 @pytest.fixture
 def bamboohr_detail_payload() -> dict:
     return json.loads((FIXTURES / "bamboohr_detail.json").read_text())
+
+
+@pytest.fixture
+def recruitee_payload() -> dict:
+    return json.loads((FIXTURES / "recruitee_offers.json").read_text())
+
+
+@pytest.fixture
+def workable_payload() -> dict:
+    return json.loads((FIXTURES / "workable_account.json").read_text())
+
+
+@pytest.fixture
+def pinpoint_payload() -> dict:
+    return json.loads((FIXTURES / "pinpoint_postings.json").read_text())
