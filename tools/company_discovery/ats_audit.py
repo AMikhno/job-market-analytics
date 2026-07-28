@@ -80,7 +80,10 @@ ATS_HOSTS = {
     "Indeed":          r"(?:[\w-]+\.)?indeed\.com",     # aggregator link — keep last
 }
 _BAD_TOKENS = {"v1", "v0", "api", "embed", "jobs", "job", "boards", "board", "www",
-               "posting-api", "job-board", "postings", "companies", "for", "js"}
+               "posting-api", "job-board", "postings", "companies", "for", "js",
+               # captured from account/app URLs rather than a board path -- HubSpot
+               # and Veeam both yielded "users", which 404s as a Greenhouse board
+               "users", "user", "auth", "login", "signup", "account", "accounts"}
 
 # board_ref format rules, mirroring ingest/sources.py. Ashby board names are
 # display names and may carry single inner spaces (verified: the API accepts
