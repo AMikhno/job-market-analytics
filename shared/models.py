@@ -87,6 +87,11 @@ class SourceSummary(BaseModel):
     status: str  # "ok" | "error"
     company_count: int = 0
     error: str | None = None  # may embed raw board_refs: private sinks only
+    # Boards that failed while the source as a whole succeeded (a company moved
+    # ATS, a board was taken down). Stored **redacted** so this field is safe to
+    # print anywhere, including a public CI log; `make whois REF=…` maps one back
+    # to a company locally. The raw refs live in `error` / ops.ingest_runs only.
+    skipped_refs: list[str] = []
 
 
 class RunSummary(BaseModel):
@@ -105,3 +110,8 @@ class RunSummary(BaseModel):
     @property
     def board_count(self) -> int:
         return sum(s.company_count for s in self.sources)
+
+    @property
+    def skipped_refs(self) -> list[str]:
+        """Every redacted skipped-board ref across sources, in run order."""
+        return [ref for s in self.sources for ref in s.skipped_refs]

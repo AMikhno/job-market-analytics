@@ -4,8 +4,10 @@ import responses
 
 from ingest import pipeline
 from ingest.sources import LeverSource
+from shared.redact import redact_ref
 
 LEVER_URL = LeverSource(name="lever").url_template
+LEVER_EU_URL = LeverSource(name="lever").eu_url_template
 
 
 def _env(monkeypatch, tmp_path):
@@ -81,6 +83,7 @@ def test_one_bad_board_skips_but_keeps_the_good_one(tmp_path, monkeypatch, lever
     monkeypatch.setenv("COMPANIES_CSV", str(companies))
     responses.add(responses.GET, LEVER_URL.format(board_ref="goodco"), json=lever_payload)
     responses.add(responses.GET, LEVER_URL.format(board_ref="badco"), status=404)
+    responses.add(responses.GET, LEVER_EU_URL.format(board_ref="badco"), status=404)
 
     rc = pipeline.run()
 
@@ -95,6 +98,36 @@ def test_one_bad_board_skips_but_keeps_the_good_one(tmp_path, monkeypatch, lever
     summary = json.loads((tmp_path / "summary.json").read_text())
     lever = next(s for s in summary["sources"] if s["source"] == "lever")
     assert "badco" in (lever["error"] or "")
+
+
+@responses.activate
+def test_skipped_boards_are_reported_and_redacted(tmp_path, monkeypatch, lever_payload) -> None:
+    """A board that 404s leaves its source "ok", so before this it reached no
+    warning list and the digest could say "all sources healthy" while a company
+    silently dropped out. It must now be reported -- and only ever as a redacted
+    digest, because the run summary feeds a public CI log."""
+    companies = tmp_path / "companies.csv"
+    companies.write_text(
+        "company_name,source,board_ref,active,tier,notes\n"
+        "GoodCo,lever,goodco,true,1,\n"
+        "BadCo,lever,badco,true,1,\n"
+    )
+    _env(monkeypatch, tmp_path)
+    monkeypatch.setenv("COMPANIES_CSV", str(companies))
+    responses.add(responses.GET, LEVER_URL.format(board_ref="goodco"), json=lever_payload)
+    responses.add(responses.GET, LEVER_URL.format(board_ref="badco"), status=404)
+    responses.add(responses.GET, LEVER_EU_URL.format(board_ref="badco"), status=404)
+
+    assert pipeline.run() == 0
+
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    lever = next(s for s in summary["sources"] if s["source"] == "lever")
+    assert lever["skipped_refs"] == [redact_ref("badco")]
+    assert lever["skipped_refs"][0].startswith("redacted:")
+    # the raw ref must never reach the field that gets printed publicly
+    assert "badco" not in " ".join(lever["skipped_refs"])
+    # the good board is unaffected
+    assert lever["rows"] == 1
 
 
 def test_missing_company_files_is_caught_and_logged(tmp_path, monkeypatch) -> None:
