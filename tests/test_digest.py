@@ -10,7 +10,7 @@ import pytest
 from deliver import digest
 from shared import storage
 from shared.config import Settings
-from shared.models import RunSummary, SourceSummary
+from shared.models import RunSummary, SourceSummary, VolumeDrop
 
 # Anchored to the real clock (not a fixed date): run() bootstraps the first
 # watermark from datetime.now(UTC) - digest_lookback_hours, so seeded rows must
@@ -269,6 +269,29 @@ def test_footer_omits_the_skipped_clause_when_there_are_none() -> None:
         sources=[SourceSummary(source="lever", rows=9, status="ok", company_count=2)]
     )
     assert "skipped" not in digest._footer(clean)
+
+
+def test_footer_reports_a_volume_drop_even_when_healthy() -> None:
+    """A source that lost most of its boards still reports status "ok" and still
+    lands plenty of rows, so the health line calls it healthy. Only the
+    comparison against its own recent runs shows it."""
+    summary = RunSummary(
+        sources=[SourceSummary(source="bamboohr", rows=61, status="ok", company_count=32)],
+        volume_drops=[VolumeDrop(source="bamboohr", rows=61, baseline=153)],
+    )
+
+    footer = digest._footer(summary)
+
+    assert "All 1 source healthy" in footer  # headline still reported
+    assert "Volume dropped sharply for 1 source(s)" in footer
+    assert "bamboohr 61 vs ~153" in footer
+
+
+def test_footer_omits_the_volume_clause_when_steady() -> None:
+    clean = RunSummary(
+        sources=[SourceSummary(source="lever", rows=9, status="ok", company_count=2)]
+    )
+    assert "dropped sharply" not in digest._footer(clean)
 
 
 def test_footer_reports_sources_that_never_ran_even_when_healthy() -> None:

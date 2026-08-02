@@ -10,6 +10,7 @@ import json
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 from shared.config import Settings
 from shared.models import IngestRun, RawPosting
@@ -199,6 +200,32 @@ def land_runs(runs: Sequence[IngestRun], *, settings: Settings) -> None:
         bq_schema=_OPS_BQ_SCHEMA,
         settings=settings,
     )
+
+
+def ops_runs_table(settings: Settings) -> str:
+    """Fully-qualified name of the ingest-run ledger on the active target."""
+    if settings.is_prod:
+        return f"{settings.gcp_project}.{settings.bq_dataset}_ops.ingest_runs"
+    return "ops_ingest_runs"
+
+
+def recent_row_counts(source: str, *, limit: int, settings: Settings) -> list[int]:
+    """`rows_fetched` for a source's recent successful runs, newest first.
+
+    Only `status='ok'` runs: a failed run lands zero, and letting that into the
+    baseline would drag the median down and mask the next real drop.
+    """
+    sql = f"""
+        select rows_fetched
+        from {ops_runs_table(settings)}
+        where source = ? and status = 'ok'
+        order by finished_at desc
+        limit {int(limit)}
+    """
+    rows = query_rows(sql, params=[source], settings=settings)
+    # query_rows is deliberately untyped at the cell level (dict[str, object]);
+    # this column is INT64 in BigQuery and BIGINT in DuckDB, so the cast is safe.
+    return [int(cast(int, r["rows_fetched"])) for r in rows]
 
 
 def gold_table(settings: Settings) -> str:
