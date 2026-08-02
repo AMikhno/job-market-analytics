@@ -1,7 +1,7 @@
 # V2 implementation plan — AI relevance inside dbt
 
 The contract for the V2 build. Scope fixed by ADR-0020; design rationale in
-`ARCHITECTURE.md` §5/§5.5/§5.6 and ADR-0003/0004/0009. This document is the
+[ARCHITECTURE.md V2](../ARCHITECTURE.md#v2) and ADR-0003/0004/0009. This document is the
 work breakdown an implementation session executes top-to-bottom — decisions
 here are settled; re-derive nothing, but **verify current BigQuery AI-function
 names/signatures and Gemini model availability before writing SQL** (they churn).
@@ -52,7 +52,7 @@ openjobdata (ADR-0017), score thresholds / delivery filtering (ADR-0020 §2).
   dropped or scored.
 - Schema evolution: `on_schema_change: append_new_columns` on both incremental
   models; a `--full-refresh` re-bills the entire backfill (~$0.12 at current
-  scale) and must be a deliberate decision, not a reflex (ARCHITECTURE §3,
+  scale) and must be a deliberate decision, not a reflex ([rebuilds](../ARCHITECTURE.md#rebuilds-not-migrations),
   "Schema evolution").
 - **Dev parity:** on the DuckDB target the model is a stub emitting the same
   columns as typed nulls (`enabled`/target-conditional SQL, pattern per §5).
@@ -82,7 +82,7 @@ openjobdata (ADR-0017), score thresholds / delivery filtering (ADR-0020 §2).
   Digest tests extend the existing DuckDB-seeded pattern.
 
 ### 5. Docs
-- ARCHITECTURE §5 → "as built"; roadmap V2 → done; TODO sweep; note the
+- ARCHITECTURE's V2 section → "as built"; TODO sweep; note the
   first-backfill cost expectation (~$0.12, §5.5) and how to sanity-check it
   (row counts in `int_jobs_structured` vs silver survivors after run 1).
 

@@ -1,7 +1,7 @@
 # 0023 — Deal-breaker tech demotes a posting; it no longer deletes it
 
 **Status:** accepted (2026-07-28). Extends ADR-0015 (soft desired signals) to the negative case;
-supersedes the hard filter described in ADR-0001/ARCHITECTURE §5.
+supersedes the hard filter described in ADR-0001 and [filtering](../../ARCHITECTURE.md#filtering-one-rule-removes-the-rest-rank).
 
 ## Context
 

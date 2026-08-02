@@ -6,7 +6,7 @@ There is a Jupyter notebook that takes a list of companies (700+ Ottawa companie
 **detects each company's ATS** and writes a short description. It is run **manually, ~monthly or
 less, on new companies only** — it is a discovery aid, not part of the scheduled pipeline.
 
-ADR-0011 and ARCHITECTURE §4 stated V1 has "no automated discovery pipeline — there's no API for
+ADR-0011 and [the company list](../../ARCHITECTURE.md#the-company-list) stated V1 has "no automated discovery pipeline — there's no API for
 it." This notebook is exactly that discovery step, now existing but **human-triggered**. It
 populates the private company inventory that the ingest reads (`config/companies.csv`, ADR-0011),
 and — with the openjobdata evaluation (ADR-0017) — it also classifies each company as
@@ -39,6 +39,6 @@ Keep it **in-repo, quarantined**:
 
 ## Consequence
 
-ADR-0011 / ARCHITECTURE §4's "no discovery pipeline" wording is updated: discovery exists as this
+ADR-0011 / [the company list](../../ARCHITECTURE.md#the-company-list) wording on "no discovery pipeline" is updated: discovery exists as this
 **manual** notebook; it is deliberately not automated (no reliable discovery API), and its cadence
 is monthly-or-less by hand.
