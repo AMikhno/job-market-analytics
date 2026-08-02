@@ -12,6 +12,9 @@ Failure model (unchanged by the parallel fetch):
   * an unexpected error anywhere is caught at the top, logged with a traceback,
     turned into a non-zero exit, and recorded in a failure summary;
   * a source returning < low_volume_threshold rows is a (non-failing) WARNING;
+  * a registered source with no active companies in the list is a (non-failing)
+    WARNING -- it never runs, so it can never be low-volume, and without this it
+    is invisible until its freshness gate errors ~30h later;
   * sustained staleness is caught separately by dbt source freshness.
 """
 
@@ -140,10 +143,22 @@ def _run(settings: Settings) -> int:
     sessions = SessionPool(settings.http_user_agent)
     limiter = HostRateLimiter(settings.fetch_min_interval_s)
     companies_by_source: dict[str, list[Company]] = {}
+    unconfigured: list[str] = []
     for source in (s for s in SOURCES if s.active):
         companies = load_companies(source.adapter, settings)
         if not companies:
-            log.info("source=%s has no active companies; skipping", source.adapter)
+            # Warn, don't fail: shipping an adapter before its companies are in
+            # the list is a legitimate order of work, and the committed example
+            # list only covers a few sources. But this must not be silent --
+            # a source that never runs still has a raw table with a freshness
+            # gate on it, so the only other symptom is that gate erroring
+            # ~30h later, pointing at the warehouse rather than at the list.
+            log.warning(
+                "source=%s is registered and active but has no active companies "
+                "in the list; it will not run",
+                source.adapter,
+            )
+            unconfigured.append(source.adapter)
             continue
         companies_by_source[source.adapter] = companies
 
@@ -211,7 +226,7 @@ def _run(settings: Settings) -> int:
         log.warning("no active companies configured in %s", _companies_path(settings))
 
     storage.land_runs(runs, settings=settings)
-    return _finalize(runs, settings, skipped)
+    return _finalize(runs, settings, skipped, unconfigured)
 
 
 def _fetch_all(
@@ -245,9 +260,13 @@ def _fetch_all(
 
 
 def _finalize(
-    runs: Sequence[IngestRun], settings: Settings, skipped: dict[str, list[str]] | None = None
+    runs: Sequence[IngestRun],
+    settings: Settings,
+    skipped: dict[str, list[str]] | None = None,
+    unconfigured: Sequence[str] | None = None,
 ) -> int:
     skipped = skipped or {}
+    unconfigured = list(unconfigured or [])
     failures = [r for r in runs if r.status == "error"]
     warnings = [
         r for r in runs if r.status == "ok" and r.rows_fetched < settings.low_volume_threshold
@@ -259,6 +278,7 @@ def _finalize(
         warnings=[r.source for r in warnings],
         runs=runs,
         skipped=skipped,
+        unconfigured=unconfigured,
     )
     for r in warnings:
         log.warning("low volume (warn-only): source=%s rows=%d", r.source, r.rows_fetched)
@@ -290,12 +310,14 @@ def _write_summary(
     warnings: list[str],
     runs: Sequence[IngestRun],
     skipped: dict[str, list[str]] | None = None,
+    unconfigured: Sequence[str] | None = None,
 ) -> None:
     skipped = skipped or {}
     summary = RunSummary(
         run_id=run_id,
         failures=failures,
         warnings=warnings,
+        unconfigured=list(unconfigured or []),
         sources=[
             SourceSummary(
                 source=r.source,

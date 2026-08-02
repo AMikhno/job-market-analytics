@@ -65,14 +65,17 @@ def _footer(summary: RunSummary | None) -> str:
     """One line stating ingest health, in every digest.
 
     Always present, so a silent footer can no longer mean either "healthy" or
-    "we never checked" -- the two now read differently. Skipped boards are
-    appended to whatever the headline is: a board that 404s (the company moved
-    ATS, the board came down) leaves the source "ok", so it would otherwise be
-    reported as healthy and the posting stream would just quietly thin out.
+    "we never checked" -- the two now read differently. Two clauses are appended
+    to whatever the headline is, because both describe ways the stream thins out
+    while every source that ran stayed "ok":
+      * skipped boards -- a board that 404s (the company moved ATS, the board
+        came down) leaves its source "ok";
+      * unconfigured sources -- a source with no boards in the company list
+        never runs at all, so it is not even counted in the headline.
     """
     if summary is None:
         return "Ingest status unknown for this digest (no run summary was found)."
-    return " ".join(p for p in (_health(summary), _skipped(summary)) if p)
+    return " ".join(p for p in (_health(summary), _unconfigured(summary), _skipped(summary)) if p)
 
 
 def _health(summary: RunSummary) -> str:
@@ -84,6 +87,24 @@ def _health(summary: RunSummary) -> str:
     if not n:
         return "No sources ran in this ingest."
     return f"All {n} source{'s' if n != 1 else ''} healthy ({summary.board_count} boards checked)."
+
+
+def _unconfigured(summary: RunSummary) -> str:
+    """Sources that are registered and active but got no boards from the list.
+
+    Appended to the health line rather than replacing it, because the two
+    statements are both true and only useless apart: "all 3 sources healthy
+    (122 boards checked)" was accurate every run for the four days the six
+    Tier-1 sources were missing from the CI company list. Source names are ATS
+    names, so unlike skipped board refs they need no redaction.
+    """
+    names = summary.unconfigured
+    if not names:
+        return ""
+    return (
+        f"{len(names)} registered source(s) had no active boards: {', '.join(names)} "
+        "— check the company list (CI reads the COMPANIES_CSV_CONTENT variable)."
+    )
 
 
 def _skipped(summary: RunSummary) -> str:
