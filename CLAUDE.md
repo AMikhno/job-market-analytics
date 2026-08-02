@@ -43,11 +43,12 @@ AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
     re-derive a `board_ref` after a company moves ATS. Don't drop it to save space.
   - **Restaging merges, never overwrites** (`make update-company-list` → `ingest/merge_companies.py`):
     the master wins on every field, blanks get filled, and an ATS move is reported as a conflict
-    for a human. Hand-corrected refs (`REDACTED`, not `harness`) must survive a refresh.
+    for a human. Hand-corrected refs (a corporate suffix the company name alone never
+    yields) must survive a refresh.
   - Run `make validate-companies` before pushing the variable — it format-checks every `board_ref`
     so a bad row fails locally, not mid-run. Note it validates **before** any fetch, so a malformed
     ref fails the *entire* run; a merely wrong-but-well-formed ref 404s and skips one board.
-  - **Ashby refs may contain single inner spaces** (`REDACTED`) — its board names are
+  - **Ashby refs may contain single inner spaces** (`Two Words`) — its board names are
     display names. Greenhouse/Lever stay strict bare tokens.
 - **Discovery output belongs in `config/discovery/`**, never `~/Downloads`: the audit cache is the
   only record of every company's website and detected ATS, and it is what makes a re-run resumable.

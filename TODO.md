@@ -30,7 +30,7 @@ All shipped (see ADR-0019 and `ARCHITECTURE.md` §9):
 Triggered by auditing the list against the live APIs: of 157 active boards, **101 were
 404ing** and nothing said so. Three ingest bugs and a broken discovery loop.
 
-- [x] Ashby board refs may contain inner spaces (`REDACTED`) — own pattern +
+- [x] Ashby board refs may contain inner spaces (`Two Words`) — own pattern +
       percent-encoding. Was worse than a missed board: `load_companies` validates *before*
       fetching, so such a row would have hard-failed the whole run
 - [x] Lever EU shard (`api.eu.lever.co`) — adapter falls back on 404 only; region is a
@@ -86,13 +86,13 @@ sat in the list with a blank or wrong ref while their APIs answered on the first
 - [x] **`website` now survives discovery.** The audit cache always had it, but both inventory
       writers omitted the column, so all 285 master rows carried a blank recovery key —
       the one field `NOTES.local.md` and CLAUDE.md both describe as the way back after an ATS
-      move. Backfilled 282/285 from the cache (the 3 misses are REDACTED sub-venues)
+      move. Backfilled 282/285 from the cache (the 3 misses are sub-venues of one hotel row)
 - [x] **`career`, `careers`, `widget`, `job-widget` added to `_BAD_TOKENS`** — the exact junk
       refs that produced three 404ing Recruitee rows and a SmartRecruiters stub
-- [x] **5 refs recovered and identity-checked against each board's own payload**: `REDACTED` +
-      `REDACTED` (Rippling), `REDACTED` (SmartRecruiters — 41 postings; the stored `job-widget`
-      was a stub), `REDACTED` (Recruitee, 43), `REDACTED` (Workable, 34). Renesas activated too
-      (871 postings, ~10 min/run, 2 past the location gate — a deliberate call)
+- [x] **5 refs recovered and identity-checked against each board's own payload** — two on
+      Rippling, one on SmartRecruiters (41 postings; the stored ref was a stub), one on Recruitee
+      (43), one on Workable (34). One large SmartRecruiters board activated too (871 postings,
+      ~10 min/run, 2 past the location gate — a deliberate call). Refs in the private list
 - [x] Freshness gates added for `raw_rippling_jobs` / `raw_smartrecruiters_jobs`, now that both
       have a verified board. **167 active boards**
 
@@ -102,23 +102,25 @@ sat in the list with a blank or wrong ref while their APIs answered on the first
 all seven. It fixed **one**; the reason for each of the other six is now recorded in the
 master's `notes` so nobody repeats the same dead ends. **168 active boards.**
 
-- [x] **TPC Training → `REDACTED`, activated and renamed `REDACTED (TPC Training)`.** Their careers
-      page links to `REDACTED.com/careers`, i.e. the parent brand's Recruitee board — unlike the
-      Huawei case, the board belongs to the same corporate group. Verified live, 6 postings
-- [ ] **REDACTED and REDACTED** — the browser reproduced `REDACTED` from
-      *both* independently. Both are ecosystem pages listing **member-company** jobs, which is
-      the failure mode `tools/company_discovery/README.md` already warns about. CMC needs a
-      human to find its own careers system; the portal row is a candidate for deletion (it is
-      not an employer). The Huawei board itself is real and was the biggest contributor in
-      testing (173 postings → 160 gold) if you ever want it as its own row
-- [ ] **Field Effect, REDACTED** — Recruitee **confirmed** from their careers pages, but no
-      board token is extractable and the API probe missed every guessable name. Cheapest fix is
-      a human opening the careers page with the network tab and reading the board name off it
-- [ ] **REDACTED** — the crawl from `buxtonco.com` landed on `audiense.com/about/careers` (a
-      different company) and found no token. Treat its detected ATS as unverified
-- [ ] **REDACTED** — BambooHR confirmed from `REDACTED.com/careers`, but
-      `REDACTED.bamboohr.com/careers/list` **302s to bamboohr.com**: the tenant is closed. There is
-      no live board; this row cannot be fixed, only removed or re-pointed
+**Per-company detail lives in `NOTES.local.md` §5 and the master list's `notes` column, both
+private.** This repo is public and the company list is the thing it is private to protect, so only
+the *shapes* of the six failures are recorded here — each is a class worth recognizing again:
+
+- [x] **One fixed: a careers page linking to the parent brand's board.** Same corporate group, so
+      the board legitimately belongs to that row. Verified live, activated, renamed to name both
+- [ ] **Two ecosystem/portal rows** — a tech hub and a regional directory, each listing
+      *member-company* jobs. The browser reproduced the *same* third-party board ref from both
+      independently, which is the failure mode `tools/company_discovery/README.md` warns about.
+      Neither is an employer; both are deletion candidates. (The board they point at is real and
+      was the biggest single contributor in testing — 173 postings → 160 gold — if it is ever
+      wanted as its own row)
+- [ ] **Two with a confirmed ATS but no extractable token** — the platform is certain from the
+      careers page, but no board name appears in the markup and the API probe missed every
+      guessable form. Cheapest fix is a human with the network tab open
+- [ ] **One crawl that landed on a different company entirely** — its detected ATS is unverified
+      and should be treated as unknown
+- [ ] **One closed tenant** — BambooHR confirmed from the careers page, but the board URL 302s to
+      `bamboohr.com`. There is no live board; the row can only be removed or re-pointed
 - [ ] **BreezyHR** (2 companies) — only if a description becomes reachable. Four keyless paths
       tried and documented in `docs/research/ats-feeds.md`; today the list alone would land
       untextable rows (ADR-0021)

@@ -34,12 +34,12 @@ fixture and tests — the `ingest/adapters/ashby.py` pattern verbatim, no new ac
 
 | ATS | Endpoint | Probe result | Companies |
 |---|---|---|---:|
-| **BambooHR** | `https://{ref}.bamboohr.com/careers/list` | 200, `{meta, result[]}` — solace 26, REDACTED 4, REDACTED 2, REDACTED 1 | **33** |
-| **Recruitee** | `https://{ref}.recruitee.com/api/offers/` | 200, 167 offers (REDACTED) | **6** |
-| **Workable** | `https://apply.workable.com/api/v1/widget/accounts/{ref}?details=true` | 200 JSON (REDACTED-inc) | **5** |
-| **Rippling** | `https://api.rippling.com/platform/api/ats/v1/board/{ref}/jobs` | 200, 28 jobs (REDACTED) | 3 |
-| **BreezyHR** | `https://{ref}.breezy.hr/json` | 200 JSON (REDACTED) | 2 |
-| **Pinpoint** | `https://{ref}.pinpointhq.com/postings.json` | 200, 37 postings (bmt) | 2 |
+| **BambooHR** | `https://{ref}.bamboohr.com/careers/list` | 200, `{meta, result[]}` — four refs probed, 26 / 4 / 2 / 1 postings | **33** |
+| **Recruitee** | `https://{ref}.recruitee.com/api/offers/` | 200, 167 offers | **6** |
+| **Workable** | `https://apply.workable.com/api/v1/widget/accounts/{ref}?details=true` | 200 JSON | **5** |
+| **Rippling** | `https://api.rippling.com/platform/api/ats/v1/board/{ref}/jobs` | 200, 28 jobs | 3 |
+| **BreezyHR** | `https://{ref}.breezy.hr/json` | 200 JSON | 2 |
+| **Pinpoint** | `https://{ref}.pinpointhq.com/postings.json` | 200, 37 postings | 2 |
 | **SmartRecruiters** | `https://api.smartrecruiters.com/v1/companies/{ref}/postings?limit=100` | 200, 100 (capped — paginated) | 2 |
 
 **53 companies** unlockable — a **43% increase** on the 123 boards now running. BambooHR alone

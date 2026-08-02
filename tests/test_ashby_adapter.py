@@ -50,20 +50,21 @@ def test_ashby_description_html_is_passed_through(ashby_payload: dict) -> None:
 
 @responses.activate
 def test_ashby_percent_encodes_a_spaced_board_ref(ashby_payload: dict) -> None:
-    """Ashby board names are display names ("REDACTED" -> the live board
-    at jobs.ashbyhq.com/Dominion%20Dynamics). The space must be encoded into the
-    path, while `company` keeps the readable name for downstream joins."""
-    board_ref = "REDACTED"
+    """Ashby board names are display names, so a real ref can contain a space
+    ("Northwind Systems" -> jobs.ashbyhq.com/Northwind%20Systems). The space must
+    be encoded into the path, while `company` keeps the readable name for
+    downstream joins."""
+    board_ref = "Northwind Systems"
     responses.add(
         responses.GET,
-        URL_TEMPLATE.format(board_ref="Dominion%20Dynamics"),
+        URL_TEMPLATE.format(board_ref="Northwind%20Systems"),
         json=ashby_payload,
     )
 
     (p,) = _adapter().fetch(build_session("test/1.0"), board_ref)
 
-    assert "Dominion%20Dynamics" in responses.calls[0].request.url
-    assert p.company == "REDACTED"
+    assert "Northwind%20Systems" in responses.calls[0].request.url
+    assert p.company == "Northwind Systems"
 
 
 @responses.activate
