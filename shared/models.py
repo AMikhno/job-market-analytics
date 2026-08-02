@@ -111,6 +111,13 @@ class RunSummary(BaseModel):
     failures: list[str] = []
     warnings: list[str] = []
     sources: list[SourceSummary] = []
+    # Registered, active sources that got no active companies from the list, so
+    # they never ran and have no SourceSummary. Reported separately because the
+    # per-source health line cannot express them: it counts only what ran, so a
+    # source missing from the company list reads as "all sources healthy" while
+    # its raw table quietly ages out. Source names are ATS names, not company
+    # identifiers -- safe to print unredacted in a public log.
+    unconfigured: list[str] = []
 
     @property
     def board_count(self) -> int:

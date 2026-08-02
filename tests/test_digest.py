@@ -271,6 +271,32 @@ def test_footer_omits_the_skipped_clause_when_there_are_none() -> None:
     assert "skipped" not in digest._footer(clean)
 
 
+def test_footer_reports_sources_that_never_ran_even_when_healthy() -> None:
+    """A source with no boards in the company list produces no SourceSummary, so
+    the health line counts only what ran and reads as fully healthy. This is the
+    shape of the four-day outage: six Tier-1 sources were missing from the CI
+    company list and every digest said "all sources healthy" while their raw
+    tables aged past the freshness gate."""
+    summary = RunSummary(
+        sources=[SourceSummary(source="lever", rows=400, status="ok", company_count=122)],
+        unconfigured=["bamboohr", "pinpoint", "recruitee"],
+    )
+
+    footer = digest._footer(summary)
+
+    assert "All 1 source healthy (122 boards checked)." in footer  # headline still reported
+    assert "3 registered source(s) had no active boards" in footer
+    assert "bamboohr, pinpoint, recruitee" in footer
+    assert "COMPANIES_CSV_CONTENT" in footer  # points at the list, not the warehouse
+
+
+def test_footer_omits_the_unconfigured_clause_when_every_source_ran() -> None:
+    clean = RunSummary(
+        sources=[SourceSummary(source="lever", rows=9, status="ok", company_count=2)]
+    )
+    assert "no active boards" not in digest._footer(clean)
+
+
 def test_healthy_digest_states_health_explicitly(tmp_path, monkeypatch, stub_smtp) -> None:
     """A clean run must say so, not fall silent."""
     settings = _settings(tmp_path)
