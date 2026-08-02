@@ -142,11 +142,20 @@ master's `notes` so nobody repeats the same dead ends. **168 active boards.**
    871 postings fetched one detail at a time on SmartRecruiters' shared host. A slow run is not
    a hung one. Deactivating that one row takes it back to a couple of minutes
 3. **Storage: raw is append-only, and it adds up.** Measured **209 MB/run → 418 MB/day → 167 GB**
-   logical steady state at the current 400-day partition expiry (free allowance: 10 GiB).
+   logical steady state at the then-400-day partition expiry (free allowance: 10 GiB).
    Greenhouse + Ashby are 85% of it; ~39% of all bytes is description text stored twice (once in
-   `raw`, once in `description_html`). Three cheap levers — stop duplicating text, expiry
-   400 → 180 days, `storage_billing_model = 'PHYSICAL'` — take it to roughly 5–10 GB without
-   changing what is fetched. Full analysis and a general proposal: **`docs/research/ingestion-cost.md`**
+   `raw`, once in `description_html`). Full analysis: **`docs/research/ingestion-cost.md`**
+   - [x] **Expiry 400 → 180 days** (2026-08-01) — chosen on need, not cost: a posting older than
+         six months is not a lead. Steady state → ~75 GB. Note `create_table(exists_ok=True)`
+         returns an existing table *untouched*, so the setting reached new tables only;
+         `_ensure_bigquery_objects` now reconciles it every run
+   - [ ] **Stop storing description text twice** (~39% of bytes) — deferred; needs a shared
+         drop-mapped-keys helper plus a test, and V2 adds no adapters to re-introduce it
+   - [ ] `storage_billing_model = 'PHYSICAL'` — **deliberately parked, documented, no action.**
+         Also charges time-travel + fail-safe bytes, so it needs measuring, not assuming
+   - **Check the actual dollar figure before spending more on this.** The doc quantifies bytes
+     but never converts them; at list price the excess over the free allowance looked like
+     single-digit dollars per month, which would put all of the above below V2
 4. ~~Value/coverage check against real gold data~~ — **answered 2026-07-28, measured across all
    167 boards.** 10,170 postings fetched → **1,179 gold → 40 title-matched** (38 of those also
    hitting a desired tech). All 40 come from Greenhouse/Ashby/Lever; the six sources added in

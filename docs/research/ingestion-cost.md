@@ -31,8 +31,12 @@ The design goal is **not** "make the one expensive board cheap". It is:
 | rippling | 13 | 0.4 | 0.2 | **0.7** | 51.0 | 0.3% | 2 | 15% |
 | **total** | **10,170** | 126.8 | 80.9 | **208.9** | 20.5 | | **1,179** | 11.6% |
 
-**Per run 209 MB → per day 418 MB → steady state 167 GB logical at the current 400-day partition
-expiry** (75 GB at 180 days). BigQuery's free allowance is 10 GiB.
+**Per run 209 MB → per day 418 MB → steady state 167 GB logical at the 400-day partition expiry
+in force when this was measured** (75 GB at 180 days). BigQuery's free allowance is 10 GiB.
+
+> **As built (2026-08-01):** the expiry is now **180 days** — see §4 below. The 167 GB figure is
+> kept as measured; the live steady state is the 75 GB line. Six months was chosen on need, not
+> on cost: a posting older than that is not a lead.
 
 Three findings, none of which match where attention was going:
 
@@ -138,7 +142,10 @@ Ordered by measured impact:
   every future adapter re-introduces it. This is the change that best fits "who knows what'll
   appear there": it is a property of the schema, not of any one ATS.
 - **Retention is one knob**: `bq_raw_partition_expiry_days`, 400 → 180 halves the footprint
-  (167 GB → 75 GB) and was already the stated preference.
+  (167 GB → 75 GB) and was already the stated preference. **Done 2026-08-01.** One trap found in
+  the doing: `create_table(exists_ok=True)` returns an existing table *untouched*, so the setting
+  reached new tables only. `_ensure_bigquery_objects` now reconciles the expiry on every run,
+  which is what makes a future change to this number mean anything.
 - **Compression is one setting**: `ALTER SCHEMA jobs_raw SET OPTIONS(storage_billing_model =
   'PHYSICAL')`. JSON of this shape typically compresses 5–10×. Caveat: physical billing also
   charges time-travel (7d) and fail-safe (7d) bytes, so measure rather than assume.
