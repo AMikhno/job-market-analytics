@@ -72,6 +72,20 @@ jobs:
             echo ":warning: Skipped boards (redacted, use \`make whois REF=…\`): $skipped" \
               >> "$GITHUB_STEP_SUMMARY"
           fi
+          # Sources that are registered and active but got no boards from the
+          # company list -- they never ran, so nothing above can report them.
+          # This is what a stale COMPANIES_CSV_CONTENT looks like: shipping an
+          # adapter without re-pushing the variable leaves its raw table to age
+          # out and fail the freshness gate a day later, pointing at BigQuery
+          # instead of at the list. ATS names, so nothing to redact.
+          # `// []` so an older summary without the field degrades to silence
+          # rather than a jq error -- this step must never fail the run.
+          unconfigured=$(jq -r '(.unconfigured // []) | join(", ")' ingest_summary.json)
+          if [ -n "$unconfigured" ]; then
+            echo "::warning::Sources with no active boards: $unconfigured"
+            echo ":warning: Sources with no active boards (stale \`COMPANIES_CSV_CONTENT\`?): $unconfigured" \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Fail fast on BigQuery dialect errors (compile, no mutations)
         env:

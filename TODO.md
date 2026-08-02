@@ -125,10 +125,19 @@ master's `notes` so nobody repeats the same dead ends. **168 active boards.**
 
 ## Next session — start here
 
-1. **Merge the branch first, then push the variable** — in that order. Deployed code has to
-   understand the list before CI gets it (`NOTES.local.md` §3: a list can name sources or refs
-   an older deployment cannot parse). Then `gh variable set COMPANIES_CSV_CONTENT <
-   config/companies.active.csv` (**168 boards, ~13 KB**) and run Actions → Ingest
+1. ~~Merge the branch first, then push the variable~~ — **the merge happened 2026-07-28, the
+   variable push did not, and that took the pipeline down for four days** (2026-07-28 →
+   2026-08-01). CI kept the pre-merge `main-safe` projection (122 boards, Greenhouse/Lever/Ashby
+   only), so the six V1.8 sources got no companies, never ran, and their raw tables aged past the
+   30h freshness gate. Every run then died at `make freshness` *before* `make deliver` — no
+   digest for four days. Fixed by pushing `config/companies.active.csv` (**168 boards, ~13 KB**).
+   **The step order in this item is still right; the failure was skipping step two.**
+   - Guarded since (`fix/unconfigured-source-visibility`): a registered, active source that gets
+     no boards from the list is now a warning in the run summary (`RunSummary.unconfigured`), the
+     CI annotation, the step summary and the digest footer. It was previously an `INFO` log, so
+     the footer read *"All 3 sources healthy (122 boards checked)"* — true, and useless — every
+     run of the outage. Warn-only by design: shipping an adapter before its companies is a
+     legitimate order of work, and the freshness gate still escalates after 30h
 2. **Expect a ~11.5 minute run** (measured, 167 boards). Renesas alone is ~10 of those minutes:
    871 postings fetched one detail at a time on SmartRecruiters' shared host. A slow run is not
    a hung one. Deactivating that one row takes it back to a couple of minutes
