@@ -29,7 +29,7 @@ class AshbyAdapter:
 
     def fetch(self, session: requests.Session, board_ref: str) -> list[RawPosting]:
         # Ashby board names are display names and may contain spaces
-        # ("Dominion Dynamics"), so the ref is percent-encoded into the path
+        # ("Two Words"), so the ref is percent-encoded into the path
         # rather than interpolated raw. `company` below keeps the readable form.
         url = self.url_template.format(board_ref=quote(board_ref, safe=""))
         data = self.policy.get_json(session, url)

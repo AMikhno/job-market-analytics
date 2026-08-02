@@ -147,7 +147,7 @@ the ATS-specific path fragment the adapter interprets — a bare token for Green
 (`boards.greenhouse.io/<board_ref>`, `jobs.lever.co/<board_ref>`), but multi-segment for boards
 that need it (e.g. Workday's tenant/instance/site); see ADR-0012. **Ashby is the exception**: its
 board names are display names and may contain single inner spaces
-(`jobs.ashbyhq.com/Dominion%20Dynamics`), so it owns a looser rule and its adapter percent-encodes
+(`jobs.ashbyhq.com/Two%20Words`), so it owns a looser rule and its adapter percent-encodes
 the ref. Each active `board_ref` is format-checked against its source's rule at load time (a pasted
 URL or stray slash fails loudly before any fetch) — note this happens *before* fetching, so a
 malformed ref fails the whole run rather than skipping one board. Companies on ATS without an
@@ -162,7 +162,7 @@ only) and *that* is what goes into the `COMPANIES_CSV_CONTENT` variable: GitHub 
 48 KB, and the inventory is the fastest-growing part of the list. Restaging a discovery run
 **merges** rather than overwrites (`ingest/merge_companies.py`) — the master wins on every field,
 blanks are filled, and an ATS move is reported as a conflict for a human rather than silently
-applied, so a hand-corrected ref like `harnessinc` survives every refresh.
+applied, so a hand-corrected ref survives every refresh.
 
 Discovery is **manual, not automated** (there's no reliable discovery API): `make discover
 XLSX=…` renders each company's own site and reads the ATS it actually calls

@@ -27,25 +27,24 @@ Two related dead ends:
 
 ## What does work: scraping the company's own website
 
-A crude one-hop scraper over the company website recovered **9 of 12** refs:
+A crude one-hop scraper over the company website recovered **9 of 12** refs. The recovered values
+themselves live in the private list, not here; what matters is their *shape*:
 
-| Company | Recovered ref (`tenant/shard/site`) |
-|---|---|
-| ADTRAN | `adtran/wd3/ADTRAN` |
-| BlackBerry | `bb/wd3/BlackBerry` |
-| CAE Canada | `cae/wd3/career` |
-| FCC | `fccfac/wd3/careers-carrieres` |
-| Hydro Ottawa | `hydroottawa/wd3/hydro_ottawa_careersite` |
-| Incognito | `luminegrp/wd3/Incognito` |
-| IQVIA | `iqvia/wd1/IQVIA` |
-| Jabil | `jabil/wd5/Jabil_Careers` |
-| LCBO | `lcbo/wd3/LCBOCareerSite` |
+| Tenant segment | Shard | Site segment — the unguessable part |
+|---|---|---|
+| company name, sometimes abbreviated to 2 letters | `wd1` | same as the tenant |
+| parent-company name, not the brand on the website | `wd3` | brand name, mixed case |
+| name + a corporate suffix | `wd5` | `career` (singular) |
+| | | `careers-carrieres` (bilingual, hyphenated) |
+| | | `<name>CareerSite` (concatenated, mixed case) |
+| | | `<name>_Careers` (underscored) |
+| | | `<snake_case_name>_careersite` |
 
-**Site names have no pattern whatsoever** (`career`, `careers-carrieres`, `LCBOCareerSite`,
-`hydro_ottawa_careersite`) and shards vary across wd1/wd3/wd5. That is precisely why guessing
-fails — and it is the clearest vindication so far of keeping `website` as a column
+**Site names have no pattern whatsoever**, and shards vary across wd1/wd3/wd5. That is precisely
+why guessing fails — and it is the clearest vindication so far of keeping `website` as a column
 (CLAUDE.md: the recovery key). **All stored tenants were correct**; only the site and shard
-segments were missing.
+segments were missing. One case is worth noting because no heuristic would ever produce it: a
+tenant that is the *parent group's* name, with the site segment being the subsidiary's brand.
 
 Expect roughly 75% automatic recovery, ~8 of 30 rows needing a human with a browser.
 
@@ -66,12 +65,12 @@ The list pages at **limit=20** and `total` caps at 2000.
 
 | Board | Postings | Requests |
 |---|---:|---|
-| ADTRAN | 81 | 5 list POSTs + 81 detail GETs |
-| IQVIA | 2000+ | 100 list POSTs + **2000 detail GETs** |
+| a mid-size tenant | 81 | 5 list POSTs + 81 detail GETs |
+| the largest tenant in the list | 2000+ | 100 list POSTs + **2000 detail GETs** |
 
-At the configured 0.5 s per-host interval, IQVIA alone is **~17 minutes of serial fetching** on
-its own host. That is the Renesas problem again — one board that cost ~10 of an 11.5-minute run
-to yield 2 gold postings.
+At the configured 0.5 s per-host interval, that largest tenant alone is **~17 minutes of serial
+fetching** on its own host. That is the same problem as the one big SmartRecruiters board already
+in the list, which cost ~10 of an 11.5-minute run to yield 2 gold postings.
 
 An adapter itself is cheap. Measured across the nine shipped sources, a new source is **~250–400
 lines total** (adapter + test + ~10 lines in `ingest/sources.py` + a one-line staging model + a

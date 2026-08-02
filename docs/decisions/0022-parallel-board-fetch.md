@@ -14,7 +14,7 @@ was a fine proxy for politeness while there were three sources on three hosts an
 
 A global sleep makes every one of those requests wait behind every other, including requests to
 completely unrelated hosts. It is also the wrong unit: nobody is inconvenienced by us talking to
-`solace.bamboohr.com` and `bmt.pinpointhq.com` at the same instant.
+`{a}.bamboohr.com` and `{b}.pinpointhq.com` at the same instant.
 
 ## Decision
 

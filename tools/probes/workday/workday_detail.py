@@ -9,6 +9,7 @@ N is for a real board.
 from __future__ import annotations
 
 import json
+import sys
 import time
 
 import requests
@@ -21,7 +22,12 @@ UA = {
     "Accept": "application/json",
     "Content-Type": "application/json",
 }
-BOARDS = [("adtran", "wd3", "ADTRAN"), ("iqvia", "wd1", "IQVIA"), ("nvidia", "wd5", "NVIDIAExternalCareerSite")]
+# tenant/shard/site triples to inspect. Default is a board whose full ref is
+# documented on the open web; pass your own as "tenant shard site" arguments.
+# Not hardcoded from the private list -- this repo is public.
+BOARDS = [("nvidia", "wd5", "NVIDIAExternalCareerSite")]
+if len(sys.argv) == 4:
+    BOARDS = [(sys.argv[1], sys.argv[2], sys.argv[3])]
 
 
 def show(tenant: str, shard: str, site: str) -> None:
