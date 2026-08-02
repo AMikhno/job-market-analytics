@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import threading
+from datetime import UTC, datetime
 
 import pytest
 import requests
@@ -9,9 +10,34 @@ import responses
 
 from ingest import pipeline
 from ingest.sources import SOURCES, LeverSource
+from shared import storage
+from shared.config import get_settings
 from shared.http import FetchPolicy
-from shared.models import RawPosting
+from shared.models import IngestRun, RawPosting
 from shared.redact import redact_ref
+
+
+def _seed_history(counts: list[tuple[int, str]]) -> None:
+    """Land prior ops.ingest_runs rows for 'lever' as (rows_fetched, status)."""
+    settings = get_settings()
+    pipeline.ensure_raw_tables(settings)
+    now = datetime.now(UTC)
+    storage.land_runs(
+        [
+            IngestRun(
+                run_id=f"seed{i}",
+                source="lever",
+                company_count=1,
+                rows_fetched=rows,
+                status=status,
+                started_at=now,
+                finished_at=now,
+            )
+            for i, (rows, status) in enumerate(counts)
+        ],
+        settings=settings,
+    )
+
 
 LEVER_URL = LeverSource(name="lever").url_template
 LEVER_EU_URL = LeverSource(name="lever").eu_url_template
@@ -121,6 +147,65 @@ def test_a_fully_configured_run_reports_nothing_unconfigured(
     # validation would also leave "unconfigured" empty, for the wrong reason.
     assert {s["source"] for s in summary["sources"]} == {s.adapter for s in SOURCES if s.active}
     assert summary["unconfigured"] == []
+
+
+@responses.activate
+def test_a_sharp_volume_drop_is_warned_not_failed(tmp_path, monkeypatch, lever_payload) -> None:
+    """rows_fetched is a *census* of what is on the boards, not a count of new
+    postings -- raw is append-only and every run re-lands the whole board. With
+    slow rotation that number is stable run to run, so a halving means boards
+    stopped answering. The absolute floor only ever fires at zero, so it is
+    blind to exactly this case."""
+    _env(monkeypatch, tmp_path)
+    responses.add(responses.GET, LEVER_URL.format(board_ref="lever"), json=lever_payload)
+    _seed_history([(10, "ok")] * 6)  # median 10, above the 5-run minimum
+
+    rc = pipeline.run()  # this run lands 1 row -- well under half of 10
+
+    assert rc == 0  # warn-only, like every other volume signal
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    assert summary["volume_drops"] == [{"source": "lever", "rows": 1, "baseline": 10}]
+    assert summary["failures"] == []
+
+
+@responses.activate
+def test_no_drop_warning_without_enough_history(tmp_path, monkeypatch, lever_payload) -> None:
+    """A source must not warn on its first runs merely for lacking a baseline."""
+    _env(monkeypatch, tmp_path)
+    responses.add(responses.GET, LEVER_URL.format(board_ref="lever"), json=lever_payload)
+    _seed_history([(10, "ok")] * 2)  # below volume_min_history
+
+    pipeline.run()
+
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    assert summary["volume_drops"] == []
+
+
+@responses.activate
+def test_failed_runs_stay_out_of_the_baseline(tmp_path, monkeypatch, lever_payload) -> None:
+    """A failed run lands zero rows. Letting those into the median would drag it
+    down and mask the next real drop."""
+    _env(monkeypatch, tmp_path)
+    responses.add(responses.GET, LEVER_URL.format(board_ref="lever"), json=lever_payload)
+    _seed_history([(10, "ok")] * 5 + [(0, "error")] * 9)  # zeros would dominate
+
+    pipeline.run()
+
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    assert summary["volume_drops"] == [{"source": "lever", "rows": 1, "baseline": 10}]
+
+
+@responses.activate
+def test_a_steady_source_does_not_warn(tmp_path, monkeypatch, lever_payload) -> None:
+    """The healthy case has to stay silent, or the warning becomes noise."""
+    _env(monkeypatch, tmp_path)
+    responses.add(responses.GET, LEVER_URL.format(board_ref="lever"), json=lever_payload)
+    _seed_history([(1, "ok")] * 6)  # this run also lands 1
+
+    pipeline.run()
+
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    assert summary["volume_drops"] == []
 
 
 @responses.activate

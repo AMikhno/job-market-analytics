@@ -15,6 +15,10 @@ Failure model (unchanged by the parallel fetch):
   * a registered source with no active companies in the list is a (non-failing)
     WARNING -- it never runs, so it can never be low-volume, and without this it
     is invisible until its freshness gate errors ~30h later;
+  * a source landing far below its own recent median is a (non-failing) WARNING.
+    rows_fetched is a census of what is on the boards, not a count of new
+    postings, so it is stable while boards are healthy -- which makes a sharp
+    drop meaningful and an absolute floor nearly useless;
   * sustained staleness is caught separately by dbt source freshness.
 """
 
@@ -29,13 +33,21 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from statistics import median
 
 from ingest.adapters.base import SourceAdapter
 from ingest.sources import SOURCES, Source
 from shared import storage
 from shared.config import Settings, get_settings
 from shared.http import HostRateLimiter, SessionPool
-from shared.models import Company, IngestRun, RawPosting, RunSummary, SourceSummary
+from shared.models import (
+    Company,
+    IngestRun,
+    RawPosting,
+    RunSummary,
+    SourceSummary,
+    VolumeDrop,
+)
 from shared.redact import redact_ref
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -225,8 +237,45 @@ def _run(settings: Settings) -> int:
     if not runs:
         log.warning("no active companies configured in %s", _companies_path(settings))
 
+    # Before landing this run, so the baseline is built from prior runs only.
+    drops = _volume_drops(runs, settings)
     storage.land_runs(runs, settings=settings)
-    return _finalize(runs, settings, skipped, unconfigured)
+    return _finalize(runs, settings, skipped, unconfigured, drops)
+
+
+def _volume_drops(runs: Sequence[IngestRun], settings: Settings) -> list[VolumeDrop]:
+    """Sources that landed far below their own recent median.
+
+    The absolute low-volume warning only fires at zero, which is the easy case.
+    This is the hard one: a source that still returns plenty of rows but has
+    quietly lost most of its boards. Compared against itself rather than a fixed
+    number, because source sizes differ by orders of magnitude and the census is
+    stable while boards are healthy (see Settings.volume_drop_ratio).
+    """
+    drops: list[VolumeDrop] = []
+    for run in runs:
+        if run.status != "ok":
+            continue  # a hard failure is already reported; do not double-count
+        try:
+            history = storage.recent_row_counts(
+                run.source, limit=settings.volume_history_runs, settings=settings
+            )
+        except Exception:
+            # Deliberate catch: this is advisory monitoring layered on top of a
+            # run whose rows are already landed. A warehouse hiccup reading the
+            # ledger must not fail the ingest it is meant to watch -- the same
+            # rule the digest and report_run steps follow. Logged with a
+            # traceback so it is never silent.
+            log.exception(
+                "could not read run history for source=%s; skipping drop check", run.source
+            )
+            continue
+        if len(history) < settings.volume_min_history:
+            continue  # no trustworthy baseline yet
+        baseline = int(median(history))
+        if baseline > 0 and run.rows_fetched < baseline * settings.volume_drop_ratio:
+            drops.append(VolumeDrop(source=run.source, rows=run.rows_fetched, baseline=baseline))
+    return drops
 
 
 def _fetch_all(
@@ -264,9 +313,11 @@ def _finalize(
     settings: Settings,
     skipped: dict[str, list[str]] | None = None,
     unconfigured: Sequence[str] | None = None,
+    drops: Sequence[VolumeDrop] | None = None,
 ) -> int:
     skipped = skipped or {}
     unconfigured = list(unconfigured or [])
+    drops = list(drops or [])
     failures = [r for r in runs if r.status == "error"]
     warnings = [
         r for r in runs if r.status == "ok" and r.rows_fetched < settings.low_volume_threshold
@@ -279,7 +330,15 @@ def _finalize(
         runs=runs,
         skipped=skipped,
         unconfigured=unconfigured,
+        drops=drops,
     )
+    for d in drops:
+        log.warning(
+            "volume drop (warn-only): source=%s rows=%d vs baseline %d",
+            d.source,
+            d.rows,
+            d.baseline,
+        )
     for r in warnings:
         log.warning("low volume (warn-only): source=%s rows=%d", r.source, r.rows_fetched)
     for source, refs in skipped.items():
@@ -311,6 +370,7 @@ def _write_summary(
     runs: Sequence[IngestRun],
     skipped: dict[str, list[str]] | None = None,
     unconfigured: Sequence[str] | None = None,
+    drops: Sequence[VolumeDrop] | None = None,
 ) -> None:
     skipped = skipped or {}
     summary = RunSummary(
@@ -318,6 +378,7 @@ def _write_summary(
         failures=failures,
         warnings=warnings,
         unconfigured=list(unconfigured or []),
+        volume_drops=list(drops or []),
         sources=[
             SourceSummary(
                 source=r.source,
