@@ -164,13 +164,48 @@ master's `notes` so nobody repeats the same dead ends. **168 active boards.**
    **The constraint is relevance, not coverage — go to V2 scoring, not more adapters.**
 5. **V2** (below). The V1.9 list repair is worth doing but is no longer the lever —
    it would add local boards, and local boards are already the ones that convert
-6. Housekeeping: arm healthchecks (`NOTES.local.md` §4); delete merged remote branches; clear the
-   superseded scratch files in `~/Downloads`
+6. Housekeeping: arm healthchecks (`NOTES.local.md` §4); ~~delete merged remote branches~~ (done
+   2026-08-02); clear the superseded scratch files in `~/Downloads`
+
+## Priority plan (2026-08-02)
+
+Ordered by value per unit of work against one goal: **a senior-IC analytics role at a
+Conductor-shaped employer — mid-size SaaS with a real internal data function.** Willing to take
+other work, but the pipeline optimizes for that shape because it is the one that measurably
+converts (`docs/research/triage-to-shortlist.md`).
+
+Two constraints that reorder things, both from the candidate rather than from data:
+
+- **Government is not a near-term channel.** Realistically reached through a staffing agency, not
+  direct application; current federal hiring skews defense, which requires citizenship. So GC Jobs
+  / Job Bank Canada are **demoted**, not promoted — earlier notes in this repo had that backwards.
+- **Banks are acceptable but sit behind Workday**, the most expensive remaining adapter.
+
+| # | Work | Why here | Cost |
+|---|---|---|---|
+| **1** | **V2 scoring** | Relevance is the measured constraint (10,170 → 1,179 gold → 40 title-matched, and the 40 were the *wrong* 40 — see triage doc). Also the instrument that makes every later expansion self-evaluating instead of costing a manual evening | Scoped: ADR-0020, `docs/v2-plan.md`; ~$0.12 first backfill |
+| **2** | **Add companies on already-built ATS** | Zero engineering. Best measured conversion came from a mid-size health-tech on BambooHR (11 postings → 4 shortlisted). Include **staffing/recruiting agencies as a deliberate company type** — the realistic channel to government and to unadvertised roles | List work only |
+| **3** | **Aggregator source (hybrid)** | Fixes list representativeness at the root — stops requiring the company list to be a fair sample. After V2, because without scoring it is 10× the noise for the same manual triage | ADR-0017, gates unmet. Main cost: content-based dedup, since `job_key` is `(source, company, external_id)` — ADR-0008 |
+| **4** | **List repair** | Wrong data, not missing adapters; free at runtime. Teamtailor `app`/`na`/`www`, Eightfold `app`, stale Jobvite rows | Small |
+| **5** | **Careers-page change signal** | The hash idea: monthly text hash per careers page, surface *changed* companies in the digest, never fake postings. Low competition on that tier is real; extraction is not how to reach it | ~50 lines — `docs/research/careers-page-tail.md` |
+| **6** | **Workday** | Only if bank/enterprise becomes a real target. Website-scrape ref pass first, then gate the adapter to a subset of tenants | `docs/research/workday-ref-discovery.md` |
+| **7** | ~~The 334 custom careers pages as an ingestion source~~ | **Declined.** 0/40 carry JSON-LD, 2/40 have anything parseable. Parsing was never the bottleneck | — |
+
+**Deliberately not on this list:** Indeed (ToS — the API is closed and scraping is prohibited;
+the 10 `indeed` rows are unresolved discovery, not a source) and per-company scrapers (ADR-0013,
+plus they decay silently, which is the failure mode this repo is otherwise built against).
 
 ## V2 — AI relevance (scoped, ready to build)
 
 **Scope fixed by ADR-0020; implementation contract in `docs/v2-plan.md`** — execute its
 work items top-to-bottom, one conventional commit each:
+
+**Read `docs/research/triage-to-shortlist.md` before writing the prompt.** The 1,305 → 75 pass was
+done once by hand and produced four measured instructions the current signals cannot express —
+score the *requirements* section not the whole posting (whole-page keyword scoring was 1/21
+precise, requirements-only 3/13); emit eligibility and level as ranked fields rather than filters;
+treat "Manager" as an unreliable level signal in both directions. Without those, V2 rebuilds the
+keyword matcher this exercise already disproved.
 
 - [ ] Profile config: `shared/profile.py` + `config/profile.example.yaml` + prompt rendering
       (`PROMPT_VERSION` provenance); gitignore guard for the real file

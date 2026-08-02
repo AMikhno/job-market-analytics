@@ -129,9 +129,13 @@ state, the decisions already made, and what is deliberately *not* being worked o
 - Decision records (why, not what) → `docs/decisions/` — newest first: 0022 parallel fetch,
   0021 list+detail (a V1 source must yield a description), 0020 V2 scope
 - Measured evidence & proposals not yet decided → `docs/research/`
-  (`ingestion-cost.md` — cost model + proposal awaiting evaluation;
+  (`triage-to-shortlist.md` — how 1,305 gold became 75 by hand, and the four instructions V2's
+  prompt has to encode; `ingestion-cost.md` — cost model + proposal awaiting evaluation;
   `ats-feeds.md` — per-ATS probe results incl. an "as built" section;
+  `workday-ref-discovery.md` — supersedes that file's Workday row;
+  `careers-page-tail.md` — the 334 no-ATS companies, and why extraction is the wrong tool;
   `openjobdata.md` — the aggregated-source gate)
+- One-off probe scripts behind those numbers → `tools/probes/` (not pipeline code, no tests)
 - V2 implementation contract → `docs/v2-plan.md`
 
 Numbers in these docs are **measured, not estimated** — if you supersede one, measure again and
