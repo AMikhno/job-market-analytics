@@ -5,62 +5,77 @@ sources:
     description: Raw landings from the Python ingestion, one table per ATS.
     # dev (DuckDB) lands in the default 'main' schema; prod (BigQuery) uses the jobs_raw dataset.
     schema: "{{ 'main' if target.type == 'duckdb' else 'jobs_raw' }}"
+    # `loaded_at_field` and `freshness` live under `config:` as of dbt 1.10 --
+    # as top-level table properties they still work but emit
+    # PropertyMovedToConfigDeprecation, and are slated to stop working in the
+    # next major. Kept per-table rather than hoisted to a source-level default:
+    # the gate is the thing that catches a source going dark, so it should be
+    # visible on the table it guards.
     tables:
       - name: raw_greenhouse_jobs
         description: Append-only Greenhouse landings (all columns STRING; bronze casts).
-        loaded_at_field: "cast(ingested_at as timestamp)"
-        freshness:                      # a stale/empty board fails the scheduled run
-          warn_after: { count: 12, period: hour }
-          error_after: { count: 30, period: hour }
+        config:
+          loaded_at_field: "cast(ingested_at as timestamp)"
+          freshness:                    # a stale/empty board fails the scheduled run
+            warn_after: { count: 12, period: hour }
+            error_after: { count: 30, period: hour }
       - name: raw_lever_jobs
         description: Append-only Lever landings (all columns STRING; bronze casts).
-        loaded_at_field: "cast(ingested_at as timestamp)"
-        freshness:
-          warn_after: { count: 12, period: hour }
-          error_after: { count: 30, period: hour }
+        config:
+          loaded_at_field: "cast(ingested_at as timestamp)"
+          freshness:
+            warn_after: { count: 12, period: hour }
+            error_after: { count: 30, period: hour }
       - name: raw_ashby_jobs
         description: Append-only Ashby landings (all columns STRING; bronze casts).
-        loaded_at_field: "cast(ingested_at as timestamp)"
-        freshness:
-          warn_after: { count: 12, period: hour }
-          error_after: { count: 30, period: hour }
+        config:
+          loaded_at_field: "cast(ingested_at as timestamp)"
+          freshness:
+            warn_after: { count: 12, period: hour }
+            error_after: { count: 30, period: hour }
       - name: raw_bamboohr_jobs
         description: Append-only BambooHR landings (all columns STRING; bronze casts).
-        loaded_at_field: "cast(ingested_at as timestamp)"
-        freshness:
-          warn_after: { count: 12, period: hour }
-          error_after: { count: 30, period: hour }
+        config:
+          loaded_at_field: "cast(ingested_at as timestamp)"
+          freshness:
+            warn_after: { count: 12, period: hour }
+            error_after: { count: 30, period: hour }
       - name: raw_recruitee_jobs
         description: Append-only Recruitee landings (all columns STRING; bronze casts).
-        loaded_at_field: "cast(ingested_at as timestamp)"
-        freshness:
-          warn_after: { count: 12, period: hour }
-          error_after: { count: 30, period: hour }
+        config:
+          loaded_at_field: "cast(ingested_at as timestamp)"
+          freshness:
+            warn_after: { count: 12, period: hour }
+            error_after: { count: 30, period: hour }
       - name: raw_workable_jobs
         description: Append-only Workable landings (all columns STRING; bronze casts).
-        loaded_at_field: "cast(ingested_at as timestamp)"
-        freshness:
-          warn_after: { count: 12, period: hour }
-          error_after: { count: 30, period: hour }
+        config:
+          loaded_at_field: "cast(ingested_at as timestamp)"
+          freshness:
+            warn_after: { count: 12, period: hour }
+            error_after: { count: 30, period: hour }
       - name: raw_pinpoint_jobs
         description: Append-only Pinpoint landings (all columns STRING; bronze casts).
-        loaded_at_field: "cast(ingested_at as timestamp)"
-        freshness:
-          warn_after: { count: 12, period: hour }
-          error_after: { count: 30, period: hour }
+        config:
+          loaded_at_field: "cast(ingested_at as timestamp)"
+          freshness:
+            warn_after: { count: 12, period: hour }
+            error_after: { count: 30, period: hour }
       # These two got their freshness gate only once a real board was verified —
       # `dbt source freshness` errors on an *empty* table and takes the whole
       # prod run with it, and both sources initially had no usable ref (blank
       # Rippling refs; a SmartRecruiters stub returning totalFound=0).
       - name: raw_rippling_jobs
         description: Append-only Rippling landings (all columns STRING; bronze casts).
-        loaded_at_field: "cast(ingested_at as timestamp)"
-        freshness:
-          warn_after: { count: 12, period: hour }
-          error_after: { count: 30, period: hour }
+        config:
+          loaded_at_field: "cast(ingested_at as timestamp)"
+          freshness:
+            warn_after: { count: 12, period: hour }
+            error_after: { count: 30, period: hour }
       - name: raw_smartrecruiters_jobs
         description: Append-only SmartRecruiters landings (all columns STRING; bronze casts).
-        loaded_at_field: "cast(ingested_at as timestamp)"
-        freshness:
-          warn_after: { count: 12, period: hour }
-          error_after: { count: 30, period: hour }
+        config:
+          loaded_at_field: "cast(ingested_at as timestamp)"
+          freshness:
+            warn_after: { count: 12, period: hour }
+            error_after: { count: 30, period: hour }
