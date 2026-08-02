@@ -52,40 +52,17 @@ jobs:
           HTTP_USER_AGENT: ${{ vars.HTTP_USER_AGENT }}
         run: make ingest
 
-      # Warnings must never be able to fail the run (the old Slack curl could).
+      # Low volume, skipped boards, and sources that got no boards at all: three
+      # ways the posting stream thins out while the run stays green. Warnings
+      # must never be able to fail the run (the old Slack curl could), which is
+      # why the reporter exits 0 on every path -- see ingest/report_run.py.
+      #
+      # Python, not jq: jq is a system binary from the runner image, absent from
+      # uv.lock and from macOS, so the expressions it replaced could not be run
+      # or tested anywhere but here.
       - name: Surface warnings (annotations + run summary)
         if: success()
-        run: |
-          warns=$(jq -r '.warnings | join(", ")' ingest_summary.json)
-          if [ -n "$warns" ]; then
-            echo "::warning::Low/zero volume from: $warns"
-            echo ":warning: Low/zero volume from: $warns" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          # Boards that failed while their source stayed "ok" (company moved ATS,
-          # board taken down). These leave the run green, so without this they
-          # are invisible until the posting stream thins out. Refs are already
-          # redacted in the summary -- safe for this public log; `make whois`
-          # resolves one locally against the private list.
-          skipped=$(jq -r '[.sources[].skipped_refs[]] | join(", ")' ingest_summary.json)
-          if [ -n "$skipped" ]; then
-            echo "::warning::Skipped boards (redacted): $skipped"
-            echo ":warning: Skipped boards (redacted, use \`make whois REF=…\`): $skipped" \
-              >> "$GITHUB_STEP_SUMMARY"
-          fi
-          # Sources that are registered and active but got no boards from the
-          # company list -- they never ran, so nothing above can report them.
-          # This is what a stale COMPANIES_CSV_CONTENT looks like: shipping an
-          # adapter without re-pushing the variable leaves its raw table to age
-          # out and fail the freshness gate a day later, pointing at BigQuery
-          # instead of at the list. ATS names, so nothing to redact.
-          # `// []` so an older summary without the field degrades to silence
-          # rather than a jq error -- this step must never fail the run.
-          unconfigured=$(jq -r '(.unconfigured // []) | join(", ")' ingest_summary.json)
-          if [ -n "$unconfigured" ]; then
-            echo "::warning::Sources with no active boards: $unconfigured"
-            echo ":warning: Sources with no active boards (stale \`COMPANIES_CSV_CONTENT\`?): $unconfigured" \
-              >> "$GITHUB_STEP_SUMMARY"
-          fi
+        run: uv run python -m ingest.report_run
 
       - name: Fail fast on BigQuery dialect errors (compile, no mutations)
         env:
