@@ -18,7 +18,7 @@ and was still running `main`'s dbt (no `match_score`), so local was the better d
 | Gold (location gate + lifecycle) | 1,305 | the only *hard* rule: `allowed_locations` |
 | `title_match = true` | 40 | seed pattern on the title |
 | **Judged worth applying to** | **75** | manual read of title + description |
-| Of those, actionable now | 44 | ≤30 days old, Canada-eligible, at level |
+| Of those, actionable now | 44 | ≤30 days old, eligible, within the level band |
 | Apply immediately | 15 | the above + top-25 content fit |
 
 **40 and 75 barely overlap, and that is the whole point.** `title_match` is not a subset of the
@@ -34,9 +34,9 @@ The generalization, which is the single most useful sentence here:
 
 > **Companies name roles after the org chart the seat sits in, not the work being done.**
 
-This is the same distortion that got the candidate's own role titled "Senior Software Engineer II,
-Data Science." It is why title can never be the key, and why ADR-0015 made the title seed a soft
-signal.
+A posting for analytics work sitting under an engineering VP gets an engineering title; the same
+work in a field organization gets a customer-facing one. It is why title can never be the key, and
+why ADR-0015 made the title seed a soft signal.
 
 ## What the manual pass actually ranked on
 
@@ -44,10 +44,14 @@ In priority order. None of these are in the pipeline today except crudely.
 
 1. **Named-tool content in the *requirements*** — SQL, dbt, Snowflake, Tableau, Airflow,
    Salesforce. Not mentions anywhere on the page; requirements specifically (see below).
-2. **Work eligibility.** Canada-eligible, or explicitly remote-Canada. This is a *hard* gate on
-   acting, but it must not be a hard gate on *ingesting* — see the location trap below.
-3. **Seniority fit against a senior-IC ceiling.** Both directions matter: too junior is a reject,
-   and so is a role that manages people. See the "Manager" trap below.
+2. **Work eligibility**, against the profile's stated region. This is a *hard* gate on acting, but
+   it must not be a hard gate on *ingesting* — see the location trap below.
+3. **Seniority fit against the profile's level band.** Both directions matter: too junior is a
+   reject, and so is a role above the band. See the "Manager" trap below.
+
+Note that 2 and 3 are read from `config/profile.yaml` (gitignored, ADR-0020) — the values belong
+to the searcher, not to this document. What is recorded here is only that these are *dimensions
+the prompt must handle*, and how each one fails.
 4. **Liveness.** A tiebreaker, never the sort key — a 34-day-old analytics lead outranks a
    1-day-old backend req.
 

@@ -171,17 +171,17 @@ the *shapes* of the six failures are recorded here — each is a class worth rec
 
 ## Priority plan (2026-08-02)
 
-Ordered by value per unit of work against one goal: **a senior-IC analytics role at a
-Conductor-shaped employer — mid-size SaaS with a real internal data function.** Willing to take
-other work, but the pipeline optimizes for that shape because it is the one that measurably
-converts (`docs/research/triage-to-shortlist.md`).
+Ordered by value per unit of work against one target profile: **mid-size SaaS with a real
+internal data function.** The pipeline optimizes for that shape because it is the one that
+measurably converts (`docs/research/triage-to-shortlist.md`).
 
-Two constraints that reorder things, both from the candidate rather than from data:
+Two constraints reorder things. Both are search-strategy decisions rather than findings from the
+data, and the reasoning behind them is personal — it lives in `NOTES.local.md` §6, not here:
 
-- **Government is not a near-term channel.** Realistically reached through a staffing agency, not
-  direct application; current federal hiring skews defense, which requires citizenship. So GC Jobs
-  / Job Bank Canada are **demoted**, not promoted — earlier notes in this repo had that backwards.
-- **Banks are acceptable but sit behind Workday**, the most expensive remaining adapter.
+- **Government is not a near-term channel**, so GC Jobs / Job Bank Canada are **demoted**, not
+  promoted — earlier notes in this repo had that backwards.
+- **Large enterprises are acceptable but sit behind Workday**, the most expensive remaining
+  adapter, so they do not justify building it yet.
 
 | # | Work | Why here | Cost |
 |---|---|---|---|
