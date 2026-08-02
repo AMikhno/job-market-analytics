@@ -96,6 +96,91 @@ def _adrs() -> set[str]:
     return {p.name[:4] for p in (ROOT / "docs" / "decisions").glob("*.md")}
 
 
+def facts() -> dict[str, int]:
+    """Counts computed from the code, for docs to assert against.
+
+    Prose gets a number wrong the moment the code moves under it, and no
+    reference check notices -- "nine sources" reads fine when there are ten.
+    A doc opts in by tagging the sentence:
+
+        The pipeline ingests **9** sources. <!-- check:sources -->
+
+    The checker then requires that line to contain the computed value. Opt-in,
+    because guessing which numbers in prose are claims about the code produces
+    exactly the noise that gets a checker disabled.
+    """
+    sys.path.insert(0, str(ROOT))
+    from ingest.sources import SOURCES
+    from shared.storage import RAW_COLUMNS
+
+    computed = {
+        "sources": len(SOURCES),
+        "active_sources": sum(1 for s in SOURCES if s.active),
+        "raw_columns": len(RAW_COLUMNS),
+        "adrs": len(_adrs()),
+        "dbt_models": len(_dbt_models()),
+    }
+    # The company list is private and absent in CI, so this fact only exists
+    # where the file does -- checked locally, skipped on the runner.
+    companies = ROOT / "config" / "companies.csv"
+    if companies.exists():
+        import csv
+
+        with companies.open(newline="") as fh:
+            rows = list(csv.DictReader(fh))
+        computed["active_boards"] = sum(1 for r in rows if r.get("active", "").strip() == "true")
+    return computed
+
+
+def _fact_names(line: str) -> list[str]:
+    """Fact names tagged on this line, e.g. `<!-- check:sources check:adrs -->`.
+
+    Parsed as "names inside a comment" rather than one name per comment: an
+    earlier version required exactly `<!-- check:name -->`, so a comment listing
+    several names matched nothing and the check passed silently -- a green
+    result that meant "found no claims", which is the worst thing a gate can do.
+    """
+    names: list[str] = []
+    for comment in re.findall(r"<!--(.*?)-->", line, re.S):
+        names += re.findall(r"check:(\w+)", comment)
+    return names
+
+
+def _check_facts(rel: str, known: dict[str, int]) -> list[Problem]:
+    path = ROOT / rel
+    problems: list[Problem] = []
+    for i, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
+        for name in _fact_names(line):
+            if name not in known:
+                problems.append(Problem(rel, i, f"check:{name}", "no such computed fact"))
+                continue
+            value = str(known[name])
+            if not re.search(rf"\b{value}\b", line):
+                why = f"line does not state the real value ({value})"
+                problems.append(Problem(rel, i, f"check:{name}", why))
+    return problems
+
+
+def _adapter_names() -> set[str]:
+    sys.path.insert(0, str(ROOT))
+    from ingest.sources import SOURCES
+
+    return {s.adapter for s in SOURCES}
+
+
+def _check_raw_tables(rel: str, adapters: set[str]) -> list[Problem]:
+    """`raw_<source>_jobs` must name a source that is actually registered."""
+    path = ROOT / rel
+    problems: list[Problem] = []
+    for i, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
+        for name in re.findall(r"\braw_(\w+?)_jobs\b", line):
+            if name not in adapters:
+                problems.append(
+                    Problem(rel, i, f"raw_{name}_jobs", "no source registered with that name")
+                )
+    return problems
+
+
 def _headings(path: Path) -> set[str]:
     """GitHub-style anchor slugs for a markdown file's headings."""
     slugs = set()
@@ -254,12 +339,16 @@ def _check_line_refs(rel: str) -> list[Problem]:
 
 def main() -> int:
     targets, models, adrs, allowed = _make_targets(), _dbt_models(), _adrs(), _allowed()
+    known, adapters = facts(), _adapter_names()
     problems: list[Problem] = []
     for rel in tracked_files():
         if not rel.endswith((".md", ".py")):
             continue
         problems += check_file(rel, targets=targets, models=models, adrs=adrs, allowed=allowed)
         problems += [p for p in _check_line_refs(rel) if p.ref.split(":")[0] not in allowed]
+        if rel.endswith(".md"):
+            problems += _check_facts(rel, known)
+            problems += [p for p in _check_raw_tables(rel, adapters) if p.ref not in allowed]
 
     if not problems:
         print("docs check: all references resolve")
