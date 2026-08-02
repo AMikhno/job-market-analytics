@@ -56,7 +56,7 @@ per-adapter cost is the `RawPosting` mapping and its fixture, not the HTTP call.
 
 | ATS | Finding | Companies |
 |---|---|---:|
-| **Workday** | `POST /wday/cxs/{tenant}/{site}/jobs` returned **422, not 404** — the endpoint is live and keyless, but needs a POST body, offset pagination, **and** a multi-segment ref (tenant / wd-number / site). The list stores tenant only (`mitel`, `ciena`), so every row needs its site captured before any code runs. This is the case ADR-0012's `board_ref` design was written for. | **30** |
+| **Workday** | ⚠️ **Superseded 2026-07-29 — see `workday-ref-discovery.md`.** This row read the 422 as "the endpoint is live"; re-probing showed **422 is the uniform reply to any unknown ref**, so it proves nothing and the site segment cannot be brute-forced. Still true: POST body, offset pagination, multi-segment ref (tenant / wd-number / site), and the list stores tenant only. Refs are recoverable by scraping the company website (~75% automatic). | **30** |
 | **Eightfold** | 403 on `api/apply/v2/jobs` for both refs. Possibly fixable with correct domain param/headers; unproven. | 3 |
 | **Jobvite, Oracle HCM, Paylocity** | **Untested — no usable `board_ref` stored** (blank refs). Cannot be judged until discovery captures one. | 11 |
 
