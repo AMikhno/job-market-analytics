@@ -14,7 +14,7 @@ All shipped and verified (see `docs/decisions/0013`–`0016`):
 
 ## V1.6 — hardening + delivery — ✅ COMPLETE
 
-All shipped (see ADR-0019 and `ARCHITECTURE.md` §9):
+All shipped (see ADR-0019):
 
 - [x] Seed terms matched literally (C++/C#/.NET safe) — regexp escaping in `regexp_word_ci`
 - [x] Board-staleness rule: postings from removed/dead boards age out of gold (36h grace)
@@ -23,7 +23,7 @@ All shipped (see ADR-0019 and `ARCHITECTURE.md` §9):
 - [x] Actions SHA-pinned; gitleaks runs in CI (local hook is bypassable)
 - [x] Email digest of new postings (`deliver/digest.py`, watermark in `ops.digest_runs`)
 - [x] Dead-man's switch: successful runs ping healthchecks.io (`HEALTHCHECK_URL` secret), so a
-      cron GitHub has suspended alerts instead of going silent — ARCHITECTURE §6
+      cron GitHub has suspended alerts instead of going silent — [Health](ARCHITECTURE.md#health)
 
 ## V1.7 — company-list correctness — ✅ COMPLETE (2026-07-28, PR #12)
 
