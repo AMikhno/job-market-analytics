@@ -1,4 +1,6 @@
 import json
+import logging
+import re
 import threading
 
 import pytest
@@ -6,7 +8,7 @@ import requests
 import responses
 
 from ingest import pipeline
-from ingest.sources import LeverSource
+from ingest.sources import SOURCES, LeverSource
 from shared.http import FetchPolicy
 from shared.models import RawPosting
 from shared.redact import redact_ref
@@ -66,6 +68,59 @@ def test_zero_rows_warns_but_does_not_fail(tmp_path, monkeypatch) -> None:
     summary = json.loads((tmp_path / "summary.json").read_text())
     assert summary["warnings"] == ["lever"]
     assert summary["failures"] == []
+
+
+@responses.activate
+def test_a_registered_source_with_no_boards_is_reported_not_silent(
+    tmp_path, monkeypatch, lever_payload, caplog
+) -> None:
+    """A source the company list never mentions still has a raw table with a
+    freshness gate on it. It cannot be low-volume (it never runs), so without
+    this it is invisible until that gate errors ~30h later and points at the
+    warehouse instead of at the list -- which is exactly how a stale
+    COMPANIES_CSV_CONTENT took the pipeline down for four days."""
+    _env(monkeypatch, tmp_path)  # the pinned list holds one lever row and nothing else
+    responses.add(responses.GET, LEVER_URL.format(board_ref="lever"), json=lever_payload)
+
+    with caplog.at_level(logging.WARNING, logger="ingest"):
+        rc = pipeline.run()
+
+    assert rc == 0  # warn-only: shipping an adapter before its companies is legitimate
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    assert set(summary["unconfigured"]) == {s.adapter for s in SOURCES if s.active} - {"lever"}
+    assert "lever" not in summary["unconfigured"]  # it ran, so it is reported as a source
+    assert summary["failures"] == []
+    assert any(
+        "has no active companies" in r.getMessage() and "greenhouse" in r.getMessage()
+        for r in caplog.records
+        if r.levelno == logging.WARNING
+    )
+
+
+@responses.activate
+def test_a_fully_configured_run_reports_nothing_unconfigured(
+    tmp_path, monkeypatch, lever_payload
+) -> None:
+    """The clause must stay quiet in the healthy case, or it becomes noise the
+    reader learns to skip past."""
+    companies = tmp_path / "companies.csv"
+    companies.write_text(
+        "company_name,source,board_ref,active,tier,notes\n"
+        + "".join(f"{s.adapter} demo,{s.adapter},demoboard,true,1,\n" for s in SOURCES if s.active)
+    )
+    _env(monkeypatch, tmp_path)
+    monkeypatch.setenv("COMPANIES_CSV", str(companies))
+    # Every board 404s; that is a per-source hard failure, but "unconfigured" is
+    # about the list, not the network, and must stay empty either way.
+    responses.add(responses.GET, re.compile(r"https?://.*"), status=404)
+
+    pipeline.run()
+
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    # Assert the run really reached every source first: a list that failed
+    # validation would also leave "unconfigured" empty, for the wrong reason.
+    assert {s["source"] for s in summary["sources"]} == {s.adapter for s in SOURCES if s.active}
+    assert summary["unconfigured"] == []
 
 
 @responses.activate
