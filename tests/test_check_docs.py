@@ -126,6 +126,54 @@ def test_unknown_dbt_model_is_reported() -> None:
     assert problem is not None and "dbt model" in problem.why
 
 
+def test_a_marker_listing_several_facts_is_parsed() -> None:
+    """One comment can tag several facts. An earlier regex required exactly
+    `<!-- check:name -->`, so a multi-name comment matched nothing and the check
+    passed silently -- green meaning "found no claims" is the worst failure a
+    gate can have."""
+    line = "9 sources, 24 ADRs <!-- check:sources check:adrs -->"
+    assert check_docs._fact_names(line) == ["sources", "adrs"]
+
+
+def test_a_wrong_count_is_reported(tmp_path, monkeypatch) -> None:
+    doc = tmp_path / "d.md"
+    doc.write_text("There are 11 sources. <!-- check:sources -->\n")
+    monkeypatch.setattr(check_docs, "ROOT", tmp_path)
+    (problem,) = check_docs._check_facts("d.md", {"sources": 9})
+    assert "does not state the real value (9)" in problem.why
+
+
+def test_a_correct_count_is_accepted(tmp_path, monkeypatch) -> None:
+    doc = tmp_path / "d.md"
+    doc.write_text("There are 9 sources. <!-- check:sources -->\n")
+    monkeypatch.setattr(check_docs, "ROOT", tmp_path)
+    assert check_docs._check_facts("d.md", {"sources": 9}) == []
+
+
+def test_an_unknown_fact_name_is_reported(tmp_path, monkeypatch) -> None:
+    """A typo in the marker must fail, not silently check nothing."""
+    doc = tmp_path / "d.md"
+    doc.write_text("Whatever. <!-- check:nonesuch -->\n")
+    monkeypatch.setattr(check_docs, "ROOT", tmp_path)
+    (problem,) = check_docs._check_facts("d.md", {"sources": 9})
+    assert problem.why == "no such computed fact"
+
+
+def test_raw_table_names_must_match_a_registered_source(tmp_path, monkeypatch) -> None:
+    doc = tmp_path / "d.md"
+    doc.write_text("We land into raw_lever_jobs and raw_nosuch_jobs.\n")
+    monkeypatch.setattr(check_docs, "ROOT", tmp_path)
+    (problem,) = check_docs._check_raw_tables("d.md", {"lever", "ashby"})
+    assert problem.ref == "raw_nosuch_jobs"
+
+
+def test_facts_are_computed_from_the_code() -> None:
+    """The counts must come from the code, not a hand-maintained list."""
+    from ingest.sources import SOURCES
+
+    assert check_docs.facts()["sources"] == len(SOURCES)
+
+
 def test_the_repo_itself_passes() -> None:
     """The gate must hold for the tree as committed, or it is decorative."""
     assert check_docs.main() == 0
