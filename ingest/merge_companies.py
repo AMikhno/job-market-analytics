@@ -2,7 +2,7 @@
 
 Staging used to be a bare `cp` over `config/companies.csv`, which was safe only
 while the master held nothing the generator could not re-derive. It does now: a
-hand-corrected board_ref (`REDACTED`, not `harness`), a deliberate
+hand-corrected board_ref (a corporate suffix the name alone never yields), a deliberate
 `active=false`, a note. Overwriting silently discards exactly the knowledge that
 was most expensive to acquire.
 
@@ -18,7 +18,8 @@ The rule is conservative and predictable -- **the master always wins**:
     resolved by a rule that would be wrong half the time.
 
 Companies are keyed by normalized name, which is the identity the list actually
-uses (`REDACTED` and `REDACTED QNX` are deliberately separate rows).
+uses -- a parent and a named subsidiary sharing one board are deliberately
+separate rows.
 """
 
 from __future__ import annotations

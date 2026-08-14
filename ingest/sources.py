@@ -39,8 +39,8 @@ from shared.http import FetchPolicy, HostRateLimiter
 _BARE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 # Ashby board names are display names, so they may contain single inner spaces
-# ("REDACTED" -> jobs.ashbyhq.com/Dominion%20Dynamics). Verified against
-# the live API: the spaced name returns postings; every de-spaced variant 404s.
+# ("Two Words" -> jobs.ashbyhq.com/Two%20Words). Verified against the live API:
+# the spaced name returns postings; every de-spaced variant 404s.
 # Still no slashes or URL punctuation, and no leading/trailing space.
 _ASHBY_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?: [A-Za-z0-9._-]+)*$")
 
@@ -97,7 +97,7 @@ class LeverSource(SourceBase):
     adapter: Literal["lever"] = "lever"
     url_template: str = "https://api.lever.co/v0/postings/{board_ref}?mode=json"
     # Lever hosts some boards on an EU shard; the US host 404s for those, and the
-    # board is not discoverable from the ref (REDACTED is one). The API shape is
+    # board is not discoverable from the ref (the list has one). The API shape is
     # identical, so the adapter falls back to this host on a 404 rather than the
     # list carrying a region -- an NA company on an EU board just works.
     eu_url_template: str = "https://api.eu.lever.co/v0/postings/{board_ref}?mode=json"

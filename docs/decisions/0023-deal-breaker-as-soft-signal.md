@@ -1,7 +1,7 @@
 # 0023 — Deal-breaker tech demotes a posting; it no longer deletes it
 
 **Status:** accepted (2026-07-28). Extends ADR-0015 (soft desired signals) to the negative case;
-supersedes the hard filter described in ADR-0001/ARCHITECTURE §5.
+supersedes the hard filter described in ADR-0001 and [filtering](../../ARCHITECTURE.md#filtering-one-rule-removes-the-rest-rank).
 
 ## Context
 
@@ -31,8 +31,8 @@ then deleted by this rule.**
 | …naming a deal-breaker **in the title** | **0** |
 
 Casualties included *Senior Software Engineer, AI Productivity* (4 desired techs, one Kafka
-mention) — a role the pipeline's owner had actually interviewed for — plus *Senior Data Platform
-Engineer* and several *Data Engineer* roles carrying 4–6 desired technologies.
+mention), *Senior Data Platform Engineer*, and several *Data Engineer* roles carrying 4–6 desired
+technologies — all of them roles the rule was never meant to exclude.
 
 The rule was trying to express "I don't want a streaming/big-data engineering job". What it
 actually expressed was "I don't want any posting that mentions these words anywhere", and since

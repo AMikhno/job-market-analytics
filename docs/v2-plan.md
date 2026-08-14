@@ -1,7 +1,7 @@
 # V2 implementation plan — AI relevance inside dbt
 
 The contract for the V2 build. Scope fixed by ADR-0020; design rationale in
-`ARCHITECTURE.md` §5/§5.5/§5.6 and ADR-0003/0004/0009. This document is the
+[ARCHITECTURE.md V2](../ARCHITECTURE.md#v2) and ADR-0003/0004/0009. This document is the
 work breakdown an implementation session executes top-to-bottom — decisions
 here are settled; re-derive nothing, but **verify current BigQuery AI-function
 names/signatures and Gemini model availability before writing SQL** (they churn).
@@ -12,14 +12,14 @@ names/signatures and Gemini model availability before writing SQL** (they churn)
 profile config + prompt rendering, score-aware gold + digest, dev-target stubs,
 tests, docs/ADR sweep.
 
-**Out (parked):** embeddings (ADR-0020 §3), new ATS adapters (ADR-0013),
-openjobdata (ADR-0017), score thresholds / delivery filtering (ADR-0020 §2).
+**Out (parked):** embeddings, new ATS adapters (ADR-0013), openjobdata (ADR-0017), and score
+thresholds or delivery filtering — the last two both reserved by ADR-0020.
 
 ## Human preconditions (before the prod run; the build itself needs none of these)
 
 - [ ] BigQuery ↔ Vertex connection `northamerica-northeast2.vertex` created; its service
-      account granted Vertex access; Vertex AI API enabled. (§5.6: connection, dataset, and
-      endpoint must all be `northamerica-northeast2` — a mismatch is a hard failure.)
+      account granted Vertex access; Vertex AI API enabled. (Connection, dataset and endpoint must all be `northamerica-northeast2` — a mismatch is a
+      hard failure.)
 - [ ] `config/profile.yaml` filled from the example (private, gitignored — never committed).
 - [ ] In CI/prod, profile content follows the company-list pattern (ADR-0011): a GitHub
       Actions **variable** `PROFILE_YAML_CONTENT` materialized to `config/profile.yaml`
@@ -44,18 +44,18 @@ openjobdata (ADR-0017), score thresholds / delivery filtering (ADR-0020 §2).
   and `requirement_text` (requirements/industry only — the chatty portion is dropped).
 - Input: `silver_jobs` survivors. Incremental key: `content_hash` with the
   `where content_hash not in (select content_hash from {{ this }})` guard —
-  **this guard is a cost control (§5.5); never remove it.**
-- Injection defense (§5.6): posting text wrapped in explicit delimiters framed as
-  data-not-instructions.
+  **this guard is a cost control, not just a speed one; never remove it.**
+- Injection defense ([ARCHITECTURE V2](../ARCHITECTURE.md#v2)): posting text wrapped in explicit
+  delimiters framed as data-not-instructions.
 - Failure semantics: null/failed generations land with `extract_ok = false`,
   retried next run (guard on `content_hash` + `extract_ok`), never silently
   dropped or scored.
 - Schema evolution: `on_schema_change: append_new_columns` on both incremental
   models; a `--full-refresh` re-bills the entire backfill (~$0.12 at current
-  scale) and must be a deliberate decision, not a reflex (ARCHITECTURE §3,
+  scale) and must be a deliberate decision, not a reflex ([rebuilds](../ARCHITECTURE.md#rebuilds-not-migrations),
   "Schema evolution").
 - **Dev parity:** on the DuckDB target the model is a stub emitting the same
-  columns as typed nulls (`enabled`/target-conditional SQL, pattern per §5).
+  columns as typed nulls (`enabled`/target-conditional SQL).
   Downstream models and unit tests run against the stub.
 
 ### 3. `int_jobs_scored` (silver, incremental, prod-only)
@@ -82,8 +82,8 @@ openjobdata (ADR-0017), score thresholds / delivery filtering (ADR-0020 §2).
   Digest tests extend the existing DuckDB-seeded pattern.
 
 ### 5. Docs
-- ARCHITECTURE §5 → "as built"; roadmap V2 → done; TODO sweep; note the
-  first-backfill cost expectation (~$0.12, §5.5) and how to sanity-check it
+- ARCHITECTURE's V2 section → "as built"; TODO sweep; record the measured
+  first-backfill cost against the ~$0.12 expectation, and how to sanity-check it
   (row counts in `int_jobs_structured` vs silver survivors after run 1).
 
 ## Acceptance

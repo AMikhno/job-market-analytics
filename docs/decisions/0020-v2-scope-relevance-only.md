@@ -17,7 +17,7 @@ redundant.
    hide mis-scored postings exactly when the model is least calibrated. Revisit a threshold in
    V3's feedback loop.
 3. **Embeddings are deferred out of V2.** Their two stated jobs have no current payoff: as a
-   cost pre-filter they save pennies (scoring is already ~$0.002/day, §5.5), and cross-source
+   cost pre-filter they save pennies at this scale, and cross-source
    near-duplicate collapse is moot while each company lives on exactly one ATS. Reconsider when
    either premise changes (openjobdata adoption would change both).
 4. **Adapters and openjobdata stay parked** behind their ADR-0013/0017 gates, unchanged.

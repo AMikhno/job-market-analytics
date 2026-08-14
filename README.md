@@ -41,9 +41,9 @@ flowchart LR
 - **Tests gate every commit.** 110 pytest tests (95%+ coverage, enforced), 40 dbt
   schema/unit tests, mypy `--strict`, sqlfluff, plus a CI parse of the prod target — a
   fork-safe pipeline with no secrets in CI.
-- **Every non-obvious choice has an ADR** — 20 so far, in `docs/decisions/`.
+- **Every non-obvious choice has an ADR** — 24 so far, in `docs/decisions/`. <!-- check:adrs -->
 
-**Browse the [dbt docs & lineage DAG](https://amikhno.github.io/job-search-pipeline/)** —
+**Browse the [dbt docs & lineage DAG](https://amikhno.github.io/job-market-analytics/)** —
 generated in CI on every push to main (raw sources → bronze → silver → gold → the email-digest
 exposure), or locally via `make dbt-docs`.
 
@@ -68,15 +68,44 @@ make test && make dbt-test
 ## Structure
 
 ```
-ingest/      per-ATS adapters (nine), source registry, parallel pipeline entrypoint
+ingest/      per-ATS adapters, source registry, parallel pipeline entrypoint
 shared/      config (Pydantic Settings), models, http, storage (one writer, both warehouses)
 deliver/     email digest of new postings (watermark in ops.digest_runs)
 config/      private company list (gitignored; .example committed)
 dbt/         one dual-target project: models/{bronze,silver,gold}, seeds, macros, unit tests
+scripts/     repo gates that are not lint or tests (see below)
 tests/       pytest suite + sanitized fixtures
-docs/        decisions/ (20 ADRs), v2-plan.md, research/  (ARCHITECTURE.md at repo root)
+docs/        decisions/, v2-plan.md, research/  (ARCHITECTURE.md at repo root)
 .github/     ci.yml (DuckDB, secretless, fork-safe) + ingest.yml (scheduled, WIF, SHA-pinned)
 ```
+
+Currently 9 ingestion sources, 12 dbt models and 24 ADRs. <!-- check:sources check:dbt_models check:adrs -->
+
+## Quality gates
+
+Every invariant this project relies on is enforced by something that fails, not by intent.
+`make lint` and `make test` run locally, in a pre-commit/pre-push hook, and again in CI, which
+blocks merge:
+
+| Gate | Guards against |
+|---|---|
+| `ruff check` + `ruff format` | style drift, unused code, import order |
+| `mypy --strict` | untyped defs; no `Any` crossing a module boundary |
+| `sqlfluff` | dbt SQL style, against the compiled models |
+| `pytest` with `--cov-fail-under=85` | untested behavior; the gate is never lowered to pass |
+| dbt schema + unit tests | model contracts (`not_null`, `unique`, `accepted_values`) |
+| `dbt source freshness` | a source that silently stopped landing rows |
+| **`scripts/check_docs.py`** | **documentation that points at things which no longer exist** |
+| `gitleaks` | committed secrets |
+| Dependabot | stale dependencies (`uv.lock` + `pyproject.toml` together) |
+
+The docs check is the unusual one. Prose drifts silently — a file is renamed, a make target goes
+away, an ADR is superseded, and the sentence referring to it still reads fine, because nothing in
+a test suite imports a paragraph. It verifies the references that are mechanically checkable
+(relative links, repo paths, line-anchored refs, ADR numbers, make targets, dbt model names,
+heading anchors) across both markdown and Python docstrings, and lets a doc assert a number
+against the code with an inline `<!-- check:… -->` marker, so a count cannot rot under an edit.
+Deliberate exceptions live in `scripts/planned-refs.txt`; everything else failing is drift.
 
 ## Stack
 

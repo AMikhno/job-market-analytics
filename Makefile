@@ -64,10 +64,13 @@ freshness:        ## Assert raw sources are fresh (fails the run if stale/empty)
 test:             ## Run the Python test suite with coverage gate
 	uv run pytest
 
-lint: sql-lint    ## ruff (check + format) + mypy + sqlfluff
+lint: sql-lint docs-check ## ruff (check + format) + mypy + sqlfluff + doc references
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run mypy shared ingest deliver
+	uv run mypy shared ingest deliver scripts
+
+docs-check:       ## Fail on docs pointing at files/targets/models that don't exist
+	uv run python scripts/check_docs.py
 
 sql-lint: dbt-deps ## Lint dbt SQL (dbt templater, DuckDB dialect; run from dbt/)
 	mkdir -p data                         # DuckDB path the profile resolves to

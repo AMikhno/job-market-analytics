@@ -20,13 +20,15 @@ from __future__ import annotations
 
 import csv
 import json
+import pathlib
 import sys
 import time
 from collections import defaultdict
 
 import requests
 
-MASTER = "/Users/Ana2026/Projects/job-search-pipeline/config/companies.csv"
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+MASTER = ROOT / "config" / "companies.csv"
 UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
                     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
 
@@ -56,22 +58,17 @@ CANDIDATES: dict[str, list[tuple[str, str, str, dict | None]]] = {
                  {"appliedFacets": {}, "limit": 20, "offset": 0, "searchText": ""})],
 }
 
-# Real refs from the list, plus known-good public examples where our stored ref
-# is a placeholder (e.g. dayforce "REDACTED", phenom "assets").
-EXTRA_REFS = {
-    "workable": ["REDACTED", "REDACTED-inc"],
-    "recruitee": ["REDACTED"],
-    "smartrecruiters": ["REDACTED", "Renesas"],
-    "bamboohr": ["REDACTED", "solace", "REDACTED"],
-    "breezyhr": ["REDACTED", "REDACTED"],
-    "pinpoint": ["bmt", "REDACTED"],
-    "teamtailor": ["REDACTED"],
-    "jazzhr": ["REDACTED", "REDACTED"],
-    "eightfold": ["REDACTED", "REDACTED"],
-    "rippling": ["REDACTED"],
-    "workday": ["REDACTED", "REDACTED"],
-    "icims": ["REDACTED"],
-}
+# Extra refs to probe beyond what the master list yields, as {ats: [ref, ...]}.
+# Kept in a gitignored file rather than inline: this repo is public, and which
+# companies are targeted is exactly what the company list is private to protect.
+# Absent file -> master refs only, which is the normal case.
+EXTRA_REFS_PATH = ROOT / "config" / "probe_extra_refs.json"
+
+
+def extra_refs() -> dict[str, list[str]]:
+    if not EXTRA_REFS_PATH.exists():
+        return {}
+    return json.loads(EXTRA_REFS_PATH.read_text())
 
 
 def refs_from_master() -> dict[str, list[str]]:
@@ -100,10 +97,11 @@ def looks_like_jobs(payload: object) -> int:
 
 def main() -> int:
     master_refs = refs_from_master()
+    extra = extra_refs()
     results: dict[str, list[str]] = {}
 
     for ats, candidates in CANDIDATES.items():
-        refs = (master_refs.get(ats, []) + EXTRA_REFS.get(ats, []))[:4]
+        refs = (master_refs.get(ats, []) + extra.get(ats, []))[:4]
         refs = [r for r in refs if r]
         if not refs:
             results[ats] = ["no usable ref stored"]

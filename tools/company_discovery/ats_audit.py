@@ -50,7 +50,7 @@ ATS_HOSTS = {
     # `.eu.` shard included: Lever hosts some boards on jobs.eu/api.eu.lever.co and
     # the plain host 404s for them, so without this they read as Unknown/Custom.
     "Lever":           r"(?:jobs|api)(?:\.eu)?\.lever\.co/(?:v0/postings/)?([\w.-]+)",
-    # Token may contain spaces ("REDACTED"); URLs are unquoted before
+    # Token may contain spaces (Ashby board names are display names); URLs are unquoted before
     # matching (see match_ats), so allow spaces here and strip the edges after.
     "Ashby":           r"ashbyhq\.com/(?:posting-api/job-board/)?([\w.-]+(?: [\w.-]+)*)",
     "SmartRecruiters": r"smartrecruiters\.com/(?:v1/companies/)?([\w.-]+)",
@@ -81,8 +81,8 @@ ATS_HOSTS = {
 }
 _BAD_TOKENS = {"v1", "v0", "api", "embed", "jobs", "job", "boards", "board", "www",
                "posting-api", "job-board", "postings", "companies", "for", "js",
-               # captured from account/app URLs rather than a board path -- REDACTED
-               # and Veeam both yielded "users", which 404s as a Greenhouse board
+               # captured from account/app URLs rather than a board path -- two
+               # companies both yielded "users", which 404s as a Greenhouse board
                "users", "user", "auth", "login", "signup", "account", "accounts",
                # path fragments of a careers URL, not a board name: three Recruitee
                # rows landed with "career" (404 on every board), and a
@@ -111,9 +111,9 @@ def normalize_domain(raw: str) -> str:
 
 
 def match_ats(url: str):
-    # Percent-decode first: an encoded board name ("Dominion%20Dynamics") used to
-    # truncate at the '%', silently yielding the wrong token ("dominion", which
-    # 404s) instead of the real one.
+    # Percent-decode first: an encoded two-word board name ("Some%20Board") used
+    # to truncate at the '%', silently yielding the wrong token (just the first
+    # word, which 404s) instead of the real one.
     u = urllib.parse.unquote(url or "").lower()
     for ats, pat in ATS_HOSTS.items():
         m = re.search(pat, u)
@@ -335,9 +335,9 @@ async def audit(ctx, name: str, website: str) -> dict:
         if hits:
             return
         # Last resort on this page: scan the raw HTML. Sites that server-render
-        # their board (REDACTED embeds the Ashby host inside its Next.js JSON payload)
-        # expose the ATS nowhere in an element attribute and never call it from
-        # the browser, so both the DOM sweep and the network listener miss it.
+        # their board — e.g. a Next.js app with the ATS host buried in its JSON
+        # payload — expose the ATS nowhere in an element attribute and never call
+        # it from the browser, so the DOM sweep and network listener both miss it.
         try:
             m = match_ats(await page.content())
             if m:
@@ -465,8 +465,8 @@ def probe_unknowns(records, csv_path, lock):
     the ATS but could not extract a board token. The second case used to be
     skipped, which quietly produced the worst kind of row — one that looks
     classified ("Recruitee") but has nothing to fetch, so it can never be
-    activated and never shows up as a failure either. Field Effect, REDACTED
-    and REDACTED all sat in the list that way.
+    activated and never shows up as a failure either. Three companies sat in the
+    list that way.
     """
     todo = [(i, r) for i, r in enumerate(records)
             if r[3] in ("Unknown/Custom", "N/A", "ERROR", "") or not (r[4] or "").strip()]
@@ -498,15 +498,15 @@ def probe_unknowns(records, csv_path, lock):
 
 # ---------------------------------------------------------------- API probe fallback
 # Browsing answers "what does this page call?", which fails for companies that
-# proxy their board server-side (REDACTED, REDACTED: no ATS string anywhere in the
-# page). This asks the opposite question -- "does any plausible token answer on a
-# V1 API?" -- and a 200 with postings is proof, not a guess. Verified recoveries
-# this found that browsing could not: REDACTED, REDACTED, REDACTED, Redis, REDACTED, Render.
+# proxy their board server-side (no ATS string anywhere in the page). This asks
+# the opposite question -- "does any plausible token answer on a V1 API?" -- and
+# a 200 with postings is proof, not a guess. It recovered six boards that
+# browsing could not.
 # Every V1 endpoint, so the probe can recover a board the DOM sweep missed.
 # Covering only Greenhouse/Lever/Ashby is why five boards sat in the list with a
-# blank or wrong ref while their APIs answered on the first guess: REDACTED,
-# REDACTED (Rippling), REDACTED (SmartRecruiters), REDACTED (Recruitee) and REDACTED
-# (Workable) were all recovered by hand-probing exactly these URLs.
+# blank or wrong ref while their APIs answered on the first guess -- two on
+# Rippling, one each on SmartRecruiters, Recruitee and Workable, all recovered
+# by hand-probing exactly these URLs.
 PROBE_APIS = {
     "greenhouse": "https://boards-api.greenhouse.io/v1/boards/{t}/jobs?content=true",
     "lever": "https://api.lever.co/v0/postings/{t}?mode=json",
@@ -552,8 +552,8 @@ def probe_tokens(name: str, website: str) -> list[str]:
     """Plausible board tokens for a company, best first.
 
     Deliberately conservative: only forms a human would try. Non-obvious tokens
-    (REDACTED, REDACTED) are unreachable this way, so a miss is never evidence
-    the company has no board.
+    (a company name with a suffix, or with digits appended) are unreachable this
+    way, so a miss is never evidence the company has no board.
     """
     host = normalize_domain(website).removeprefix("www.")
     base = host.split(".")[0]
