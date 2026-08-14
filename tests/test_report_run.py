@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from ingest import report_run
-from shared.models import RunSummary, SourceSummary
+from shared.models import RunSummary, SourceSummary, VolumeDrop
 
 
 def _env(monkeypatch, tmp_path, summary: RunSummary | None) -> Path:
@@ -119,6 +119,20 @@ def test_a_malformed_summary_warns_and_still_succeeds(monkeypatch, tmp_path, cap
 
 def test_notices_are_absent_when_nothing_is_wrong() -> None:
     assert report_run.notices(RunSummary()) == []
+
+
+def test_a_volume_drop_is_annotated(monkeypatch, tmp_path, capsys) -> None:
+    _env(
+        monkeypatch,
+        tmp_path,
+        RunSummary(volume_drops=[VolumeDrop(source="bamboohr", rows=61, baseline=153)]),
+    )
+
+    assert report_run.main() == 0
+
+    out = capsys.readouterr().out
+    assert "::warning::Volume dropped sharply" in out
+    assert "bamboohr 61 vs ~153" in out
 
 
 def test_no_step_summary_env_still_prints_annotations(monkeypatch, tmp_path, capsys) -> None:

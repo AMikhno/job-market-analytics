@@ -75,7 +75,16 @@ def _footer(summary: RunSummary | None) -> str:
     """
     if summary is None:
         return "Ingest status unknown for this digest (no run summary was found)."
-    return " ".join(p for p in (_health(summary), _unconfigured(summary), _skipped(summary)) if p)
+    return " ".join(
+        p
+        for p in (
+            _health(summary),
+            _volume_drops(summary),
+            _unconfigured(summary),
+            _skipped(summary),
+        )
+        if p
+    )
 
 
 def _health(summary: RunSummary) -> str:
@@ -105,6 +114,20 @@ def _unconfigured(summary: RunSummary) -> str:
         f"{len(names)} registered source(s) had no active boards: {', '.join(names)} "
         "— check the company list (CI reads the COMPANIES_CSV_CONTENT variable)."
     )
+
+
+def _volume_drops(summary: RunSummary) -> str:
+    """Sources that landed far below their own recent runs.
+
+    The zero-rows warning catches a source that died outright. This catches the
+    quieter case the census makes visible: a source still returning plenty of
+    rows that has lost most of its boards.
+    """
+    drops = summary.volume_drops
+    if not drops:
+        return ""
+    detail = ", ".join(f"{d.source} {d.rows} vs ~{d.baseline}" for d in drops)
+    return f"Volume dropped sharply for {len(drops)} source(s): {detail}."
 
 
 def _skipped(summary: RunSummary) -> str:
