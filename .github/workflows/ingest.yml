@@ -31,11 +31,8 @@ jobs:
 
       # The trust is pinned to this repository's immutable numeric id, not its
       # name, in two places that must agree: the provider's attribute condition
-      # and the service account's principalSet binding. Renaming the repo once
-      # broke both at once — the OIDC token's `repository` claim changed, the
-      # condition rejected it, and the error ("rejected by the attribute
-      # condition") named neither the repo nor the rename. `repository_id`
-      # survives renames and transfers, so that cannot recur.
+      # and the service account's principalSet binding. `repository_id`
+      # survives renames and transfers.
       - name: Authenticate to Google Cloud (WIF — no service-account key)
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
