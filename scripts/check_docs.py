@@ -71,6 +71,24 @@ def tracked_files() -> list[str]:
     return [f for f in out if not f.startswith("dbt/dbt_packages/")]
 
 
+def is_gitignored(ref: str) -> bool:
+    """Is this reference excluded by .gitignore?
+
+    The check has to give the same answer everywhere, and "does this file exist"
+    does not: generated and private artifacts are present in a working tree and
+    absent from a clean checkout, so a filesystem test passes locally and fails
+    in CI. .gitignore is committed, so asking it is deterministic.
+
+    Takes the raw reference rather than a Path, because **a trailing slash is
+    information**: a directory-only pattern (`config/discovery/`) matches only
+    when git can tell the path is a directory, and for a path that does not
+    exist the slash is the only evidence. Normalizing through Path drops it, and
+    the check then flips between environments one layer further down.
+    """
+    result = subprocess.run(["git", "check-ignore", "-q", ref], cwd=ROOT, capture_output=True)
+    return result.returncode == 0
+
+
 def _make_targets() -> set[str]:
     text = (ROOT / "Makefile").read_text()
     return set(re.findall(r"^([a-zA-Z][\w-]*):", text, re.M))
@@ -305,6 +323,8 @@ def _check_ref(
         if target is None:
             return None
         if not target.exists():
+            if is_gitignored(ref.split("#")[0].rstrip(".,;:)")):
+                return None  # generated or private by design; absent in a clean checkout
             return Problem(rel, line_no, ref, "path does not exist")
         if "#" in ref and target.suffix == ".md":
             anchor = ref.split("#", 1)[1]
@@ -327,6 +347,8 @@ def _check_line_refs(rel: str) -> list[Problem]:
                 continue  # a bare filename is ambiguous; skip rather than guess
             target = ROOT / file_ref
             if not target.exists():
+                if is_gitignored(file_ref):
+                    continue  # generated or private by design
                 problems.append(Problem(rel, i, f"{file_ref}:{num}", "path does not exist"))
                 continue
             total = len(target.read_text(errors="replace").splitlines())
