@@ -95,6 +95,6 @@ work:
 
 Do not build Workday yet. If it is built later, do the website-scrape ref pass first and gate the
 adapter to a subset of tenants rather than all 30 — the large-enterprise boards are exactly the
-profile with the worst measured conversion (`triage-to-shortlist.md`).
+profile with the worst measured conversion (`relevance-signals.md`).
 
 Probe scripts: `tools/probes/workday/`.

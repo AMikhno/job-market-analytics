@@ -50,14 +50,14 @@ Two further reasons not to build extraction here:
 - **Yield is anti-correlated with the target.** Having a real ATS is itself a signal of a real
   hiring function, which correlates with a real data function. This tier skews to construction,
   consultancies and hardware — the segment that produced zero data roles in
-  `triage-to-shortlist.md`. The companies actually wanted (mid-size SaaS that runs on data) are
+  `relevance-signals.md`. The companies actually wanted (mid-size SaaS that runs on data) are
   essentially always on Greenhouse, Lever or Ashby.
 
 ## The counter-argument, which is real
 
 A posting that exists only on a company's own HTML page is **genuinely lower-competition** than a
 Greenhouse req syndicated to Google Jobs, LinkedIn and Indeed. For a local search that is real
-edge — the same logic `triage-to-shortlist.md` already applies to postings over 90 days old
+edge — the same logic `relevance-signals.md` already applies to postings over 90 days old
 ("email the team, don't apply cold").
 
 It argues for a different artifact, not for extraction. **If the application process is "email us",

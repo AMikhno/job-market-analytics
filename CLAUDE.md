@@ -170,7 +170,7 @@ references like "§5.6" are unverifiable by construction and were wrong within o
 - Decision records (why, not what) → `docs/decisions/` — newest first: 0022 parallel fetch,
   0021 list+detail (a V1 source must yield a description), 0020 V2 scope
 - Measured evidence & proposals not yet decided → `docs/research/`
-  (`triage-to-shortlist.md` — how 1,305 gold became 75 by hand, and the four instructions V2's
+  (`relevance-signals.md` — what actually predicts relevance, and the four instructions V2's
   prompt has to encode; `ingestion-cost.md` — cost model + proposal awaiting evaluation;
   `ats-feeds.md` — per-ATS probe results incl. an "as built" section;
   `workday-ref-discovery.md` — supersedes that file's Workday row;
