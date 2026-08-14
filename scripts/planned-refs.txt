@@ -1,0 +1,25 @@
+# References the docs check must not fail on, one per line.
+#
+# Two legitimate kinds, and nothing else belongs here:
+#
+#   1. PLANNED — named in a plan or ADR before it is built. Delete the entry
+#      when the thing lands, so the checker starts verifying it for real.
+#   2. INTENTIONALLY ABSENT — gitignored by design, so it never exists in a
+#      clean checkout.
+#
+# Anything else failing the check is drift. Fix the doc, do not add it here.
+
+# --- planned: V2 (ADR-0020, docs/v2-plan.md) ---
+shared/profile.py
+config/profile.example.yaml
+int_jobs_structured
+int_jobs_scored
+
+# --- planned: only if ADR-0017's gates pass ---
+stg_openjobdata__jobs
+
+# --- intentionally absent: private config (ADR-0011, ADR-0020) ---
+config/profile.yaml
+config/companies.csv
+config/probe_extra_refs.json
+NOTES.local.md

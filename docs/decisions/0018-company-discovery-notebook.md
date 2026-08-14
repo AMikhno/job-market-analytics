@@ -32,9 +32,10 @@ Keep it **in-repo, quarantined**:
 
 - **Separate repo:** cleaner portfolio, but splits discovery from the inventory it feeds and makes
   the "which companies need custom collection" loop (ADR-0017) span two repos.
-- **Port to a typed CLI module now:** the right *eventual* shape (a `tools/discover_ats.py` that
-  passes the gates), but it is real code and premature — the notebook is run rarely and by hand.
-  **Target future state:** convert to a gated CLI module once the discovery logic stabilizes.
+- **Port to a typed CLI module now:** the right *eventual* shape, but it is real code and premature
+  — the notebook is run rarely and by hand. **Target future state:** convert to a gated CLI module
+  once the discovery logic stabilizes. (Partly reached since: the audit half now lives in
+  `tools/company_discovery/ats_audit.py`, though still outside the gates.)
 
 ## Consequence
 
