@@ -947,7 +947,7 @@ wheels = [
 ]
 
 [[package]]
-name = "job-search-pipeline"
+name = "job-market-analytics"
 version = "0.1.7"
 source = { virtual = "." }
 dependencies = [

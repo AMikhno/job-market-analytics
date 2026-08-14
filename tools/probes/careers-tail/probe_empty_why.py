@@ -9,13 +9,14 @@ parse the first and is useless against the second, so the split decides whether
 from __future__ import annotations
 
 import csv
+import pathlib
 import re
 import sys
 import time
 
 import requests
 
-UA = "job-search-pipeline/0.1 (research probe; contact via repo)"
+UA = "job-market-analytics/0.1 (research probe; contact via repo)"
 NAMES = {
     "Decisive Group Inc.", "Quantropi", "Ottawa General Contractors", "Design Centered Co.",
     "Tungsten Collaborative", "Goodwill Staffing", "Empress Effects", "Sinch", "Holitix",
@@ -29,7 +30,7 @@ SPA = re.compile(
 
 rows = [
     r
-    for r in csv.DictReader(open("/Users/Ana2026/Projects/job-search-pipeline/config/discovery/ats_audit_results.csv"))
+    for r in csv.DictReader(open(pathlib.Path(__file__).resolve().parents[3] / "config/discovery/ats_audit_results.csv"))
     if r["Company Name"].strip() in NAMES and r["Career Page URL"].strip()
 ]
 print(f"{'company':40} {'text':>7} {'scripts':>8} {'spa?':>5}", file=sys.stderr)

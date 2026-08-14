@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import sys
 
-sys.path.insert(0, "/Users/Ana2026/Projects/job-search-pipeline")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 
 from ingest.pipeline import load_companies  # noqa: E402
 from ingest.sources import BambooHRSource  # noqa: E402

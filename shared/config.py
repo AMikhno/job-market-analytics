@@ -25,7 +25,10 @@ class Settings(BaseSettings):
     # run -- see _ensure_bigquery_objects, which cannot rely on create_table.
     bq_raw_partition_expiry_days: int = Field(default=180)
 
-    http_user_agent: str = Field(default="job-search-pipeline/0.1")
+    # Sent to every ATS this polls, so it identifies the caller to third parties.
+    # Keep it matching the repo name: it is the only handle an ATS operator has
+    # if they want to look up who is calling them.
+    http_user_agent: str = Field(default="job-market-analytics/0.1")
     # Private company list (gitignored); falls back to the committed example if absent.
     companies_csv: str = Field(default="config/companies.csv")
     # This repo is public, so its Actions logs are too. Company identifiers are

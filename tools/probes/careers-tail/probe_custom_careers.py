@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import json
 import random
+import pathlib
 import re
 import sys
 import time
@@ -17,10 +18,10 @@ import time
 import requests
 
 random.seed(11)
-UA = "job-search-pipeline/0.1 (research probe; contact via repo)"
+UA = "job-market-analytics/0.1 (research probe; contact via repo)"
 rows = [
     r
-    for r in csv.DictReader(open("/Users/Ana2026/Projects/job-search-pipeline/config/discovery/ats_audit_results.csv"))
+    for r in csv.DictReader(open(pathlib.Path(__file__).resolve().parents[3] / "config/discovery/ats_audit_results.csv"))
     if r["Detected ATS"].strip() == "Unknown/Custom" and r["Career Page URL"].strip()
 ]
 sample = random.sample(rows, min(40, len(rows)))
