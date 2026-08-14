@@ -109,7 +109,18 @@ def _ensure_bigquery_objects(settings: Settings, sources: Sequence[str]) -> None
         table.time_partitioning = bigquery.TimePartitioning(
             type_=bigquery.TimePartitioningType.DAY, expiration_ms=expiry_ms
         )
-        client.create_table(table, exists_ok=True)
+        landed = client.create_table(table, exists_ok=True)
+        # create_table(exists_ok=True) returns the *existing* table untouched on
+        # conflict -- it does not update it. So a change to
+        # bq_raw_partition_expiry_days would reach only tables that do not exist
+        # yet, i.e. none of them after the first run, and the setting would
+        # silently mean nothing. Reconcile rather than assume.
+        current = landed.time_partitioning
+        if current is None or current.expiration_ms != expiry_ms:
+            landed.time_partitioning = bigquery.TimePartitioning(
+                type_=bigquery.TimePartitioningType.DAY, expiration_ms=expiry_ms
+            )
+            client.update_table(landed, ["time_partitioning"])
 
     ops_table = bigquery.Table(
         f"{ops_dataset}.ingest_runs",
