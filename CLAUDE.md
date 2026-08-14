@@ -157,8 +157,12 @@ docs drift, and it is how a superseded claim survived four days in `docs/researc
 
 ## Pointers
 
-**Start every session with `TODO.md` § "Next session — start here".** It carries the current
-state, the decisions already made, and what is deliberately *not* being worked on.
+**Start every session with [TODO.md's priority list](TODO.md#priority).** It carries what is next,
+in order, and what is deliberately *not* being worked on.
+
+When one doc points at part of another, **link to a heading anchor** — `](TODO.md#priority)` — never
+a section number or a quoted section title. Anchors are verified by `make docs-check`; prose
+references like "§5.6" are unverifiable by construction and were wrong within one edit.
 
 - Current state, priorities, open decisions → `TODO.md`
 - How the system works today → `ARCHITECTURE.md` (no roadmap and no history: those are `TODO.md`

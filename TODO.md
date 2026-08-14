@@ -1,258 +1,85 @@
 # TODO
 
-## V1.5 — broaden ingestion + filtering — ✅ COMPLETE
+What is next and in what order. Shipped work is in git history and in `docs/decisions/`; how the
+system works today is in `ARCHITECTURE.md`.
 
-All shipped and verified (see `docs/decisions/0013`–`0016`):
+## Priority
 
-- [x] Ashby ATS adapter (public keyless GET) — `ingest/adapters/ashby.py`
-- [x] Per-source `board_ref` validation (fail-loud at load) — ADR-0012
-- [x] Separate BigQuery datasets per zone (`jobs_bronze/_silver/_gold`) — ADR-0014
-- [x] Ingestion completeness: `first_seen_at` ("new since last run") + documented model
-- [x] Desired technologies + titles as **soft** signals (`desired_tech_hits`, `title_match`) — ADR-0015
-- [x] Inactive-postings retention: silver is the record, gold is live-only — ADR-0016
-- [x] `make validate-companies` pre-flight helper + expanded example list
+Ordered by value per unit of work. The target profile is mid-size SaaS with a real internal data
+function — the shape that measurably converts (`docs/research/triage-to-shortlist.md`).
 
-## V1.6 — hardening + delivery — ✅ COMPLETE
+| # | Work | Why it is here | Cost |
+|---|---|---|---|
+| 1 | **V2 scoring** | Relevance is the measured constraint: 10,170 postings fetched → 1,179 gold → 40 title-matched, and those 40 were largely the *wrong* 40. Also the instrument that makes every later expansion self-evaluating instead of costing a manual evening | Scoped — ADR-0020, `docs/v2-plan.md`; ~$0.12 first backfill |
+| 2 | **More companies on already-built ATS** | No engineering at all. The best measured conversion came from a mid-size company on an existing adapter — 11 postings, 4 worth applying to. Staffing and recruiting agencies count as a deliberate company type | List work |
+| 3 | **Aggregator source** | Fixes list representativeness at the root: stops requiring the curated list to be a fair sample of the market. After V2, because without scoring it is ten times the noise for the same manual triage | ADR-0017, gates unmet. Main cost is content-based dedup, since `job_key` is `(source, company, external_id)` — ADR-0008 |
+| 4 | **List repair** | Wrong data rather than missing adapters, so it is free at runtime | Small — see below |
+| 5 | **Careers-page change signal** | Hash each careers page monthly and surface *changed* companies; never synthesize postings. Low competition on that tier is real, but extraction is not how to reach it | ~50 lines — `docs/research/careers-page-tail.md` |
+| 6 | **Workday** | A different access pattern from every current source: POST body, offset pagination, and a multi-segment ref instead of a slug. Its boards are also the profile with the worst measured conversion, and one large tenant alone adds ~17 minutes of serial fetching | `docs/research/workday-ref-discovery.md` |
+| 7 | ~~Custom careers pages as an ingestion source~~ | **Declined.** Of 40 sampled, 0 carry `JobPosting` JSON-LD and 2 have anything parseable. Parsing was never the bottleneck — most such pages list no openings at all | — |
 
-All shipped (see ADR-0019):
+**Not on this list:** Indeed (its API is closed and scraping is against its terms) and per-company
+scrapers (ADR-0013 — they also decay silently, which is the failure mode this repo is built
+against).
 
-- [x] Seed terms matched literally (C++/C#/.NET safe) — regexp escaping in `regexp_word_ci`
-- [x] Board-staleness rule: postings from removed/dead boards age out of gold (36h grace)
-- [x] Strict adapter parsing: schema drift raises instead of landing 0 rows
-- [x] Slack retired: GitHub-native failure email; warnings annotate + digest footer
-- [x] Actions SHA-pinned; gitleaks runs in CI (local hook is bypassable)
-- [x] Email digest of new postings (`deliver/digest.py`, watermark in `ops.digest_runs`)
-- [x] Dead-man's switch: successful runs ping healthchecks.io (`HEALTHCHECK_URL` secret), so a
-      cron GitHub has suspended alerts instead of going silent — [Health](ARCHITECTURE.md#health)
+## V2 — scoped, ready to build
 
-## V1.7 — company-list correctness — ✅ COMPLETE (2026-07-28, PR #12)
+Scope is fixed by ADR-0020; the implementation contract is `docs/v2-plan.md`. Execute its work
+items top to bottom, one commit each.
 
-Triggered by auditing the list against the live APIs: of 157 active boards, **101 were
-404ing** and nothing said so. Three ingest bugs and a broken discovery loop.
+**Read `docs/research/triage-to-shortlist.md` before writing the prompt.** The manual pass it
+records produced four instructions the current signals cannot express — most importantly that
+scoring the *requirements* section beats scoring the whole posting by roughly 3/13 against 1/21,
+because every corporate job mentions dashboards and only a data job requires dbt. Without those,
+V2 rebuilds the keyword matcher that exercise disproved.
 
-- [x] Ashby board refs may contain inner spaces (`Two Words`) — own pattern +
-      percent-encoding. Was worse than a missed board: `load_companies` validates *before*
-      fetching, so such a row would have hard-failed the whole run
-- [x] Lever EU shard (`api.eu.lever.co`) — adapter falls back on 404 only; region is a
-      property of the board, not the company, so it stays out of the list
-- [x] **Skipped boards are no longer silent** — a 404 left its source `status="ok"`, so the
-      digest reported "all sources healthy" while a company dropped out. Now redacted at
-      write time and surfaced in the CI annotation, step summary and digest footer;
-      `make whois REF=…` resolves one locally
-- [x] `website` column (recovery key, not pipeline input); CI gets an **active-only
-      projection** (`make companies-variable`) — a variable caps at 48 KB
-- [x] Restaging **merges** instead of overwriting — hand-fixed refs survive a refresh
-- [x] Discovery state moved to `config/discovery/`; `make discover` is the entry point
-- [x] Discovery finds boards it used to miss: deeper hop past marketing pages, raw-HTML
-      scan, API-probe fallback. Regression set went 3/10 → 10/10
-- [x] **873-company re-audit + master rebuilt.** The old tool discarded every company whose
-      ATS it couldn't see (575 of 724), which is why the list held 141 rows. Result: **285
-      rows, 123 active boards, all verified resolving, 8,885 postings visible** (was 13
-      active / ~500). Variable pushed; merged to main as PR #12
-- [x] Companies on a non-V1 ATS stay as `active=false` inventory rows with their real ATS
+- [ ] Profile config: `shared/profile.py`, `config/profile.example.yaml`, prompt rendering with
+      `PROMPT_VERSION` provenance, and the gitignore guard for the real file
+- [ ] `int_jobs_structured` — typed extraction, `content_hash` incremental guard for cost control,
+      delimiter defense against untrusted posting text, dev-target stub
+- [ ] `int_jobs_scored` — 1–5 fit score, profile as a static cacheable prefix,
+      model/prompt-version/scored-at provenance, `accepted_values` test
+- [ ] Gold and digest become score-aware: the score orders delivery and never filters it
+      (ADR-0020); unscored postings still ship
+- [ ] Verify the first-backfill cost against the estimate
 
-## V1.8 — Tier 1 ATS adapters — ✅ COMPLETE (2026-07-28, branch `feat/tier1-ats-adapters`)
+## List repair
 
-Six of the surveyed seven shipped; **161 active boards, up from 123**. See ADR-0021/0022 and the
-"As built" section of `docs/research/ats-feeds.md`.
+Rows discovery cannot place, kept as classes because each is worth recognizing again. Per-company
+detail is in the private list's `notes` column.
 
-- [x] **BambooHR** (33 rows, 32 resolving) — list + per-posting detail
-- [x] **Recruitee**, **Workable**, **Pinpoint** — single GET, description in the list
-- [x] **Rippling** (collapses its per-location duplicate rows) and **SmartRecruiters**
-      (`limit`/`offset` pagination) — both list + detail
-- [x] **A V1 source must yield a description** (ADR-0021). Three of the six omit it from the
-      list, and silver's deal-breaker filter + desired-tech signal both read it, so a list-only
-      row would be permanently unfilterable. Verified: **0 empty descriptions** in 1,324 postings
-- [x] **Parallel board fetch, per-host rate limiting** (ADR-0022) — needed once requests scale
-      with postings rather than boards
-- [x] Sanitized fixtures + adapter tests for each; every platform re-probed against a second
-      live ref first (which is what caught the detail-call, duplicate-row and no-date surprises)
-- [x] `make validate-companies` no longer fails on an *inactive* row with a blank ref — shipping
-      an adapter used to retroactively invalidate the inventory rows already on that ATS
-
-**BreezyHR moved to V1.9** (below). Workday unchanged: endpoint live (422, not 404) but needs
-tenant/wdN/site captured for all 30 rows, plus a POST paginator. Not keyless, stays inventory:
-SuccessFactors (401), Teamtailor (API key), iCIMS, JazzHR, UKG, Dayforce, ADP, Phenom, Indeed.
-
-## V1.8b — company-list repair (done 2026-07-28, same branch)
-
-Verifying against live boards turned up list problems no adapter could fix, and a **root cause
-in the discovery tool**: its API-probe fallback only knew Greenhouse/Lever/Ashby, so a company
-on any of the six new ATS could never be recovered by probe — which is exactly why five boards
-sat in the list with a blank or wrong ref while their APIs answered on the first guess.
-
-- [x] **Probe every V1 endpoint** in `ats_audit.py`, not just three; `emit_ingestable`'s
-      ATS→source map likewise (a stale entry there silently drops a supported company)
-- [x] **`website` now survives discovery.** The audit cache always had it, but both inventory
-      writers omitted the column, so all 285 master rows carried a blank recovery key —
-      the one field `NOTES.local.md` and CLAUDE.md both describe as the way back after an ATS
-      move. Backfilled 282/285 from the cache (the 3 misses are sub-venues of one hotel row)
-- [x] **`career`, `careers`, `widget`, `job-widget` added to `_BAD_TOKENS`** — the exact junk
-      refs that produced three 404ing Recruitee rows and a SmartRecruiters stub
-- [x] **5 refs recovered and identity-checked against each board's own payload** — two on
-      Rippling, one on SmartRecruiters (41 postings; the stored ref was a stub), one on Recruitee
-      (43), one on Workable (34). One large SmartRecruiters board activated too (871 postings,
-      ~10 min/run, 2 past the location gate — a deliberate call). Refs in the private list
-- [x] Freshness gates added for `raw_rippling_jobs` / `raw_smartrecruiters_jobs`, now that both
-      have a verified board. **167 active boards**
-
-## V1.9 — the rows discovery still can't place, then BreezyHR
-
-**Re-discovery run 2026-07-28** (browser audit + API probe over all nine V1 endpoints) against
-all seven. It fixed **one**; the reason for each of the other six is now recorded in the
-master's `notes` so nobody repeats the same dead ends. **168 active boards.**
-
-**Per-company detail lives in `NOTES.local.md` §5 and the master list's `notes` column, both
-private.** This repo is public and the company list is the thing it is private to protect, so only
-the *shapes* of the six failures are recorded here — each is a class worth recognizing again:
-
-- [x] **One fixed: a careers page linking to the parent brand's board.** Same corporate group, so
-      the board legitimately belongs to that row. Verified live, activated, renamed to name both
 - [ ] **Two ecosystem/portal rows** — a tech hub and a regional directory, each listing
-      *member-company* jobs. The browser reproduced the *same* third-party board ref from both
-      independently, which is the failure mode `tools/company_discovery/README.md` warns about.
-      Neither is an employer; both are deletion candidates. (The board they point at is real and
-      was the biggest single contributor in testing — 173 postings → 160 gold — if it is ever
-      wanted as its own row)
+      *member-company* jobs, so discovery attributes someone else's board to them. Neither is an
+      employer; both are deletion candidates
 - [ ] **Two with a confirmed ATS but no extractable token** — the platform is certain from the
       careers page, but no board name appears in the markup and the API probe missed every
-      guessable form. Cheapest fix is a human with the network tab open
-- [ ] **One crawl that landed on a different company entirely** — its detected ATS is unverified
-      and should be treated as unknown
-- [ ] **One closed tenant** — BambooHR confirmed from the careers page, but the board URL 302s to
-      `bamboohr.com`. There is no live board; the row can only be removed or re-pointed
-- [ ] **BreezyHR** (2 companies) — only if a description becomes reachable. Four keyless paths
-      tried and documented in `docs/research/ats-feeds.md`; today the list alone would land
-      untextable rows (ADR-0021)
+      guessable form. Needs a human with the network tab open
+- [ ] **One crawl that landed on a different company** — its detected ATS is unverified
+- [ ] **One closed tenant** — the board URL redirects to the vendor's home page. Remove or re-point
+- [ ] **Junk refs from discovery** — several rows store a URL path fragment instead of a board name
 
-## Next session — start here
+## Parked, with the gate that would unpark it
 
-1. ~~Merge the branch first, then push the variable~~ — **the merge happened 2026-07-28, the
-   variable push did not, and that took the pipeline down for four days** (2026-07-28 →
-   2026-08-01). CI kept the pre-merge `main-safe` projection (122 boards, Greenhouse/Lever/Ashby
-   only), so the six V1.8 sources got no companies, never ran, and their raw tables aged past the
-   30h freshness gate. Every run then died at `make freshness` *before* `make deliver` — no
-   digest for four days. Fixed by pushing `config/companies.active.csv` (**168 boards, ~13 KB**).
-   **The step order in this item is still right; the failure was skipping step two.**
-   - Guarded since (`fix/unconfigured-source-visibility`): a registered, active source that gets
-     no boards from the list is now a warning in the run summary (`RunSummary.unconfigured`), the
-     CI annotation, the step summary and the digest footer. It was previously an `INFO` log, so
-     the footer read *"All 3 sources healthy (122 boards checked)"* — true, and useless — every
-     run of the outage. Warn-only by design: shipping an adapter before its companies is a
-     legitimate order of work, and the freshness gate still escalates after 30h
-2. **Expect a ~11.5 minute run** (measured, 167 boards). Renesas alone is ~10 of those minutes:
-   871 postings fetched one detail at a time on SmartRecruiters' shared host. A slow run is not
-   a hung one. Deactivating that one row takes it back to a couple of minutes
-3. **Storage: raw is append-only, and it adds up.** Measured **209 MB/run → 418 MB/day → 167 GB**
-   logical steady state at the then-400-day partition expiry (free allowance: 10 GiB).
-   Greenhouse + Ashby are 85% of it; ~39% of all bytes is description text stored twice (once in
-   `raw`, once in `description_html`). Full analysis: **`docs/research/ingestion-cost.md`**
-   - [x] **Expiry 400 → 180 days** (2026-08-01) — chosen on need, not cost: a posting older than
-         six months is not a lead. Steady state → ~75 GB. Note `create_table(exists_ok=True)`
-         returns an existing table *untouched*, so the setting reached new tables only;
-         `_ensure_bigquery_objects` now reconciles it every run
-   - [ ] **Stop storing description text twice** (~39% of bytes) — deferred; needs a shared
-         drop-mapped-keys helper plus a test, and V2 adds no adapters to re-introduce it
-   - [ ] `storage_billing_model = 'PHYSICAL'` — **deliberately parked, documented, no action.**
-         Also charges time-travel + fail-safe bytes, so it needs measuring, not assuming
-   - **Check the actual dollar figure before spending more on this.** The doc quantifies bytes
-     but never converts them; at list price the excess over the free allowance looked like
-     single-digit dollars per month, which would put all of the above below V2
-4. ~~Value/coverage check against real gold data~~ — **answered 2026-07-28, measured across all
-   167 boards.** 10,170 postings fetched → **1,179 gold → 40 title-matched** (38 of those also
-   hitting a desired tech). All 40 come from Greenhouse/Ashby/Lever; the six sources added in
-   V1.8 contributed **316 gold postings and 0 title matches**. Keep rates invert with board
-   size: BambooHR keeps 77% of what it fetches, Greenhouse 8%, SmartRecruiters 0.9%.
-   **The constraint is relevance, not coverage — go to V2 scoring, not more adapters.**
-5. **V2** (below). The V1.9 list repair is worth doing but is no longer the lever —
-   it would add local boards, and local boards are already the ones that convert
-6. Housekeeping: arm healthchecks (`NOTES.local.md` §4); ~~delete merged remote branches~~ (done
-   2026-08-02); clear the superseded scratch files in `~/Downloads`
+- **openjobdata** — decisive gate is a real Ottawa-coverage pull from the dataset; then licence,
+  identity, cadence and lifecycle mapping (ADR-0017, `docs/research/openjobdata.md`)
+- **BreezyHR** — only if a keyless route to a description appears. Four paths tried; today the
+  list alone would land rows that can never be ranked (ADR-0021)
+- **Embeddings** — deferred: as a cost pre-filter they save pennies at this scale, and
+  cross-source dedup is moot while each company sits on one ATS (ADR-0020)
+- **Auth-gated ATS** (iCIMS, Teamtailor, SuccessFactors, Dayforce, ADP, UKG, JazzHR, Phenom) —
+  no keyless feed exists; they stay inventory-only (ADR-0013)
+- **Storage levers** — two remain. Stop storing description text twice (~39% of bytes), which
+  needs a shared drop-mapped-keys helper plus a test to stop future adapters reintroducing it;
+  and physical billing, which also charges time-travel and fail-safe bytes and so needs measuring
+  rather than assuming. Both wait on converting the byte measurements to dollars, which may retire
+  them (`docs/research/ingestion-cost.md`). The retention lever is already shipped
 
-## Priority plan (2026-08-02)
+## Human-owned
 
-Ordered by value per unit of work against one target profile: **mid-size SaaS with a real
-internal data function.** The pipeline optimizes for that shape because it is the one that
-measurably converts (`docs/research/triage-to-shortlist.md`).
+Agents do not run `gh`. Step-by-step versions live in the private runbook.
 
-Two constraints reorder things. Both are search-strategy decisions rather than findings from the
-data, and the reasoning behind them is personal — it lives in `NOTES.local.md` §6, not here:
-
-- **Government is not a near-term channel**, so GC Jobs / Job Bank Canada are **demoted**, not
-  promoted — earlier notes in this repo had that backwards.
-- **Large enterprises are acceptable but sit behind Workday**, the most expensive remaining
-  adapter, so they do not justify building it yet.
-
-| # | Work | Why here | Cost |
-|---|---|---|---|
-| **1** | **V2 scoring** | Relevance is the measured constraint (10,170 → 1,179 gold → 40 title-matched, and the 40 were the *wrong* 40 — see triage doc). Also the instrument that makes every later expansion self-evaluating instead of costing a manual evening | Scoped: ADR-0020, `docs/v2-plan.md`; ~$0.12 first backfill |
-| **2** | **Add companies on already-built ATS** | Zero engineering. Best measured conversion came from a mid-size health-tech on BambooHR (11 postings → 4 shortlisted). Include **staffing/recruiting agencies as a deliberate company type** — the realistic channel to government and to unadvertised roles | List work only |
-| **3** | **Aggregator source (hybrid)** | Fixes list representativeness at the root — stops requiring the company list to be a fair sample. After V2, because without scoring it is 10× the noise for the same manual triage | ADR-0017, gates unmet. Main cost: content-based dedup, since `job_key` is `(source, company, external_id)` — ADR-0008 |
-| **4** | **List repair** | Wrong data, not missing adapters; free at runtime. Teamtailor `app`/`na`/`www`, Eightfold `app`, stale Jobvite rows | Small |
-| **5** | **Careers-page change signal** | The hash idea: monthly text hash per careers page, surface *changed* companies in the digest, never fake postings. Low competition on that tier is real; extraction is not how to reach it | ~50 lines — `docs/research/careers-page-tail.md` |
-| **6** | **Workday** | Only if bank/enterprise becomes a real target. Website-scrape ref pass first, then gate the adapter to a subset of tenants | `docs/research/workday-ref-discovery.md` |
-| **7** | ~~The 334 custom careers pages as an ingestion source~~ | **Declined.** 0/40 carry JSON-LD, 2/40 have anything parseable. Parsing was never the bottleneck | — |
-
-**Deliberately not on this list:** Indeed (ToS — the API is closed and scraping is prohibited;
-the 10 `indeed` rows are unresolved discovery, not a source) and per-company scrapers (ADR-0013,
-plus they decay silently, which is the failure mode this repo is otherwise built against).
-
-## V2 — AI relevance (scoped, ready to build)
-
-**Scope fixed by ADR-0020; implementation contract in `docs/v2-plan.md`** — execute its
-work items top-to-bottom, one conventional commit each:
-
-**Read `docs/research/triage-to-shortlist.md` before writing the prompt.** The 1,305 → 75 pass was
-done once by hand and produced four measured instructions the current signals cannot express —
-score the *requirements* section not the whole posting (whole-page keyword scoring was 1/21
-precise, requirements-only 3/13); emit eligibility and level as ranked fields rather than filters;
-treat "Manager" as an unreliable level signal in both directions. Without those, V2 rebuilds the
-keyword matcher this exercise already disproved.
-
-- [ ] Profile config: `shared/profile.py` + `config/profile.example.yaml` + prompt rendering
-      (`PROMPT_VERSION` provenance); gitignore guard for the real file
-- [ ] `int_jobs_structured` — AI.GENERATE typed extraction, content_hash incremental guard
-      (cost control), delimiter injection defense, dev-target stub
-- [ ] `int_jobs_scored` — AI.GENERATE_INT 1–5 fit score, profile as static prefix,
-      model/prompt_version/scored_at provenance, accepted_values test
-- [ ] Gold + digest score-aware: fit_score orders (never filters — ADR-0020), unscored
-      postings still ship
-- [ ] Docs to "as built"; verify first-backfill cost (~$0.12 expected, §5.5)
-
-## Parked (gated — not V2)
-
-- **More ATS adapters** (generalized POST/pagination contract, BambooHR, Workday; iCIMS
-  inventory-only) — ADR-0013; may be subsumed by openjobdata
-- **openjobdata evaluation** — decisive gate: real Ottawa-coverage parquet pull; then
-  license/identity/cadence/lifecycle — ADR-0017 / `docs/research/openjobdata.md`
-- **Embeddings** (cost pre-filter, cross-source dedup) — deferred, no current payoff — ADR-0020
-- **Company-discovery notebook** under `tools/` (CI-quarantined) — ADR-0018
-- **Soft-signal → hard-filter revisit** and score thresholds — V3 feedback loop
-
-## Before starting V2 (sequencing — cheap checks that could re-scope it)
-
-- [x] **Verify the first prod run on the V1.6 workflow** — runs, and is landing postings from
-      real companies. SMTP secrets are set, so the digest sends (to `SMTP_USER` itself unless
-      the optional `DIGEST_TO` secret is set)
-- [ ] **Value/coverage check against real gold data**: how many active postings, how many
-      title-matched, how many you'd actually apply to. If the funnel is thin, coverage —
-      not scoring — is the priority. Same numbers feed the README results section
-- [ ] **openjobdata Ottawa pull** (ADR-0017's decisive gate, one notebook): does the
-      aggregated dataset see Ottawa/Canada AE postings the curated list misses? Answer
-      re-scopes V2 if coverage beats relevance
-
-## Operational (ongoing, human-owned)
-
-Step-by-step versions of these live in `NOTES.local.md` (gitignored personal runbook).
-
-- [x] Enable GitHub Pages (Settings → Pages → Source: **GitHub Actions**) so docs.yml
-      publishes the dbt docs site on pushes to main — done 2026-07-28
-- [ ] Push the rebuilt company list: `gh variable set COMPANIES_CSV_CONTENT <
-      config/companies.active.csv` (the **active-only projection**, never the master).
-      `make update-company-list` validates it first. Now **168 boards / ~13 KB** after V1.8 —
-      and only *after* the branch is merged (`NOTES.local.md` §3)
-- [x] Digest secrets created in the `production` environment (`SMTP_USER` + `SMTP_PASSWORD`).
-      `DIGEST_TO` stays optional — unset, the digest mails `SMTP_USER` (`deliver/digest.py`).
-- [ ] Create the healthchecks.io check and add its ping URL as the `HEALTHCHECK_URL` **secret**
-      in the `production` environment (period 1 day, grace ≥ 6h — twice-daily cron plus DST
-      drift). Until set, the step logs "disabled" and skips; the switch is not armed.
+- [ ] Arm the dead-man's switch: create the healthchecks.io check and add its ping URL as the
+      `HEALTHCHECK_URL` secret (period 1 day, grace ≥ 6h, for a twice-daily cron plus DST drift).
+      Until set, the step logs "disabled" and the switch is not armed
+- [ ] Re-push `COMPANIES_CSV_CONTENT` from `config/companies.active.csv` after any branch that
+      changes what the list may contain — deployed code must understand the list before CI gets it
