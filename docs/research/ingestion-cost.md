@@ -150,6 +150,46 @@ Ordered by measured impact:
   charges time-travel (7d) and fail-safe (7d) bytes, so measure rather than assume.
 - Combined, those three take a 167 GB steady state to roughly **5–10 GB** — back inside the free
   allowance — with no change to what the pipeline fetches or keeps.
+### 4b. What those bytes cost in dollars — the check that settles the rest
+
+Everything above counts bytes. Nobody had converted them, and the conversion is what decides
+whether any of it is worth building.
+
+Steady state and billable volume, from the measured 0.42 GB/day (10 GiB free allowance):
+
+| Retention | Steady state | Billable | Monthly, assumed rate | at 2× | at 3× |
+|---|---:|---:|---:|---:|---:|
+| 400 days (before) | 167 GB | 157 GiB | $2.13 | $4.25 | $6.38 |
+| **180 days (shipped)** | **75 GB** | **65 GiB** | **$1.07** | $2.14 | $3.20 |
+
+Raw partitions are append-only and never modified, so a partition crosses into long-term storage
+at 90 days and stays there at roughly half the active rate; the split above is ~90 days active and
+the remainder long-term, with the free allowance charged against the *active* bytes, which is the
+pessimistic reading.
+
+> **The rate is the one unverified input.** Google's pricing page would not yield a
+> region-specific table, so the assumed $0.023/GiB/month for active logical storage is the
+> `us-central1` figure inferred from a worked example in their docs, not the
+> `northamerica-northeast2` rate. The authoritative number is in the project's own billing
+> console. **The conclusion does not depend on it** — that is why the table shows 2× and 3×.
+
+**Against that, the two remaining levers:**
+
+| Lever | Saves | Effort |
+|---|---:|---|
+| Stop storing description text twice | ~$0.42/month | a shared helper plus a test |
+| Physical billing (assume 6× compression) | ~$0.89/month | one DDL, plus measuring time-travel and fail-safe bytes |
+| Both | leaves ~$0.11/month | — |
+
+**So both remaining levers are worth roughly $1.30/month between them**, and under $4/month even
+if the real rate is triple the assumption. That is below the threshold where engineering time is
+the cheaper resource, so both are parked rather than scheduled — not because the analysis is
+uncertain, but because it is decisive in the other direction. The retention change was still worth
+doing: it was a config edit, and six months is what the data is actually worth.
+
+This also retires the "back inside the free allowance" framing above. Getting under 10 GiB was
+never the goal; it was a proxy for a cost that turns out not to matter.
+
 - **GCS + Parquet + BigQuery external tables** (the S3-equivalent archive tier) stays *out* of
   scope as a cost fix, with a stated trigger instead: **steady-state logical raw > 50 GB after
   the three levers above, or a real analytical need for >6 months of history.** Below that, the

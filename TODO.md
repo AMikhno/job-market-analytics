@@ -68,11 +68,11 @@ detail is in the private list's `notes` column.
   cross-source dedup is moot while each company sits on one ATS (ADR-0020)
 - **Auth-gated ATS** (iCIMS, Teamtailor, SuccessFactors, Dayforce, ADP, UKG, JazzHR, Phenom) —
   no keyless feed exists; they stay inventory-only (ADR-0013)
-- **Storage levers** — two remain. Stop storing description text twice (~39% of bytes), which
-  needs a shared drop-mapped-keys helper plus a test to stop future adapters reintroducing it;
-  and physical billing, which also charges time-travel and fail-safe bytes and so needs measuring
-  rather than assuming. Both wait on converting the byte measurements to dollars, which may retire
-  them (`docs/research/ingestion-cost.md`). The retention lever is already shipped
+- ~~**Storage levers**~~ — **retired, not deferred.** The bytes are now converted to dollars: at
+  the shipped 180-day retention the steady state costs on the order of **$1/month**, and the two
+  remaining levers are worth about $1.30/month between them — under $4 even if the assumed rate is
+  triple the real one. Engineering time is the more expensive resource. Reopen only if the volume
+  changes by an order of magnitude (`docs/research/ingestion-cost.md`)
 
 ## Human-owned
 
