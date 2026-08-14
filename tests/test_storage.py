@@ -123,12 +123,19 @@ class _FakeBQClient:
     """Captures provisioning + load calls; asserts happen in the tests."""
 
     instances: list[_FakeBQClient] = []
+    # Tables that already exist in the "warehouse", keyed by table id. Modelled
+    # because the real create_table(exists_ok=True) returns the *existing* table
+    # untouched on conflict (client.py: `except Conflict: ... return
+    # self.get_table(...)`) -- a fake that echoes back the requested table would
+    # hide every bug in reconciling an existing table's settings.
+    existing_tables: dict[str, object] = {}
 
     def __init__(self, project: str | None = None, location: str | None = None) -> None:
         self.project = project
         self.location = location
         self.datasets: list[str] = []
         self.tables: list[object] = []
+        self.updates: list[tuple[str, list[str], object]] = []
         self.loads: list[tuple[list[dict], str, object]] = []
         _FakeBQClient.instances.append(self)
 
@@ -140,6 +147,10 @@ class _FakeBQClient:
     def create_table(self, table, exists_ok: bool = False):
         assert exists_ok, "provisioning must be idempotent"
         self.tables.append(table)
+        return _FakeBQClient.existing_tables.get(str(table.reference), table)
+
+    def update_table(self, table, fields):
+        self.updates.append((str(table.reference), list(fields), table))
         return table
 
     def load_table_from_json(self, rows, table_id, job_config=None):
@@ -155,7 +166,25 @@ def _patch_client(monkeypatch) -> None:
     from google.cloud import bigquery
 
     _FakeBQClient.instances = []
+    _FakeBQClient.existing_tables = {}
     monkeypatch.setattr(bigquery, "Client", _FakeBQClient)
+
+
+DAY_MS = 24 * 60 * 60 * 1000
+
+
+def _existing_raw_table(table_id: str, expiry_days: int | None):
+    """A table already in the warehouse, optionally with a partition expiry."""
+    from google.cloud import bigquery
+
+    table = bigquery.Table(
+        table_id, schema=[bigquery.SchemaField(c, "STRING") for c in storage.RAW_COLUMNS]
+    )
+    if expiry_days is not None:
+        table.time_partitioning = bigquery.TimePartitioning(
+            type_=bigquery.TimePartitioningType.DAY, expiration_ms=expiry_days * DAY_MS
+        )
+    return table
 
 
 def test_ensure_raw_tables_provisions_bigquery(monkeypatch) -> None:
@@ -178,12 +207,57 @@ def test_ensure_raw_tables_provisions_bigquery(monkeypatch) -> None:
         "proj.jobs_raw.raw_ashby_jobs",
     ):
         tp = by_id[raw_id].time_partitioning
-        assert tp is not None and tp.expiration_ms == 400 * 24 * 60 * 60 * 1000
+        assert tp is not None and tp.expiration_ms == 180 * DAY_MS
         assert [f.name for f in by_id[raw_id].schema] == storage.RAW_COLUMNS
     # ops table is typed, not all-STRING
     ops_types = {f.name: f.field_type for f in by_id["proj.jobs_ops.ingest_runs"].schema}
     assert ops_types["rows_fetched"] in ("INT64", "INTEGER")
     assert ops_types["started_at"] == "TIMESTAMP"
+
+
+def test_a_changed_partition_expiry_reaches_a_table_that_already_exists(monkeypatch) -> None:
+    """create_table(exists_ok=True) returns the existing table *untouched*, so
+    without an explicit update the retention setting would apply only to tables
+    that do not exist yet -- i.e. none of them, after the first run. Lowering
+    400 -> 180 has to actually reach the nine live tables."""
+    _patch_client(monkeypatch)
+    table_id = "proj.jobs_raw.raw_lever_jobs"
+    _FakeBQClient.existing_tables = {table_id: _existing_raw_table(table_id, expiry_days=400)}
+
+    storage.ensure_raw_tables(_prod_settings(), ["lever"])
+
+    (client,) = _FakeBQClient.instances
+    assert [(tid, fields) for tid, fields, _ in client.updates] == [
+        (table_id, ["time_partitioning"])
+    ]
+    assert client.updates[0][2].time_partitioning.expiration_ms == 180 * DAY_MS
+
+
+def test_an_unpartitioned_table_gets_an_expiry(monkeypatch) -> None:
+    """A table with no partitioning at all must not slip through the equality
+    check -- `None.expiration_ms` would raise, and skipping it would leave the
+    table growing forever."""
+    _patch_client(monkeypatch)
+    table_id = "proj.jobs_raw.raw_lever_jobs"
+    _FakeBQClient.existing_tables = {table_id: _existing_raw_table(table_id, expiry_days=None)}
+
+    storage.ensure_raw_tables(_prod_settings(), ["lever"])
+
+    (client,) = _FakeBQClient.instances
+    assert client.updates[0][2].time_partitioning.expiration_ms == 180 * DAY_MS
+
+
+def test_a_table_already_at_the_configured_expiry_is_left_alone(monkeypatch) -> None:
+    """Provisioning runs at the top of every ingest; it must not issue a table
+    update twice a day for no reason."""
+    _patch_client(monkeypatch)
+    table_id = "proj.jobs_raw.raw_lever_jobs"
+    _FakeBQClient.existing_tables = {table_id: _existing_raw_table(table_id, expiry_days=180)}
+
+    storage.ensure_raw_tables(_prod_settings(), ["lever"])
+
+    (client,) = _FakeBQClient.instances
+    assert client.updates == []
 
 
 def test_land_uses_batch_load_job_on_prod(monkeypatch) -> None:

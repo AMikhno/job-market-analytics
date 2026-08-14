@@ -19,7 +19,11 @@ class Settings(BaseSettings):
     bq_location: str = Field(default="northamerica-northeast2")
     # Raw landings are append-only and would grow forever; ingestion-time
     # partitions older than this are dropped (keeps storage under the free tier).
-    bq_raw_partition_expiry_days: int = Field(default=400)
+    # 180 days, not 400: a job posting older than six months is not a lead, and
+    # the measured steady state halves with it (docs/research/ingestion-cost.md
+    # §4: 167 GB -> 75 GB). Changing this reconciles existing tables on the next
+    # run -- see _ensure_bigquery_objects, which cannot rely on create_table.
+    bq_raw_partition_expiry_days: int = Field(default=180)
 
     http_user_agent: str = Field(default="job-search-pipeline/0.1")
     # Private company list (gitignored); falls back to the committed example if absent.
