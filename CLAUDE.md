@@ -74,11 +74,44 @@ The repo and anything an agent can read must never contain a secret *value*.
 - `gitleaks` runs as a pre-commit hook. `.env`, `*.duckdb`, and key files are gitignored.
 - Agents do not run `gh` and do not work in the main branch. Agents can commit and push in feature branches.
 
-## Public-repo / PII
+## What documentation is for
 
-This is a portfolio (public) repo. Do **not** commit: real candidate PII, unredacted
-captured API responses, or `config/profile.yaml` with real personal data. Test fixtures
-must be sanitized before they are committed.
+This repo is public, and it is a **portfolio artifact, not a work journal**. Everything tracked
+describes **the system**: what it does, what it costs, and which engineering tradeoff produced its
+current shape.
+
+**Explain a decision when the reason is technical** and checkable by a stranger:
+
+- Ashby was built because it is shaped like Lever — one keyless GET, bare-token ref, so the
+  adapter is a copy rather than a new access method.
+- Workday is deferred because it is not: POST body, offset pagination, and a multi-segment ref
+  (tenant/shard/site) instead of a slug.
+- V2 scores requirements text because a title names the org chart the seat sits in, while the
+  requirements name the daily work.
+
+**Do not explain a decision whose reason is personal.** Record the decision and its ordering — that
+is sufficient. Do not substitute a euphemism, and **do not point at a private file**: writing "see
+the private note" discloses that a personal reason exists, which is the thing being withheld.
+
+Personal context — employer history, work eligibility, seniority, compensation, preferences,
+availability, confidence — is **input to decisions, never content**. It lives in
+`config/profile.yaml`, `NOTES.local.md`, or agent memory.
+
+> **Test:** would this sentence make sense to a stranger reading the repo as an engineering
+> artifact? If it only reads as sensible because you know the author's situation, delete it.
+
+Three hard prohibitions on top of that, none of which have an exception:
+
+- **No company names or `board_ref` values** in any tracked file — comments, tests, docs and
+  commit messages included. The company list is private precisely because it identifies the
+  search; a name in a docstring leaks the same thing the gitignore protects. Use the property
+  being illustrated instead ("a two-word Ashby ref", not the ref).
+- **No real PII, and no unredacted captured API responses.** Fixtures are sanitized before commit.
+- **No numbers that nothing verifies.** A count stated in prose rots the moment code moves under
+  it, so assert it: `9 sources <!-- check:sources -->`, enforced by `make docs-check`.
+
+Write once, link elsewhere. One fact has one home — the same fact restated in four files is why
+docs drift, and it is how a superseded claim survived four days in `docs/research/ats-feeds.md`.
 
 ## What NOT to do
 
@@ -114,6 +147,8 @@ must be sanitized before they are committed.
 - [ ] `make lint` passes (ruff check, ruff format, mypy --strict, sqlfluff).
 - [ ] No swallowed exceptions; no TODO/placeholder values left behind.
 - [ ] No secret values, no real PII, no unredacted fixtures.
+- [ ] **No company name, `board_ref`, or personal context in anything tracked** — including the
+      commit message. `make docs-check` passes.
 - [ ] Change matches the scope discussed.
 
 ## Commands
@@ -126,7 +161,8 @@ must be sanitized before they are committed.
 state, the decisions already made, and what is deliberately *not* being worked on.
 
 - Current state, priorities, open decisions → `TODO.md`
-- System design & roadmap → `ARCHITECTURE.md`
+- How the system works today → `ARCHITECTURE.md` (no roadmap and no history: those are `TODO.md`
+  and git respectively)
 - Decision records (why, not what) → `docs/decisions/` — newest first: 0022 parallel fetch,
   0021 list+detail (a V1 source must yield a description), 0020 V2 scope
 - Measured evidence & proposals not yet decided → `docs/research/`
