@@ -10,6 +10,7 @@ pipeline and makes it testable.
 Reports three things the run's exit status cannot express, each a way the
 posting stream thins out while the run stays green:
   * low/zero volume from a source that ran;
+  * a source that landed far below its own recent median;
   * boards skipped mid-run (already redacted in the summary);
   * registered sources that got no boards at all from the company list.
 
@@ -52,6 +53,9 @@ def notices(summary: RunSummary) -> list[Notice]:
     out: list[Notice] = []
     if summary.warnings:
         out.append(_notice(f"Low/zero volume from: {', '.join(summary.warnings)}"))
+    if summary.volume_drops:
+        detail = ", ".join(f"{d.source} {d.rows} vs ~{d.baseline}" for d in summary.volume_drops)
+        out.append(_notice(f"Volume dropped sharply (rows vs recent median): {detail}"))
     if summary.skipped_refs:
         # Refs arrive redacted from the pipeline; this text lands in a public
         # Actions log, so it must stay that way. `make whois` resolves one.

@@ -53,7 +53,22 @@ class Settings(BaseSettings):
     fetch_min_interval_s: float = Field(default=0.5)
 
     # A source returning fewer than this many rows is a (non-failing) warning.
-    low_volume_threshold: int = Field(default=1)
+    # A source's rows_fetched is a *census* of everything currently on its
+    # boards, not a count of new postings: raw is append-only and every run
+    # re-lands the whole board. Combined with slow posting rotation, that makes
+    # the number stable run to run -- so the useful signal is a sudden *drop*
+    # against the source's own recent history, not an absolute floor. A fixed
+    # floor cannot serve sources whose sizes span two orders of magnitude: set
+    # it for the small ones and a large source can lose 95% silently; set it for
+    # the large ones and the small ones warn forever.
+    low_volume_threshold: int = Field(default=1)  # absolute: zero rows is always wrong
+    # Warn when a source lands under this fraction of its recent median.
+    volume_drop_ratio: float = Field(default=0.5)
+    # Runs of history to build the median from (~1 week at two runs/day), and
+    # the minimum needed before the check means anything -- a new source must
+    # not warn on its first runs just for lacking a baseline.
+    volume_history_runs: int = Field(default=14)
+    volume_min_history: int = Field(default=5)
     # Where the run summary is written for the workflow to read.
     summary_path: str = Field(default="ingest_summary.json")
 

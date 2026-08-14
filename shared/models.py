@@ -99,6 +99,19 @@ class SourceSummary(BaseModel):
     skipped_refs: list[str] = []
 
 
+class VolumeDrop(BaseModel):
+    """A source that landed far fewer rows than its own recent runs.
+
+    `rows_fetched` is a census of what is on the boards, so it is stable while
+    boards are healthy. A large drop means boards stopped answering or companies
+    fell out of the list -- neither of which shows up as a failure.
+    """
+
+    source: str
+    rows: int
+    baseline: int  # median of the recent successful runs used for comparison
+
+
 class RunSummary(BaseModel):
     """The ingest run summary handed to the digest (ingest_summary.json).
 
@@ -118,6 +131,7 @@ class RunSummary(BaseModel):
     # its raw table quietly ages out. Source names are ATS names, not company
     # identifiers -- safe to print unredacted in a public log.
     unconfigured: list[str] = []
+    volume_drops: list[VolumeDrop] = []
 
     @property
     def board_count(self) -> int:
