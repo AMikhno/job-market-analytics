@@ -335,9 +335,9 @@ async def audit(ctx, name: str, website: str) -> dict:
         if hits:
             return
         # Last resort on this page: scan the raw HTML. Sites that server-render
-        # their board (Ramp embeds the Ashby host inside its Next.js JSON payload)
-        # expose the ATS nowhere in an element attribute and never call it from
-        # the browser, so both the DOM sweep and the network listener miss it.
+        # their board — e.g. a Next.js app with the ATS host buried in its JSON
+        # payload — expose the ATS nowhere in an element attribute and never call
+        # it from the browser, so the DOM sweep and network listener both miss it.
         try:
             m = match_ats(await page.content())
             if m:

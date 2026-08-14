@@ -19,6 +19,19 @@ repos:
         language: system
         pass_filenames: false
         types: [python]
+      # gitleaks catches credentials; this catches the other private thing here —
+      # company identifiers and personal context. It reads gitignored term
+      # sources, so it can only run locally and is deliberately not a CI gate.
+      - id: private-terms
+        name: Private identifiers (company names, board refs, personal context)
+        entry: uv run python scripts/check_private_terms.py
+        language: system
+        types: [text]
+      - id: private-terms-msg
+        name: Private identifiers in the commit message
+        entry: uv run python scripts/check_private_terms.py
+        language: system
+        stages: [commit-msg]
       # Every push must have passing, covered tests.
       - id: pytest
         name: pytest (with coverage gate)
