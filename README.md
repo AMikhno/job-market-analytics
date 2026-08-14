@@ -41,9 +41,9 @@ flowchart LR
 - **Tests gate every commit.** 110 pytest tests (95%+ coverage, enforced), 40 dbt
   schema/unit tests, mypy `--strict`, sqlfluff, plus a CI parse of the prod target — a
   fork-safe pipeline with no secrets in CI.
-- **Every non-obvious choice has an ADR** — 20 so far, in `docs/decisions/`.
+- **Every non-obvious choice has an ADR** — 24 so far, in `docs/decisions/`. <!-- check:adrs -->
 
-**Browse the [dbt docs & lineage DAG](https://amikhno.github.io/job-search-pipeline/)** —
+**Browse the [dbt docs & lineage DAG](https://amikhno.github.io/job-market-analytics/)** —
 generated in CI on every push to main (raw sources → bronze → silver → gold → the email-digest
 exposure), or locally via `make dbt-docs`.
 

@@ -7,7 +7,7 @@ exposures:
     label: Email digest of new postings
     type: application
     maturity: high
-    url: https://github.com/AMikhno/job-search-pipeline/blob/main/deliver/digest.py
+    url: https://github.com/AMikhno/job-market-analytics/blob/main/deliver/digest.py
     description: >
       deliver/digest.py — after each successful prod run, emails postings first seen
       since the last digest's watermark (ops.digest_runs), ordered by the soft
