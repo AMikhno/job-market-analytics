@@ -43,11 +43,12 @@ AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
     re-derive a `board_ref` after a company moves ATS. Don't drop it to save space.
   - **Restaging merges, never overwrites** (`make update-company-list` → `ingest/merge_companies.py`):
     the master wins on every field, blanks get filled, and an ATS move is reported as a conflict
-    for a human. Hand-corrected refs (`harnessinc`, not `harness`) must survive a refresh.
+    for a human. Hand-corrected refs (a corporate suffix the company name alone never
+    yields) must survive a refresh.
   - Run `make validate-companies` before pushing the variable — it format-checks every `board_ref`
     so a bad row fails locally, not mid-run. Note it validates **before** any fetch, so a malformed
     ref fails the *entire* run; a merely wrong-but-well-formed ref 404s and skips one board.
-  - **Ashby refs may contain single inner spaces** (`Dominion Dynamics`) — its board names are
+  - **Ashby refs may contain single inner spaces** (`Two Words`) — its board names are
     display names. Greenhouse/Lever stay strict bare tokens.
 - **Discovery output belongs in `config/discovery/`**, never `~/Downloads`: the audit cache is the
   only record of every company's website and detected ATS, and it is what makes a re-run resumable.
@@ -73,11 +74,44 @@ The repo and anything an agent can read must never contain a secret *value*.
 - `gitleaks` runs as a pre-commit hook. `.env`, `*.duckdb`, and key files are gitignored.
 - Agents do not run `gh` and do not work in the main branch. Agents can commit and push in feature branches.
 
-## Public-repo / PII
+## What documentation is for
 
-This is a portfolio (public) repo. Do **not** commit: real candidate PII, unredacted
-captured API responses, or `config/profile.yaml` with real personal data. Test fixtures
-must be sanitized before they are committed.
+This repo is public, and it is a **portfolio artifact, not a work journal**. Everything tracked
+describes **the system**: what it does, what it costs, and which engineering tradeoff produced its
+current shape.
+
+**Explain a decision when the reason is technical** and checkable by a stranger:
+
+- Ashby was built because it is shaped like Lever — one keyless GET, bare-token ref, so the
+  adapter is a copy rather than a new access method.
+- Workday is deferred because it is not: POST body, offset pagination, and a multi-segment ref
+  (tenant/shard/site) instead of a slug.
+- V2 scores requirements text because a title names the org chart the seat sits in, while the
+  requirements name the daily work.
+
+**Do not explain a decision whose reason is personal.** Record the decision and its ordering — that
+is sufficient. Do not substitute a euphemism, and **do not point at a private file**: writing "see
+the private note" discloses that a personal reason exists, which is the thing being withheld.
+
+Personal context — employer history, work eligibility, seniority, compensation, preferences,
+availability, confidence — is **input to decisions, never content**. It lives in
+`config/profile.yaml`, `NOTES.local.md`, or agent memory.
+
+> **Test:** would this sentence make sense to a stranger reading the repo as an engineering
+> artifact? If it only reads as sensible because you know the author's situation, delete it.
+
+Three hard prohibitions on top of that, none of which have an exception:
+
+- **No company names or `board_ref` values** in any tracked file — comments, tests, docs and
+  commit messages included. The company list is private precisely because it identifies the
+  search; a name in a docstring leaks the same thing the gitignore protects. Use the property
+  being illustrated instead ("a two-word Ashby ref", not the ref).
+- **No real PII, and no unredacted captured API responses.** Fixtures are sanitized before commit.
+- **No numbers that nothing verifies.** A count stated in prose rots the moment code moves under
+  it, so assert it: `9 sources <!-- check:sources -->`, enforced by `make docs-check`.
+
+Write once, link elsewhere. One fact has one home — the same fact restated in four files is why
+docs drift, and it is how a superseded claim survived four days in `docs/research/ats-feeds.md`.
 
 ## What NOT to do
 
@@ -113,6 +147,8 @@ must be sanitized before they are committed.
 - [ ] `make lint` passes (ruff check, ruff format, mypy --strict, sqlfluff).
 - [ ] No swallowed exceptions; no TODO/placeholder values left behind.
 - [ ] No secret values, no real PII, no unredacted fixtures.
+- [ ] **No company name, `board_ref`, or personal context in anything tracked** — including the
+      commit message. `make docs-check` passes.
 - [ ] Change matches the scope discussed.
 
 ## Commands
@@ -121,17 +157,26 @@ must be sanitized before they are committed.
 
 ## Pointers
 
-**Start every session with `TODO.md` § "Next session — start here".** It carries the current
-state, the decisions already made, and what is deliberately *not* being worked on.
+**Start every session with [TODO.md's priority list](TODO.md#priority).** It carries what is next,
+in order, and what is deliberately *not* being worked on.
+
+When one doc points at part of another, **link to a heading anchor** — `](TODO.md#priority)` — never
+a section number or a quoted section title. Anchors are verified by `make docs-check`; prose
+references like "§5.6" are unverifiable by construction and were wrong within one edit.
 
 - Current state, priorities, open decisions → `TODO.md`
-- System design & roadmap → `ARCHITECTURE.md`
+- How the system works today → `ARCHITECTURE.md` (no roadmap and no history: those are `TODO.md`
+  and git respectively)
 - Decision records (why, not what) → `docs/decisions/` — newest first: 0022 parallel fetch,
   0021 list+detail (a V1 source must yield a description), 0020 V2 scope
 - Measured evidence & proposals not yet decided → `docs/research/`
-  (`ingestion-cost.md` — cost model + proposal awaiting evaluation;
+  (`relevance-signals.md` — what actually predicts relevance, and the four instructions V2's
+  prompt has to encode; `ingestion-cost.md` — cost model + proposal awaiting evaluation;
   `ats-feeds.md` — per-ATS probe results incl. an "as built" section;
+  `workday-ref-discovery.md` — supersedes that file's Workday row;
+  `careers-page-tail.md` — the 334 no-ATS companies, and why extraction is the wrong tool;
   `openjobdata.md` — the aggregated-source gate)
+- One-off probe scripts behind those numbers → `tools/probes/` (not pipeline code, no tests)
 - V2 implementation contract → `docs/v2-plan.md`
 
 Numbers in these docs are **measured, not estimated** — if you supersede one, measure again and

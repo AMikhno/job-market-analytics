@@ -5,9 +5,14 @@ config/companies.active*.csv
 config/companies.csv.bak
 config/discovery/
 # Personal runbook: the manual half of the system (gh commands, secrets setup).
-# No secret values in it, but it is Ana's notes, not project documentation.
+# No secret values in it, but it is a private runbook, not project documentation.
 NOTES.local.md
 config/profile.yaml
+# Extra board refs for the discovery probe — real company identifiers.
+config/probe_extra_refs.json
+# Terms the pre-commit hook blocks from being committed. Holding them in the
+# repo would be the leak it exists to prevent.
+config/private-terms.txt
 *.key
 *.pem
 **/keyfile*.json

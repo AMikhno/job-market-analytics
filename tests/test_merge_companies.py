@@ -16,16 +16,17 @@ def test_new_companies_are_added() -> None:
 
 
 def test_a_hand_corrected_board_ref_survives_a_restage() -> None:
-    """The reason merge replaced `cp`: discovery re-derives `harness` from the
-    company name every run, but the real board is `harnessinc`. A replace would
-    silently undo that fix on every refresh."""
-    master = [_c("Harness", ref="harnessinc")]
-    incoming = [_c("Harness", ref="harness")]
+    """The reason merge replaced `cp`: discovery re-derives the bare company name
+    as the ref every run, but some real boards carry a corporate suffix
+    (`acmeinc`, not `acme`). A replace would silently undo that fix on every
+    refresh."""
+    master = [_c("Acme", ref="acmeinc")]
+    incoming = [_c("Acme", ref="acme")]
 
     result = merge(master, incoming)
 
-    assert result.rows[0].board_ref == "harnessinc"  # master wins
-    assert result.conflicts == [("Harness", "greenhouse/harnessinc", "greenhouse/harness")]
+    assert result.rows[0].board_ref == "acmeinc"  # master wins
+    assert result.conflicts == [("Acme", "greenhouse/acmeinc", "greenhouse/acme")]
 
 
 def test_a_deliberate_inactive_flag_is_not_reactivated() -> None:
@@ -66,17 +67,18 @@ def test_an_ats_move_is_reported_not_applied() -> None:
 
 
 def test_name_matching_ignores_case_and_spacing() -> None:
-    result = merge([_c("Modern  Campus")], [_c("modern campus", ref="other")])
+    result = merge([_c("Modern  Widgets")], [_c("modern widgets", ref="other")])
 
     assert len(result.rows) == 1  # matched, not duplicated
     assert result.added == []
 
 
 def test_distinct_companies_sharing_a_board_stay_separate() -> None:
-    """BlackBerry and BlackBerry QNX are deliberately separate rows on one board."""
-    master = [_c("BlackBerry", "workday", "bb"), _c("BlackBerry QNX", "workday", "bb")]
+    """A parent and a named subsidiary can be deliberately separate rows that
+    resolve to one shared board."""
+    master = [_c("Globex", "workday", "gx"), _c("Globex Robotics", "workday", "gx")]
 
-    result = merge(master, [_c("BlackBerry", "workday", "bb")])
+    result = merge(master, [_c("Globex", "workday", "gx")])
 
     assert len(result.rows) == 2
 

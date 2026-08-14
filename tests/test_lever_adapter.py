@@ -47,7 +47,7 @@ def test_lever_non_array_response_raises() -> None:
 @responses.activate
 def test_lever_falls_back_to_the_eu_shard_on_404(lever_payload: list) -> None:
     """Some boards live only on api.eu.lever.co and the US host 404s for them
-    (Eneba is a live example). Region is not a company property, so the adapter
+    (the list contains one). Region is not a company property, so the adapter
     retries the EU shard instead of the list carrying one."""
     board_ref = "example"
     responses.add(responses.GET, URL_TEMPLATE.format(board_ref=board_ref), status=404)

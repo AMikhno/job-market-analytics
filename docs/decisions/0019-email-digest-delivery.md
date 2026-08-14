@@ -28,7 +28,7 @@ what a single-user pipeline actually needs:
    (a Gmail app password) are GitHub Actions **secrets** — real credentials, unlike the company
    list (ADR-0011). Unset credentials disable the digest, so dev/CI runs need nothing.
 5. **Posting fields are untrusted web content** even in email: the HTML part escapes every
-   field and never embeds `description_html`. (The same posture §5.6 of `ARCHITECTURE.md`
+   field and never embeds `description_html`. (The same posture [V2](../../ARCHITECTURE.md#v2) of `ARCHITECTURE.md`
    takes toward V2 prompts.)
 
 Rejected: a third-party mail action (supply-chain surface for creds); a transactional email
