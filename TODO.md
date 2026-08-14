@@ -6,7 +6,7 @@ system works today is in `ARCHITECTURE.md`.
 ## Priority
 
 Ordered by value per unit of work. The target profile is mid-size SaaS with a real internal data
-function — the shape that measurably converts (`docs/research/triage-to-shortlist.md`).
+function — the shape that measurably converts (`docs/research/relevance-signals.md`).
 
 | # | Work | Why it is here | Cost |
 |---|---|---|---|
@@ -27,7 +27,7 @@ against).
 Scope is fixed by ADR-0020; the implementation contract is `docs/v2-plan.md`. Execute its work
 items top to bottom, one commit each.
 
-**Read `docs/research/triage-to-shortlist.md` before writing the prompt.** The manual pass it
+**Read `docs/research/relevance-signals.md` before writing the prompt.** The manual pass it
 records produced four instructions the current signals cannot express — most importantly that
 scoring the *requirements* section beats scoring the whole posting by roughly 3/13 against 1/21,
 because every corporate job mentions dashboards and only a data job requires dbt. Without those,
