@@ -57,8 +57,8 @@ Unknown, because it looks classified and can never be activated.
 
 **Caveats:** directory/portal rows — tech-hub sites and regional ecosystem portals, which are not
 employers — attribute a *member* company's board to themselves; drop them. This is not rare and it
-is not a bug you can fix by re-running: a 2026-07-28 re-audit reproduced the same wrong board ref
-from two unrelated portal sites, because that is genuinely what those pages embed. `Found Via =
+is not a bug you can fix by re-running: a re-audit reproduced the same wrong board ref from two
+unrelated portal sites, because that is genuinely what those pages embed. `Found Via =
 none` rows are bot-blocked or consent-walled and stayed unreachable (an honest Unknown bucket, not
 silent wrong data). The API probe only tries tokens a human would guess, so a miss is never proof a
 company has no board — a name with a corporate suffix, or with digits appended, is unreachable that
