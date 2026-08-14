@@ -4,7 +4,7 @@
 
 V1 already has two *hard* silver filters that drop rows: deal-breaker tech and the Canada
 location gate (both seed-driven and word-matched). The obvious next step — "only keep
-Analytics/BI titles" and "only keep postings that name my stack" — is deliberately **not**
+Analytics/BI titles" and "only keep postings naming the target stack" — is deliberately **not**
 built as a drop.
 
 **Decision: annotate, never drop.** Silver derives two soft columns from seeds:
