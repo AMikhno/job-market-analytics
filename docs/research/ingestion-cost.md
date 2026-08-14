@@ -1,7 +1,6 @@
 # Ingestion cost as sources multiply — a general model
 
-**Status:** proposal, for evaluation next session. Nothing here is built.
-**Written:** 2026-07-28, after V1.8 took the pipeline from 3 sources / 123 boards to 9 / 167.
+**Status:** proposal. Only the retention lever is built; the rest awaits a decision.
 
 ## The problem, stated generally
 
@@ -179,8 +178,5 @@ never be needed.
 
 ## Related finding, not about cost
 
-Of **1,179 gold postings across all 167 boards, 40 are title-matched** (38 of those also hit a
-desired technology). Every one comes from Greenhouse, Ashby or Lever — the six sources added in
-V1.8 contributed **316 gold postings and 0 title matches**. That is the answer to the open
-question in `TODO.md`: after doubling coverage twice, the constraint is relevance, not sources.
-V2 scoring, not V1.10 adapters.
+Coverage is not the constraint — relevance is. Measured across the same run and recorded in
+`docs/research/relevance-signals.md`.
