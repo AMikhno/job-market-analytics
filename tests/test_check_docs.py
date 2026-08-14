@@ -174,6 +174,24 @@ def test_facts_are_computed_from_the_code() -> None:
     assert check_docs.facts()["sources"] == len(SOURCES)
 
 
+def test_gitignored_paths_are_allowed_without_an_allowlist_entry() -> None:
+    """Docs name files that commands *write* — the active company projection,
+    the discovery cache. Those exist in a working tree and not in a clean
+    checkout, so testing the filesystem made the gate pass locally and fail in
+    CI. .gitignore is committed, so it answers the same everywhere."""
+    assert check_docs.is_gitignored("config/companies.active.csv")
+    assert check_docs.is_gitignored("config/profile.yaml")
+    assert not check_docs.is_gitignored("ingest/pipeline.py")
+
+
+def test_a_directory_reference_keeps_its_trailing_slash() -> None:
+    """`config/discovery/` is a directory-only pattern, so it matches only when
+    git can tell the path is a directory. For a path that does not exist the
+    trailing slash is the only evidence — normalizing it away reintroduced the
+    same environment split one layer down."""
+    assert check_docs.is_gitignored("config/discovery/")
+
+
 def test_the_repo_itself_passes() -> None:
     """The gate must hold for the tree as committed, or it is decorative."""
     assert check_docs.main() == 0
