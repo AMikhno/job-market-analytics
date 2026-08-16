@@ -116,6 +116,51 @@ models:
         data_type: boolean
         data_tests: [not_null]
 
+  - name: int_jobs_structured
+    description: >
+      Typed extraction from posting text (V2, prod-only — a typed-null stub on
+      DuckDB). One row per content_hash: incremental, because re-extracting the
+      ~24 re-landings each posting accumulates would re-bill every run. A failed
+      generation lands extract_ok = false and is retried next run rather than
+      being silently dropped or scored.
+    columns:
+      - name: content_hash
+        description: Extraction key; also the incremental cost guard.
+      - name: requirement_text
+        description: >
+          Requirements and industry context only, with the responsibilities
+          blurb dropped — scoring this rather than the whole posting is the
+          central finding in docs/research/relevance-signals.md.
+      - name: extract_ok
+        description: False when the generation failed; such rows are retried, never scored.
+      - name: extract_model
+        description: Model that produced the extraction, read back from the API response.
+
+  - name: int_jobs_scored
+    description: >
+      1-5 fit score of requirement_text against the resume corpus (ADR-0027),
+      prod-only with a typed-null stub on DuckDB. Scores only rows that
+      extracted successfully; the score orders delivery and never filters it
+      (ADR-0020).
+    columns:
+      - name: content_hash
+        description: Scoring key; the incremental guard, together with prompt_version.
+      - name: fit_score
+        description: >
+          1-5, higher is better. Tested here rather than only in gold: gold
+          nulls an out-of-range value to keep delivery honest, which would also
+          hide a systematically broken model if nothing checked upstream.
+        data_tests:
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
+              quote: false
+      - name: prompt_version
+        description: >
+          Which rendered prompt produced the score. A bump re-scores, because a
+          score is only comparable to another from the same wording.
+      - name: scoring_model
+        description: Pinned endpoint, not the managed default (ADR-0025).
+
 unit_tests:
   - name: dedup_keeps_the_most_recently_ingested_row
     description: >

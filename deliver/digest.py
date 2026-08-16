@@ -33,17 +33,24 @@ log = logging.getLogger("deliver")
 def fetch_new_postings(settings: Settings, watermark: str) -> list[dict[str, object]]:
     """Gold postings first seen after the watermark, best fit first.
 
-    Ordered by the single `match_score` (ADR-0024) rather than by several keys in
-    priority order. The old form sorted on title_match before desired_tech_hits,
-    so the tech count printed on each line reset partway down the email — the
-    visible number was not the sort key. Now it is.
+    `fit_score` leads, `match_score` (ADR-0024) breaks ties and carries the
+    unscored tail. `nulls last` is what keeps the score an ordering and not a
+    filter (ADR-0020): an unscored posting sinks below scored ones but is still
+    delivered, and while nothing is scored the order is exactly the V1 order.
+
+    Both numbers print on the line. They measure different things — one is
+    keyword hits, the other an LLM's judgement — and until the LLM score has been
+    checked against human labels, seeing them disagree is the point.
     """
     sql = f"""
         select title, company, location, url, match_score, desired_tech_hits,
-               title_match, deal_breaker_hits, deal_breaker_terms, first_seen_at
+               title_match, deal_breaker_hits, deal_breaker_terms, first_seen_at,
+               fit_score
         from {storage.gold_table(settings)}
         where first_seen_at > cast(? as timestamp)
-        order by match_score desc, posted_or_updated_at desc nulls last
+        order by fit_score desc nulls last,
+                 match_score desc,
+                 posted_or_updated_at desc nulls last
     """
     return storage.query_rows(sql, params=[watermark], settings=settings)
 
@@ -163,7 +170,10 @@ def build_email(
         url = str(r["url"])
         # The score leads, then the parts that produced it — the list is ordered
         # by that first number, so the ranking is checkable from the line itself.
-        signals = f"match {r['match_score']} — tech hits: {r['desired_tech_hits']}"
+        # "unscored" is stated rather than omitted: a missing fit reads as a low
+        # one otherwise, and the two mean opposite things about a posting.
+        fit = f"fit {r['fit_score']}/5" if r.get("fit_score") is not None else "unscored"
+        signals = f"{fit} — match {r['match_score']} — tech hits: {r['desired_tech_hits']}"
         if r["title_match"]:
             signals += ", title match"
         # Named, not just counted: "Kafka" as a nice-to-have reads very

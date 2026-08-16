@@ -79,3 +79,20 @@ sources:
           freshness:
             warn_after: { count: 12, period: hour }
             error_after: { count: 30, period: hour }
+
+  - name: jobs_ops
+    description: Operational tables the Python side writes and dbt reads.
+    schema: "{{ 'main' if target.type == 'duckdb' else 'jobs_ops' }}"
+    tables:
+      # The rendered scoring prompt, landed by `make scoring-prompt`. It lives in
+      # a table rather than a dbt --vars value because it is several KB of
+      # multi-line text with quotes in it, and shell-escaping that into --vars is
+      # a quoting bug waiting to happen. Being a table also makes it auditable:
+      # "which prompt produced this score" is answerable after the fact, which a
+      # var evaporating at the end of the run is not.
+      # No freshness gate: it changes only when the resume or the wording does,
+      # so staleness here is the normal state, not a fault.
+      - name: scoring_prompt
+        description: >
+          One row per rendered prompt version (prompt_version, rendered_prompt,
+          rendered_at). V2 scoring cross-joins the newest row.

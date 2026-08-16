@@ -3,6 +3,7 @@
 import json
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
+from pathlib import Path
 
 import duckdb
 import pytest
@@ -38,7 +39,7 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
                 title VARCHAR, company VARCHAR, location VARCHAR, url VARCHAR,
                 desired_tech_hits BIGINT, title_match BOOLEAN,
                 deal_breaker_hits BIGINT, deal_breaker_terms VARCHAR,
-                match_score BIGINT,
+                match_score BIGINT, fit_score BIGINT,
                 first_seen_at TIMESTAMP, posted_or_updated_at TIMESTAMP)"""
         )
         for r in rows:
@@ -46,7 +47,8 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
             # it, while the pipeline's own ISO strings keep their UTC wall-clock.
             first_seen = r["first_seen_at"].replace(tzinfo=None)
             con.execute(
-                "INSERT INTO main_gold.fct_job_postings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO main_gold.fct_job_postings "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     r.get("title", "Analytics Engineer"),
                     r.get("company", "acme"),
@@ -63,6 +65,9 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
                         + (2 if r.get("title_match", False) else 0)
                         - r.get("deal_breaker_hits", 0),
                     ),
+                    # Default null: unscored is the normal state until V2 has run,
+                    # and the state the digest must handle without special-casing.
+                    r.get("fit_score"),
                     first_seen,
                     first_seen,
                 ],
@@ -253,6 +258,98 @@ def test_footer_reports_skipped_boards_even_when_healthy() -> None:
     assert "1 board(s) skipped" in footer
     assert "redacted:ad589ceb" in footer
     assert "make whois" in footer
+
+
+def test_fit_score_leads_the_ordering(tmp_path: Path) -> None:
+    """The LLM score orders the digest; match_score breaks ties beneath it.
+
+    The weak-keyword/strong-fit posting is the point of V2 — under V1's ordering
+    it sorted last, and it is the case relevance-signals found the keyword rules
+    getting wrong.
+    """
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [
+            {
+                "title": "Strong keywords weak fit",
+                "fit_score": 2,
+                "match_score": 9,
+                "first_seen_at": now,
+            },
+            {
+                "title": "Weak keywords strong fit",
+                "fit_score": 5,
+                "match_score": 0,
+                "first_seen_at": now,
+            },
+        ],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+
+    assert [r["title"] for r in rows] == [
+        "Weak keywords strong fit",
+        "Strong keywords weak fit",
+    ]
+
+
+def test_unscored_postings_sort_last_but_still_ship(tmp_path: Path) -> None:
+    """`nulls last` is what keeps the score an ordering and not a filter
+    (ADR-0020): an unscored posting sinks below scored ones, and is delivered."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [
+            {"title": "Unscored", "match_score": 99, "first_seen_at": now},
+            {"title": "Scored low", "fit_score": 1, "match_score": 0, "first_seen_at": now},
+        ],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+
+    assert [r["title"] for r in rows] == ["Scored low", "Unscored"]
+
+
+def test_digest_line_states_unscored_rather_than_omitting_it(tmp_path: Path) -> None:
+    """A missing fit reads as a low one if the line just leaves it out, and the
+    two mean opposite things about a posting."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [
+            {"title": "Has a score", "fit_score": 4, "first_seen_at": now},
+            {"title": "Has none", "first_seen_at": now},
+        ],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+    body = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
+
+    assert "fit 4/5" in body
+    assert "unscored" in body
+
+
+def test_ordering_is_unchanged_while_nothing_is_scored(tmp_path: Path) -> None:
+    """V2 must not disturb delivery before it produces anything: with every
+    fit_score null the order is exactly V1's match_score order."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [
+            {"title": "Low", "match_score": 1, "first_seen_at": now},
+            {"title": "High", "match_score": 8, "first_seen_at": now},
+            {"title": "Mid", "match_score": 4, "first_seen_at": now},
+        ],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+
+    assert [r["title"] for r in rows] == ["High", "Mid", "Low"]
 
 
 def test_footer_skipped_refs_are_never_raw() -> None:
