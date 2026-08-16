@@ -7,7 +7,6 @@ config/discovery/
 # Personal runbook: the manual half of the system (gh commands, secrets setup).
 # No secret values in it, but it is a private runbook, not project documentation.
 NOTES.local.md
-config/profile.yaml
 # The resume corpus V2 scores against: employer history, work authorization,
 # education. Real PII, and the most sensitive file in the working tree.
 # Every version, not just the master, so a tailored variant cannot slip in.

@@ -34,11 +34,11 @@ corporate job mentions dashboards and only a data job requires dbt. Without thos
 keyword matcher that exercise argued against. Note the ratios are that pass's own selections, not
 human labels, and cannot double as V2's evaluation set — see the provenance note in that file.
 
-- [ ] Profile config: `shared/profile.py`, `config/profile.example.yaml`, prompt rendering with
+- [x] Resume corpus: `shared/resume.py`, `config/resume.example.yaml`, prompt rendering with
       `PROMPT_VERSION` provenance, and the gitignore guard for the real file
 - [ ] `int_jobs_structured` — typed extraction, `content_hash` incremental guard for cost control,
       delimiter defense against untrusted posting text, dev-target stub
-- [ ] `int_jobs_scored` — 1–5 fit score, profile as a static cacheable prefix,
+- [ ] `int_jobs_scored` — 1–5 fit score, resume prompt as a static cacheable prefix,
       model/prompt-version/scored-at provenance, `accepted_values` test
 - [ ] Gold and digest become score-aware: the score orders delivery and never filters it
       (ADR-0020); unscored postings still ship
