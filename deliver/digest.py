@@ -45,7 +45,8 @@ def fetch_new_postings(settings: Settings, watermark: str) -> list[dict[str, obj
     sql = f"""
         select title, company, location, url, match_score, desired_tech_hits,
                title_match, deal_breaker_hits, deal_breaker_terms, first_seen_at,
-               fit_score, company_type, geo_restriction, manages_people
+               fit_score, company_type, geo_restriction, manages_people,
+               similarity, best_match_source
         from {storage.gold_table(settings)}
         where first_seen_at > cast(? as timestamp)
         order by fit_score desc nulls last,
@@ -175,6 +176,11 @@ def _annotations(row: dict[str, object]) -> list[str]:
         out.append("manages a team")
     elif manages == "no":
         out.append("no reports")
+    # What the embedding matched, which is the thing a 1-5 score cannot tell you.
+    # Shown as the source rather than the bullet text: the role it came from is
+    # enough to recognise, and the full bullet would swamp the line.
+    if row.get("best_match_source"):
+        out.append(f"like: {row['best_match_source']}")
     return out
 
 

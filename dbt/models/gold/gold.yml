@@ -96,6 +96,18 @@ models:
       - name: manages_people
         description: yes / no / unclear; null when not extracted.
         data_type: varchar
+      - name: similarity
+        description: >
+          Cosine similarity (higher is closer) between the posting's relevant
+          text and the nearest resume bullet. Carried beside fit_score, not
+          blended with it: two unvalidated rankings averaged together make a bad
+          result undiagnosable. `make evaluate` compares them.
+        data_type: double
+      - name: best_match_source
+        description: >
+          Which role or project the nearest bullet came from — the thing an
+          embedding can say and a 1-5 score cannot.
+        data_type: varchar
       - name: recency_rank
         description: 1 = most recent by posted_or_updated_at; dense unique ordering for the digest.
         data_type: bigint
@@ -116,6 +128,8 @@ unit_tests:
       - input: ref('int_jobs_scored')
         rows: []
       - input: ref('int_jobs_structured')
+        rows: []
+      - input: ref('int_jobs_matched')
         rows: []
     expect:
       rows:
@@ -140,6 +154,8 @@ unit_tests:
       - input: ref('int_jobs_structured')
         rows:
           - {content_hash: h1, company_type: B2B SaaS, geo_restriction: canada_ok, manages_people: no}
+      - input: ref('int_jobs_matched')
+        rows: []
     expect:
       rows:
         - {job_key: scored, fit_score: 4, prompt_version: "1"}
@@ -166,6 +182,8 @@ unit_tests:
           - {content_hash: h3, fit_score: 1}
           - {content_hash: h4, fit_score: 5}
       - input: ref('int_jobs_structured')
+        rows: []
+      - input: ref('int_jobs_matched')
         rows: []
     expect:
       rows:

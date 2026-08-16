@@ -96,6 +96,12 @@ def load_labels(path: str | Path) -> list[Label]:
         key = (row.get("job_key") or "").strip()
         if not key:
             continue
+        # A blank verdict means "skipped", not "irrelevant". The worksheet is
+        # pre-filled with rows to judge, and treating an unanswered one as `no`
+        # would silently invent judgements the labeller declined to make — and
+        # invent them in the direction that flatters every ranking.
+        if not (row.get("relevant") or "").strip():
+            continue
         if key in seen:
             raise ValueError(f"{resolved}: duplicate job_key {key!r} (row {i})")
         seen.add(key)

@@ -92,7 +92,7 @@ jobs:
           RESUME_YAML_CONTENT: ${{ secrets.RESUME_YAML_CONTENT }}
         run: |
           printf '%s' "$RESUME_YAML_CONTENT" > config/resume.yaml
-          make scoring-prompt
+          make land-resume
 
       - name: Transform (bronze -> silver -> gold) on BigQuery
         env:

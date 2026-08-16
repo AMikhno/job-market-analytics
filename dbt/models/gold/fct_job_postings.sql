@@ -52,6 +52,12 @@ select
     st.company_type,
     st.geo_restriction,
     st.manages_people,
+    -- The embedding matcher's answer, carried beside fit_score rather than
+    -- blended with it. Blending two rankings before either is validated would
+    -- make a bad result undiagnosable; `make evaluate` compares them, and the
+    -- loser is deleted.
+    m.similarity,
+    m.best_match_source,
     row_number() over (
         order by s.posted_or_updated_at desc nulls last, s.job_key asc
     ) as recency_rank
@@ -64,5 +70,7 @@ left join {{ ref('int_jobs_scored') }} sc
 -- posting that scoring has not reached yet.
 left join {{ ref('int_jobs_structured') }} st
     on s.content_hash = st.content_hash
+left join {{ ref('int_jobs_matched') }} m
+    on s.content_hash = m.content_hash
 -- postings that disappeared from their board are closed — not deliverable
 where s.is_active

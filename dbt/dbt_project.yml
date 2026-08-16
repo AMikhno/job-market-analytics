@@ -44,6 +44,14 @@ vars:
   # cannot reach it. Re-probe before assuming this list still holds.
   scoring_endpoint: gemini-3.1-flash-lite
 
+  # The embedding matcher (int_jobs_matched). Unlike AI.GENERATE/AI.SCORE, which
+  # are managed and take an endpoint name, ML.GENERATE_EMBEDDING needs a remote
+  # MODEL object created once by DDL over a CLOUD_RESOURCE connection -- see the
+  # preconditions in docs/v2-plan.md. Two vars because the SQL needs the
+  # unquoted reference and the provenance column needs the quoted name.
+  embedding_model: jobs_silver.text_embedding
+  embedding_model_name: "'text-embedding-005'"
+
 # Three medallion zones = dbt staging -> intermediate -> marts.
 # Folder defaults below; per-model overrides live in-model:
 #   - int_jobs__unioned        -> view  (free; ephemeral would block unit tests)

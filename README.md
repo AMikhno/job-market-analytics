@@ -79,7 +79,7 @@ docs/        decisions/, v2-plan.md, research/  (ARCHITECTURE.md at repo root)
 .github/     ci.yml (DuckDB, secretless, fork-safe) + ingest.yml (scheduled, WIF, SHA-pinned)
 ```
 
-Currently 9 ingestion sources, 14 dbt models and 27 ADRs. <!-- check:sources check:dbt_models check:adrs -->
+Currently 9 ingestion sources, 15 dbt models and 27 ADRs. <!-- check:sources check:dbt_models check:adrs -->
 
 ## Quality gates
 

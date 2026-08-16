@@ -8,7 +8,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from ingest import land_prompt
+from ingest import land_resume
 from shared import storage
 from shared.config import Settings
 from shared.resume import PROMPT_VERSION
@@ -40,7 +40,7 @@ def _rows(settings: Settings) -> list[tuple[str, str]]:
 def test_lands_the_rendered_prompt(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
 
-    assert land_prompt.run(settings) == 0
+    assert land_resume.run(settings) == 0
 
     rows = _rows(settings)
     assert len(rows) == 1
@@ -55,8 +55,8 @@ def test_running_twice_lands_one_row(tmp_path: Path) -> None:
     would make "newest" arbitrary between identical candidates."""
     settings = _settings(tmp_path)
 
-    land_prompt.run(settings)
-    land_prompt.run(settings)
+    land_resume.run(settings)
+    land_resume.run(settings)
 
     assert len(_rows(settings)) == 1
 
@@ -68,11 +68,11 @@ def test_a_changed_prompt_lands_a_new_row(
     prompt moved. Landing append-only also keeps the old prompt readable, so
     "which wording produced this score" stays answerable."""
     settings = _settings(tmp_path)
-    land_prompt.run(settings)
+    land_resume.run(settings)
 
-    monkeypatch.setattr(land_prompt, "render_prompt", lambda _resume: "reworded prompt")
+    monkeypatch.setattr(land_resume, "render_prompt", lambda _resume: "reworded prompt")
     with caplog.at_level(logging.INFO):
-        assert land_prompt.run(settings) == 0
+        assert land_resume.run(settings) == 0
 
     rows = _rows(settings)
     assert len(rows) == 2
@@ -85,7 +85,7 @@ def test_first_run_provisions_the_table(tmp_path: Path) -> None:
     rather than the one model that needs it."""
     settings = _settings(tmp_path)
 
-    land_prompt.run(settings)
+    land_resume.run(settings)
 
     assert storage.scoring_prompt_table(settings) == "scoring_prompt"
     assert _rows(settings)

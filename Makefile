@@ -1,4 +1,4 @@
-.PHONY: install ingest validate-companies discover update-company-list companies-variable deliver dbt-deps ensure-raw scoring-prompt evaluate dbt-dev dbt-prod dbt-test dbt-docs freshness test lint sql-lint format check
+.PHONY: install ingest validate-companies discover update-company-list companies-variable deliver dbt-deps ensure-raw land-resume labels-template evaluate dbt-dev dbt-prod dbt-test dbt-docs freshness test lint sql-lint format check
 
 install:          ## Set up the uv venv, dbt packages, and pre-commit hooks
 	uv sync --extra dev
@@ -46,8 +46,11 @@ dbt-deps:         ## Install dbt package dependencies (dbt_utils)
 ensure-raw:       ## Create empty raw tables so dbt can build without an ingest run
 	uv run python -c "from ingest.pipeline import ensure_raw_tables; ensure_raw_tables()"
 
-scoring-prompt:   ## Render the private resume into the prompt V2 scoring reads
-	uv run python -m ingest.land_prompt
+land-resume:      ## Land the private resume into BigQuery for scoring + matching
+	uv run python -m ingest.land_resume
+
+labels-template:  ## Write a labelling worksheet from gold to config/labels.csv
+	uv run python -m evaluation.template
 
 evaluate:         ## Does fit_score rank better than match_score? Needs config/labels.csv
 	uv run python -m evaluation.report
