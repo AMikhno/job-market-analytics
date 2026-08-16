@@ -38,8 +38,8 @@
 {% else %}
 
 with prompt as (
-    -- One row: the newest rendered resume prompt. Landed by `make scoring-prompt`
-    -- (ingest/land_prompt.py) rather than passed as a --vars value, because it is
+    -- One row: the newest rendered resume prompt. Landed by `make land-resume`
+    -- (ingest/land_resume.py) rather than passed as a --vars value, because it is
     -- several KB of multi-line text with quotes in it.
     select
         prompt_version,

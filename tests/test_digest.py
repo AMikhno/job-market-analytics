@@ -41,6 +41,7 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
                 deal_breaker_hits BIGINT, deal_breaker_terms VARCHAR,
                 match_score BIGINT, fit_score BIGINT,
                 company_type VARCHAR, geo_restriction VARCHAR, manages_people VARCHAR,
+                similarity DOUBLE, best_match_source VARCHAR,
                 first_seen_at TIMESTAMP, posted_or_updated_at TIMESTAMP)"""
         )
         for r in rows:
@@ -49,7 +50,7 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
             first_seen = r["first_seen_at"].replace(tzinfo=None)
             con.execute(
                 "INSERT INTO main_gold.fct_job_postings "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     r.get("title", "Analytics Engineer"),
                     r.get("company", "acme"),
@@ -72,6 +73,8 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
                     r.get("company_type"),
                     r.get("geo_restriction"),
                     r.get("manages_people"),
+                    r.get("similarity"),
+                    r.get("best_match_source"),
                     first_seen,
                     first_seen,
                 ],

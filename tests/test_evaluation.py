@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from pathlib import Path
 
+import duckdb
 import pytest
 
-from evaluation import report
+from evaluation import report, template
 from evaluation.labels import Label, load_labels
+from shared.config import Settings
 
 
 def _write(tmp_path: Path, body: str) -> str:
@@ -46,6 +49,22 @@ def test_duplicate_job_key_is_rejected(tmp_path: Path) -> None:
         load_labels(_write(tmp_path, "job_key,relevant\na:b:1,yes\na:b:1,no\n"))
 
 
+def test_an_unanswered_row_is_skipped_not_counted_as_no(tmp_path: Path) -> None:
+    """The worksheet arrives pre-filled with rows to judge. Reading a blank as
+    `no` would invent judgements the labeller declined to make — and invent them
+    in the direction that flatters every ranking."""
+    body = "job_key,relevant\na:b:1,yes\na:b:2,\na:b:3,no\n"
+    labels = load_labels(_write(tmp_path, body))
+    assert [x.job_key for x in labels] == ["a:b:1", "a:b:3"]
+
+
+def test_extra_worksheet_columns_are_ignored(tmp_path: Path) -> None:
+    """The template ships title/company/url so a row can be judged without
+    opening it; the loader must not care."""
+    body = "job_key,relevant,title,url\na:b:1,yes,Some Role,https://x\n"
+    assert load_labels(_write(tmp_path, body))[0].relevant
+
+
 def test_comments_and_blank_keys_are_skipped(tmp_path: Path) -> None:
     body = "job_key,relevant\n# a note,\na:b:1,yes\n,\n"
     assert [x.job_key for x in load_labels(_write(tmp_path, body))] == ["a:b:1"]
@@ -63,6 +82,80 @@ def test_missing_file_says_how_to_make_one(tmp_path: Path) -> None:
 
 def test_committed_example_parses() -> None:
     assert load_labels("config/labels.example.csv")
+
+
+def _settings_with_gold(tmp_path: Path, rows: list[dict[str, object]]) -> Settings:
+    settings = Settings(_env_file=None, duckdb_path=str(tmp_path / "jobs.duckdb"))
+    con = duckdb.connect(settings.duckdb_path)
+    try:
+        con.execute("CREATE SCHEMA IF NOT EXISTS main_gold")
+        con.execute(
+            """CREATE TABLE main_gold.fct_job_postings (
+                job_key VARCHAR, title VARCHAR, company VARCHAR, location VARCHAR,
+                geo_restriction VARCHAR, fit_score BIGINT, match_score BIGINT,
+                url VARCHAR, first_seen_at TIMESTAMP)"""
+        )
+        for i, r in enumerate(rows):
+            con.execute(
+                "INSERT INTO main_gold.fct_job_postings VALUES (?,?,?,?,?,?,?,?,?)",
+                [
+                    r.get("job_key", f"k{i}"),
+                    r.get("title", "Analytics Engineer"),
+                    "acme",
+                    "Ottawa",
+                    r.get("geo_restriction"),
+                    r.get("fit_score"),
+                    r.get("match_score", 0),
+                    "https://x",
+                    datetime(2026, 8, 1) + timedelta(minutes=i),
+                ],
+            )
+    finally:
+        con.close()
+    return settings
+
+
+def test_template_writes_a_worksheet(tmp_path: Path) -> None:
+    settings = _settings_with_gold(tmp_path, [{"fit_score": 5}, {"fit_score": 1}])
+    out = tmp_path / "labels.csv"
+
+    assert template.run(settings, str(out)) == 0
+
+    text = out.read_text()
+    assert "job_key,relevant,title" in text
+    # The verdict column ships empty — the whole point is that a person fills it.
+    assert ",," in text
+
+
+def test_template_samples_across_the_score_range(tmp_path: Path) -> None:
+    """A worksheet drawn only from the top can measure precision but never
+    recall: if the scorer buried something relevant at rank 900, a top-N sample
+    never contains it and the evaluation reports that all is well."""
+    rows: list[dict[str, object]] = [{"fit_score": s} for s in (5, 5, 4, 3, 2, 1, 1)]
+    rows.append({"fit_score": None})
+    settings = _settings_with_gold(tmp_path, rows)
+    out = tmp_path / "labels.csv"
+
+    template.run(settings, str(out), size=12)
+
+    scores = {line.split(",")[6] for line in out.read_text().splitlines()[1:]}
+    assert len(scores) >= 4  # several bands represented, not just the top
+
+
+def test_template_refuses_to_overwrite(tmp_path: Path) -> None:
+    """This file is hand-typed judgement. Regenerating it is never worth
+    destroying an evening's work."""
+    settings = _settings_with_gold(tmp_path, [{"fit_score": 3}])
+    out = tmp_path / "labels.csv"
+    out.write_text("job_key,relevant\nprecious,yes\n")
+
+    assert template.run(settings, str(out)) == 1
+    assert "precious" in out.read_text()
+
+
+def test_template_reports_empty_gold(tmp_path: Path) -> None:
+    settings = _settings_with_gold(tmp_path, [])
+    assert template.run(settings, str(tmp_path / "labels.csv")) == 1
 
 
 def _rows() -> list[dict[str, object]]:

@@ -84,7 +84,7 @@ sources:
     description: Operational tables the Python side writes and dbt reads.
     schema: "{{ 'main' if target.type == 'duckdb' else 'jobs_ops' }}"
     tables:
-      # The rendered scoring prompt, landed by `make scoring-prompt`. It lives in
+      # The rendered scoring prompt, landed by `make land-resume`. It lives in
       # a table rather than a dbt --vars value because it is several KB of
       # multi-line text with quotes in it, and shell-escaping that into --vars is
       # a quoting bug waiting to happen. Being a table also makes it auditable:
@@ -96,3 +96,9 @@ sources:
         description: >
           One row per rendered prompt version (prompt_version, rendered_prompt,
           rendered_at). V2 scoring cross-joins the newest row.
+      # Replaced wholesale by `make land-resume`, not appended: an edited or
+      # deleted bullet must stop being matched against.
+      - name: resume_units
+        description: >
+          One row per resume work bullet (unit_id, source, text, evidences),
+          embedded by int_jobs_matched and compared against each posting.
