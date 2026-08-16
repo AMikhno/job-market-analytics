@@ -89,9 +89,9 @@ with to_extract as (
         -- The ATS's own structured location, passed in because geo_restriction
         -- cannot be judged without it. Withheld, the model saw only prose that
         -- frequently does not state eligibility at all, and guessed rather than
-        -- answering "unclear": measured on the first run, 24 postings whose
-        -- location plainly read "Canada - Toronto ON" or "Remote - Canada" came
-        -- back us_only.
+        -- answering "unclear": measured over 1,283 distinct texts, 11 whose
+        -- location named Canada and nowhere else came back us_only. The reverse
+        -- error did not occur at all.
         --
         -- Aggregated, not added to the grain: identical text can be posted for
         -- several cities, and putting location in a DISTINCT would re-create the
