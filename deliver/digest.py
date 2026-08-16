@@ -150,38 +150,59 @@ def _skipped(summary: RunSummary) -> str:
     )
 
 
-def _annotations(row: dict[str, object]) -> list[str]:
-    """Extracted labels for one digest line — the exceptions only.
+def _signal_line(row: dict[str, object]) -> str:
+    """The bracketed signals on one digest line, in three groups.
 
-    A geographic restriction is shown when it is a problem (US-only, or the
-    posting never said) and omitted when the role is open to Canada. Printing
-    "canada ok" on every good line would make the label furniture: the eye stops
-    reading it, which is exactly when the one that matters slips past. A clean
-    line means nothing is wrong.
+        match 11 — LLM 4/5, vectors 82% — tech hits: 9, title match, B2B SaaS
 
-    Company type and management scope always print when known. Neither is good
-    or bad on its own — they are the two facts that most often decide whether a
-    posting is worth opening, and they are short.
+    Group 1 is the keyword score, group 2 the two AI rankings, group 3 the
+    details. Grouping matters because the three answer different questions and
+    a flat comma list makes them read as one undifferentiated blur.
+
+    The AI scores are labelled by *method*, not merged into one number: they
+    disagree, and until human labels say which is right, seeing them disagree is
+    the point. Similarity prints as a percentage precisely so it cannot be
+    mistaken for a second 1-5 rating -- it is a distance, not a verdict.
+
+    Exceptions are annotated, norms are not: a geographic restriction shows when
+    it is a problem and stays silent when the role is open to Canada. Printing
+    "canada ok" on every good line makes the label furniture, and the eye stops
+    reading it exactly when the one that matters slips past.
     """
-    out: list[str] = []
+    groups: list[list[str]] = [[f"match {row['match_score']}"]]
+
+    # "unscored" is stated rather than omitted: a missing score reads as a low
+    # one otherwise, and the two mean opposite things about a posting.
+    ai: list[str] = []
+    if row.get("fit_score") is not None:
+        ai.append(f"LLM {row['fit_score']}/5")
+    if row.get("similarity") is not None:
+        ai.append(f"vectors {float(row['similarity']) * 100:.0f}%")  # type: ignore[arg-type]
+    groups.append(ai or ["unscored"])
+
+    details: list[str] = [f"tech hits: {row['desired_tech_hits']}"]
+    if row.get("title_match"):
+        details.append("title match")
+    # Named, not just counted: "Kafka" as a nice-to-have reads very differently
+    # from a posting built on Spark + Flink, and only you can tell which.
+    if row.get("deal_breaker_terms"):
+        details.append(f"mentions {row['deal_breaker_terms']}")
     if row.get("company_type"):
-        out.append(str(row["company_type"]))
+        details.append(str(row["company_type"]))
     geo = row.get("geo_restriction")
     if geo == "us_only":
-        out.append("US ONLY")
+        details.append("US only")
     elif geo == "unclear":
-        out.append("location unclear")
-    manages = row.get("manages_people")
-    if manages == "yes":
-        out.append("manages a team")
-    elif manages == "no":
-        out.append("no reports")
-    # What the embedding matched, which is the thing a 1-5 score cannot tell you.
-    # Shown as the source rather than the bullet text: the role it came from is
-    # enough to recognise, and the full bullet would swamp the line.
+        details.append("location unclear")
+    if row.get("manages_people") == "yes":
+        details.append("manages people")
+    # What the embedding actually matched — the thing a 1-5 cannot tell you.
+    # The source, not the bullet text: enough to recognise, short enough to fit.
     if row.get("best_match_source"):
-        out.append(f"like: {row['best_match_source']}")
-    return out
+        details.append(f"like: {row['best_match_source']}")
+    groups.append(details)
+
+    return " — ".join(", ".join(g) for g in groups)
 
 
 def build_email(
@@ -203,21 +224,7 @@ def build_email(
         title, company = str(r["title"]), str(r["company"])
         location = str(r["location"]) if r["location"] is not None else "location unknown"
         url = str(r["url"])
-        # The score leads, then the parts that produced it — the list is ordered
-        # by that first number, so the ranking is checkable from the line itself.
-        # "unscored" is stated rather than omitted: a missing fit reads as a low
-        # one otherwise, and the two mean opposite things about a posting.
-        fit = f"fit {r['fit_score']}/5" if r.get("fit_score") is not None else "unscored"
-        parts = [fit, f"match {r['match_score']}", f"tech hits: {r['desired_tech_hits']}"]
-        parts += _annotations(r)
-        signals = " — ".join(parts)
-        if r["title_match"]:
-            signals += ", title match"
-        # Named, not just counted: "Kafka" as a nice-to-have reads very
-        # differently from a posting built on Spark + Flink, and only you can
-        # tell which from the line.
-        if r.get("deal_breaker_terms"):
-            signals += f", mentions {r['deal_breaker_terms']}"
+        signals = _signal_line(r)
         text_lines.append(f"- {title} @ {company} ({location}) [{signals}]\n  {url}")
         html_items.append(
             f'<li><a href="{html.escape(url, quote=True)}">{html.escape(title)}</a>'
