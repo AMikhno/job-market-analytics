@@ -403,7 +403,7 @@ def test_the_two_ai_scores_are_labelled_by_method(tmp_path: Path) -> None:
     assert "title match" in body
     assert "mentions Spark" in body
     assert "B2B SaaS" in body
-    assert "US only" in body
+    assert "text says US only" in body
     assert "manages people" in body
 
 
@@ -435,8 +435,8 @@ def test_a_us_only_posting_is_called_out(tmp_path: Path) -> None:
     rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
     body = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
 
-    assert "US only" in body
-    assert "location unclear" in body
+    assert "text says US only" in body
+    assert "eligibility unstated" in body
 
 
 def test_a_us_only_posting_is_still_delivered(tmp_path: Path) -> None:
