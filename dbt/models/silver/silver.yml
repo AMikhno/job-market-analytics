@@ -170,9 +170,14 @@ models:
           common and a boolean would force a guess. Years of experience does not
           substitute: years is a depth bar, this is the shape of the seat.
         data_tests:
+          # QUOTED, and that is not style. YAML 1.1 parses bare yes/no as
+          # booleans, so `values: [yes, no, unclear]` silently became
+          # True/False/unclear and the test flagged every correctly-extracted
+          # row. It warned rather than failed, which is how a gate that asserts
+          # the wrong thing survives: it becomes noise everyone learns to skip.
           - accepted_values:
               arguments:
-                values: [yes, no, unclear]
+                values: ["yes", "no", "unclear"]
               config:
                 severity: warn
       - name: nice_to_have_techs
