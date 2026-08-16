@@ -40,6 +40,7 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
                 desired_tech_hits BIGINT, title_match BOOLEAN,
                 deal_breaker_hits BIGINT, deal_breaker_terms VARCHAR,
                 match_score BIGINT, fit_score BIGINT,
+                company_type VARCHAR, geo_restriction VARCHAR, manages_people VARCHAR,
                 first_seen_at TIMESTAMP, posted_or_updated_at TIMESTAMP)"""
         )
         for r in rows:
@@ -48,7 +49,7 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
             first_seen = r["first_seen_at"].replace(tzinfo=None)
             con.execute(
                 "INSERT INTO main_gold.fct_job_postings "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     r.get("title", "Analytics Engineer"),
                     r.get("company", "acme"),
@@ -68,6 +69,9 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
                     # Default null: unscored is the normal state until V2 has run,
                     # and the state the digest must handle without special-casing.
                     r.get("fit_score"),
+                    r.get("company_type"),
+                    r.get("geo_restriction"),
+                    r.get("manages_people"),
                     first_seen,
                     first_seen,
                 ],
@@ -331,6 +335,85 @@ def test_digest_line_states_unscored_rather_than_omitting_it(tmp_path: Path) -> 
 
     assert "fit 4/5" in body
     assert "unscored" in body
+
+
+def test_a_canada_ok_posting_gets_no_location_label(tmp_path: Path) -> None:
+    """The exception is annotated, not the norm. Printing "canada ok" on every
+    good line makes the label furniture — the eye stops reading it, which is
+    exactly when the one that matters slips past."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [
+            {
+                "title": "Fine",
+                "fit_score": 4,
+                "company_type": "B2B SaaS",
+                "geo_restriction": "canada_ok",
+                "manages_people": "no",
+                "first_seen_at": now,
+            }
+        ],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+    body = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
+
+    assert "canada" not in body.lower()
+    assert "B2B SaaS" in body
+    assert "no reports" in body
+
+
+def test_a_us_only_posting_is_called_out(tmp_path: Path) -> None:
+    """The case the location rule provably cannot catch: silver keeps bare
+    "Remote", so this arrives with a relevant title and the restriction stated
+    only in the description."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [
+            {"title": "Restricted", "geo_restriction": "us_only", "first_seen_at": now},
+            {"title": "Vague", "geo_restriction": "unclear", "first_seen_at": now},
+        ],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+    body = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
+
+    assert "US ONLY" in body
+    assert "location unclear" in body
+
+
+def test_a_us_only_posting_is_still_delivered(tmp_path: Path) -> None:
+    """Annotate, never drop (ADR-0015 / ADR-0020). Postings lie about location
+    in both directions, so hiding on an extracted value would lose real roles to
+    a model's mistake — it is labelled and left in."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [{"title": "Restricted", "geo_restriction": "us_only", "first_seen_at": now}],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+
+    assert [r["title"] for r in rows] == ["Restricted"]
+
+
+def test_unextracted_annotations_are_simply_absent(tmp_path: Path) -> None:
+    """Nothing extracted yet is the normal state before V2 has run, and it must
+    not produce empty separators or the word None in an email."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(settings, [{"title": "Plain", "first_seen_at": now}])
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+    body = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
+
+    assert "None" not in body
+    assert "—  —" not in body
 
 
 def test_ordering_is_unchanged_while_nothing_is_scored(tmp_path: Path) -> None:

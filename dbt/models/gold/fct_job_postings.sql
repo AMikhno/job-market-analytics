@@ -41,11 +41,28 @@ select
     end as fit_score,
     sc.prompt_version,
     sc.scored_at,
+    -- Extracted annotations that reach delivery. Everything else the extraction
+    -- produces stays in silver: these three are the ones that change what you
+    -- do about a posting.
+    --
+    -- geo_restriction is the one the rule-based gate provably cannot catch --
+    -- silver keeps any posting whose location is bare "Remote", so a US-only
+    -- role arrives with a perfectly relevant title and the restriction visible
+    -- only in the description.
+    st.company_type,
+    st.geo_restriction,
+    st.manages_people,
     row_number() over (
         order by s.posted_or_updated_at desc nulls last, s.job_key asc
     ) as recency_rank
 from {{ ref('silver_jobs') }} s
 left join {{ ref('int_jobs_scored') }} sc
     on s.content_hash = sc.content_hash
+-- Both joins are LEFT and keyed on content_hash, which is unique in each AI
+-- model (tested there, after a fan-out taught us to assert it). Joined
+-- independently rather than chained, because extraction can succeed on a
+-- posting that scoring has not reached yet.
+left join {{ ref('int_jobs_structured') }} st
+    on s.content_hash = st.content_hash
 -- postings that disappeared from their board are closed — not deliverable
 where s.is_active
