@@ -1,6 +1,6 @@
 # 0009 — Use Gemini 2.5 Flash-Lite for V2 extraction/scoring
 
-**Status:** accepted (for V2)
+**Status:** superseded by 0025 (the 2.5 family retires 2026-10-20)
 
 Extraction and scoring are simple structured tasks, so the cheapest capable model wins. Gemini 2.5
 Flash-Lite ($0.05/$0.20 per 1M at the batch rate in-SQL AI uses) keeps V2 to ~$0.12 backfill +

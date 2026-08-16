@@ -10,7 +10,7 @@ function — the shape that measurably converts (`docs/research/relevance-signal
 
 | # | Work | Why it is here | Cost |
 |---|---|---|---|
-| 1 | **V2 scoring** | Relevance is the measured constraint: 10,170 postings fetched → 1,179 gold → 40 title-matched, and those 40 were largely the *wrong* 40. Also the instrument that makes every later expansion self-evaluating instead of costing a manual evening | Scoped — ADR-0020, `docs/v2-plan.md`; ~$0.12 first backfill |
+| 1 | **V2 scoring** | Relevance is the measured constraint: 10,170 postings fetched → 1,179 gold → 40 title-matched, and those 40 were largely the *wrong* 40. Also the instrument that makes every later expansion self-evaluating instead of costing a manual evening | Scoped — ADR-0020, `docs/v2-plan.md`; backfill cost pending re-measurement (ADR-0025) |
 | 2 | **More companies on already-built ATS** | No engineering at all. The best measured conversion came from a mid-size company on an existing adapter — 11 postings, 4 worth applying to. Staffing and recruiting agencies count as a deliberate company type | List work |
 | 3 | **Aggregator source** | Fixes list representativeness at the root: stops requiring the curated list to be a fair sample of the market. After V2, because without scoring it is ten times the noise for the same manual triage | ADR-0017, gates unmet. Main cost is content-based dedup, since `job_key` is `(source, company, external_id)` — ADR-0008 |
 | 4 | **List repair** | Wrong data rather than missing adapters, so it is free at runtime | Small — see below |
