@@ -1,10 +1,11 @@
 # V2 implementation plan — AI relevance inside dbt
 
 The contract for the V2 build. Scope fixed by ADR-0020; design rationale in
-[ARCHITECTURE.md V2](../ARCHITECTURE.md#v2) and ADR-0003/0004/0009. This document is the
+[ARCHITECTURE.md V2](../ARCHITECTURE.md#v2) and ADR-0003/0004/0025. This document is the
 work breakdown an implementation session executes top-to-bottom — decisions
 here are settled; re-derive nothing, but **verify current BigQuery AI-function
-names/signatures and Gemini model availability before writing SQL** (they churn).
+names/signatures before writing SQL** (they churn). Model choice and its region
+constraint are measured in ADR-0025; re-measure rather than trusting their age.
 
 ## Scope
 
@@ -15,11 +16,26 @@ tests, docs/ADR sweep.
 **Out (parked):** embeddings, new ATS adapters (ADR-0013), openjobdata (ADR-0017), and score
 thresholds or delivery filtering — the last two both reserved by ADR-0020.
 
+## Gate: settle the region question before writing model SQL
+
+The chosen model has no regional endpoint — global only, and `northamerica-northeast2` serves no
+foundational Gemini at all (ADR-0025). BigQuery requires an AI connection to sit in its dataset's
+location, so in-SQL inference from that dataset is unproven. Measure it first, on a scratch dataset:
+
+- **A.** `AI.SCORE` from a `northamerica-northeast2` dataset with no connection. If this works,
+  nothing further is needed — no connection is ever provisioned.
+- **B.** Only if A fails: create a `northamerica-northeast2` connection and try connection-based
+  `AI.GENERATE` against the global model endpoint.
+- If both fail, the options are moving the warehouse out of `northamerica-northeast2` (a rebuild)
+  or reopening ADR-0004's in-dbt-SQL decision. Neither is taken unilaterally.
+
+This is why work item 3 evaluates `AI.SCORE` first: it is the branch that needs no connection, and
+therefore the one the region constraint cannot reach. Record the result in ADR-0025.
+
 ## Human preconditions (before the prod run; the build itself needs none of these)
 
-- [ ] BigQuery ↔ Vertex connection `northamerica-northeast2.vertex` created; its service
-      account granted Vertex access; Vertex AI API enabled. (Connection, dataset and endpoint must all be `northamerica-northeast2` — a mismatch is a
-      hard failure.)
+- [ ] Vertex AI API enabled. A connection and its service-account grant are needed **only** if the
+      gate above lands on path B.
 - [ ] `config/profile.yaml` filled from the example (private, gitignored — never committed).
 - [ ] In CI/prod, profile content follows the company-list pattern (ADR-0011): a GitHub
       Actions **variable** `PROFILE_YAML_CONTENT` materialized to `config/profile.yaml`
@@ -51,8 +67,8 @@ thresholds or delivery filtering — the last two both reserved by ADR-0020.
   retried next run (guard on `content_hash` + `extract_ok`), never silently
   dropped or scored.
 - Schema evolution: `on_schema_change: append_new_columns` on both incremental
-  models; a `--full-refresh` re-bills the entire backfill (~$0.12 at current
-  scale) and must be a deliberate decision, not a reflex ([rebuilds](../ARCHITECTURE.md#rebuilds-not-migrations),
+  models; a `--full-refresh` re-bills the entire backfill (cost pending
+  re-measurement — ADR-0025) and must be a deliberate decision, not a reflex ([rebuilds](../ARCHITECTURE.md#rebuilds-not-migrations),
   "Schema evolution").
 - **Dev parity:** on the DuckDB target the model is a stub emitting the same
   columns as typed nulls (`enabled`/target-conditional SQL).
@@ -83,7 +99,7 @@ thresholds or delivery filtering — the last two both reserved by ADR-0020.
 
 ### 5. Docs
 - ARCHITECTURE's V2 section → "as built"; TODO sweep; record the measured
-  first-backfill cost against the ~$0.12 expectation, and how to sanity-check it
+  first-backfill cost into ADR-0025 (which leaves it open), and how to sanity-check it
   (row counts in `int_jobs_structured` vs silver survivors after run 1).
 
 ## Acceptance

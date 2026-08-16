@@ -167,8 +167,9 @@ references like "§5.6" are unverifiable by construction and were wrong within o
 - Current state, priorities, open decisions → `TODO.md`
 - How the system works today → `ARCHITECTURE.md` (no roadmap and no history: those are `TODO.md`
   and git respectively)
-- Decision records (why, not what) → `docs/decisions/` — newest first: 0022 parallel fetch,
-  0021 list+detail (a V1 source must yield a description), 0020 V2 scope
+- Decision records (why, not what) → `docs/decisions/` — newest first: 0025 V2 model + its
+  global-only endpoint (supersedes 0009), 0024 one match_score orders the digest,
+  0023 deal-breakers demote rather than delete, 0020 V2 scope
 - Measured evidence & proposals not yet decided → `docs/research/`
   (`relevance-signals.md` — what actually predicts relevance, and the four instructions V2's
   prompt has to encode; `ingestion-cost.md` — cost model + proposal awaiting evaluation;
