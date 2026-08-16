@@ -29,7 +29,6 @@
 -- its not-yet-scored path (a null fit_score still ships -- ADR-0020).
     select
         cast(null as varchar) as content_hash,
-        cast(null as varchar) as job_key,
         cast(null as varchar) as seniority,
         cast(null as bigint) as years_experience_min,
         cast(null as varchar) as required_techs,
@@ -43,9 +42,15 @@
 {% else %}
 
 with to_extract as (
-    select
+    -- DISTINCT, and one row per content_hash rather than per posting: a
+    -- content_hash is hash(title, clean_text), so two postings with identical
+    -- text share one (17 of them did on the first backfill -- the same role
+    -- posted twice, or under two job_keys). Extracting per posting billed the
+    -- same text twice AND fanned out gold's join into duplicate job_keys.
+    -- job_key is deliberately absent: it does not belong here, because a
+    -- content_hash can belong to several of them.
+    select distinct
         content_hash,
-        job_key,
         title,
         clean_text
     from {{ ref('silver_jobs') }}
@@ -67,7 +72,6 @@ with to_extract as (
 generated as (
     select
         content_hash,
-        job_key,
         AI.GENERATE(
             (
                 'Extract the fields defined by the output schema from the job '
@@ -93,7 +97,6 @@ generated as (
 
 select
     content_hash,
-    job_key,
     g.seniority,
     g.years_experience_min,
     -- Flattened to text so the DuckDB stub can declare one comparable type; the

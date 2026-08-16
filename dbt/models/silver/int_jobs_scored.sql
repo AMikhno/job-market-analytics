@@ -29,7 +29,6 @@
 -- Dev stub: prod column shape, typed nulls, no rows. See int_jobs_structured.
     select
         cast(null as varchar) as content_hash,
-        cast(null as varchar) as job_key,
         cast(null as bigint) as fit_score,
         cast(null as varchar) as scoring_model,
         cast(null as varchar) as prompt_version,
@@ -53,7 +52,6 @@ with prompt as (
 to_score as (
     select
         s.content_hash,
-        s.job_key,
         s.requirement_text
     from {{ ref('int_jobs_structured') }} as s
     -- Only extracted rows are scorable: scoring a null requirement_text would
@@ -81,7 +79,6 @@ to_score as (
 scored as (
     select
         t.content_hash,
-        t.job_key,
         p.prompt_version,
         -- AI.SCORE requires at least one string-LITERAL field: it treats literals
         -- as the instruction and column values as the data being judged. That is
@@ -104,7 +101,6 @@ scored as (
 
 select
     content_hash,
-    job_key,
     -- AI.SCORE returns FLOAT64 (measured: 5.0, not 5). Rounded to the integer
     -- contract; out-of-range values are kept as-is here and nulled in gold, so a
     -- bogus number is visible to a test rather than silently clamped into range.
