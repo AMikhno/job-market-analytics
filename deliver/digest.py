@@ -190,12 +190,16 @@ def _signal_line(row: dict[str, object]) -> str:
     if row.get("company_type"):
         details.append(str(row["company_type"]))
     # Attributed to the description on purpose. The location printed earlier in
-    # the line is the job board's own field, and the two genuinely disagree —
-    # measured, 6% of gold. That disagreement is the signal rather than a fault:
-    # the board field is what says "Remote" while the text says US-only, which is
-    # the case this whole field exists to catch. Labelling it "US only" beside a
+    # the line is the job board's own field, and the two can disagree honestly:
+    # the board says "Remote" while the text restricts the role to the US, which
+    # is the case this field exists to catch. Labelling that "US only" beside a
     # location reading "Remote (Canada)" looks like a bug; naming the source
     # makes it read as the warning it is.
+    #
+    # A posting open to both countries shows one location per job_key but shares
+    # one content_hash, so a US-located row can legitimately carry canada_ok.
+    # That is not a disagreement, and counting it as one is what made an earlier
+    # measurement of this overstate the error rate sevenfold.
     geo = row.get("geo_restriction")
     if geo == "us_only":
         details.append("text says US only")
