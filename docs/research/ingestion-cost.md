@@ -169,9 +169,10 @@ pessimistic reading.
 
 > **The rate is the one unverified input.** Google's pricing page would not yield a
 > region-specific table, so the assumed $0.023/GiB/month for active logical storage is the
-> `us-central1` figure inferred from a worked example in their docs, not the
-> `northamerica-northeast2` rate. The authoritative number is in the project's own billing
-> console. **The conclusion does not depend on it** — that is why the table shows 2× and 3×.
+> `us-central1` figure inferred from a worked example in their docs. That is now the warehouse's
+> own region (ADR-0026), which removes the region mismatch this note originally flagged; the
+> authoritative number is still the project's billing console. **The conclusion does not depend
+> on it** — that is why the table shows 2× and 3×.
 
 **Against that, the two remaining levers:**
 

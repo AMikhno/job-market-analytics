@@ -16,7 +16,11 @@ class Settings(BaseSettings):
 
     gcp_project: str = Field(default="")
     bq_dataset: str = Field(default="jobs")
-    bq_location: str = Field(default="northamerica-northeast2")
+    # us-central1, not a Canadian region: northamerica-northeast2 serves no
+    # foundational model at all, and BigQuery's AI functions can only reach a
+    # model co-located with the dataset (ADR-0026). No residency requirement
+    # applies -- the pipeline reads public job postings.
+    bq_location: str = Field(default="us-central1")
     # Raw landings are append-only and would grow forever; ingestion-time
     # partitions older than this are dropped (keeps storage under the free tier).
     # 180 days, not 400: a job posting older than six months is not a lead, and
