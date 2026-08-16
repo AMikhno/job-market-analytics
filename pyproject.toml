@@ -1,7 +1,7 @@
 [project]
 name = "job-market-analytics"
-version = "0.1.7"
-description = "Job-market ingestion and analytics pipeline (V1: ingestion + dbt transformations)."
+version = "0.2.0"
+description = "Job-market ingestion and analytics pipeline (ingestion, dbt transformations, AI relevance scoring)."
 requires-python = ">=3.14"
 dependencies = [
     "pydantic>=2.7",
