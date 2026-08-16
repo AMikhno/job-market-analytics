@@ -51,6 +51,11 @@ vars:
   # unquoted reference and the provenance column needs the quoted name.
   embedding_model: jobs_silver.text_embedding
   embedding_model_name: "'text-embedding-005'"
+  # False until the connection and remote model exist. With it off,
+  # int_jobs_matched emits its empty stub on every target, so similarity is null
+  # and delivery falls back to the LLM score and match_score — the same degraded
+  # state as before embeddings were written, rather than a failed build.
+  enable_embeddings: false
 
 # Three medallion zones = dbt staging -> intermediate -> marts.
 # Folder defaults below; per-model overrides live in-model:

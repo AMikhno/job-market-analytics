@@ -25,18 +25,34 @@
     )
 }}
 
-{% if target.type == 'duckdb' %}
+{% if target.type == 'duckdb' or not var('enable_embeddings') %}
 
--- Dev stub: no embedding model on DuckDB. Same column shape, typed nulls, no
--- rows, so gold compiles and its null-path tests run unchanged.
+-- Stub: no embedding model on DuckDB, and none in prod until the remote model
+-- exists. Same column shape, typed nulls, no rows, so gold compiles and its
+-- null-path tests run unchanged.
+--
+-- `enable_embeddings` defaults to false so this model is inert on merge. The
+-- remote model is one-time DDL over a CLOUD_RESOURCE connection (see
+-- docs/v2-plan.md), and a model referencing an object that does not exist yet
+-- would fail the whole scheduled build -- taking ingestion and delivery down
+-- with it for a feature that is not being used. Flip the var once the DDL has
+-- run.
+--
+-- Unlike the other two stubs, this one can run on BigQuery -- they are reached
+-- only on the dev target, this one whenever embeddings are off. So it needs
+-- both dialects' type names, and a FROM: BigQuery rejects a WHERE clause on a
+-- query that has none, while `select ... where false` is fine on DuckDB.
+    {%- set t_str = 'string' if target.type == 'bigquery' else 'varchar' %}
+    {%- set t_float = 'float64' if target.type == 'bigquery' else 'double' %}
     select
-        cast(null as varchar) as content_hash,
-        cast(null as double) as similarity,
-        cast(null as varchar) as best_match_unit_id,
-        cast(null as varchar) as best_match_source,
-        cast(null as varchar) as best_match_evidences,
-        cast(null as varchar) as embedding_model,
+        cast(null as {{ t_str }}) as content_hash,
+        cast(null as {{ t_float }}) as similarity,
+        cast(null as {{ t_str }}) as best_match_unit_id,
+        cast(null as {{ t_str }}) as best_match_source,
+        cast(null as {{ t_str }}) as best_match_evidences,
+        cast(null as {{ t_str }}) as embedding_model,
         cast(null as timestamp) as matched_at
+    from (select 1) _no_rows
     where false
 
 {% else %}
