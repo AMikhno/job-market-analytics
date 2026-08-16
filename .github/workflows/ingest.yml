@@ -52,7 +52,7 @@ jobs:
           PIPELINE_TARGET: prod
           GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
           BQ_DATASET: jobs
-          BQ_LOCATION: northamerica-northeast2
+          BQ_LOCATION: us-central1
           HTTP_USER_AGENT: ${{ vars.HTTP_USER_AGENT }}
         run: make ingest
 
@@ -94,7 +94,7 @@ jobs:
           PIPELINE_TARGET: prod
           GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
           BQ_DATASET: jobs
-          BQ_LOCATION: northamerica-northeast2
+          BQ_LOCATION: us-central1
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           DIGEST_TO: ${{ secrets.DIGEST_TO }}

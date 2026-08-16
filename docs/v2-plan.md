@@ -16,26 +16,23 @@ tests, docs/ADR sweep.
 **Out (parked):** embeddings, new ATS adapters (ADR-0013), openjobdata (ADR-0017), and score
 thresholds or delivery filtering — the last two both reserved by ADR-0020.
 
-## Gate: settle the region question before writing model SQL
+## Settled: where inference runs
 
-The chosen model has no regional endpoint — global only, and `northamerica-northeast2` serves no
-foundational Gemini at all (ADR-0025). BigQuery requires an AI connection to sit in its dataset's
-location, so in-SQL inference from that dataset is unproven. Measure it first, on a scratch dataset:
+The region gate is closed (ADR-0026). The warehouse moved to `us-central1` because
+`northamerica-northeast2` served neither a foundational model nor any embedding model, and
+BigQuery enforces co-location between a query and the datasets it reads.
 
-- **A.** `AI.SCORE` from a `northamerica-northeast2` dataset with no connection. If this works,
-  nothing further is needed — no connection is ever provisioned.
-- **B.** Only if A fails: create a `northamerica-northeast2` connection and try connection-based
-  `AI.GENERATE` against the global model endpoint.
-- If both fail, the options are moving the warehouse out of `northamerica-northeast2` (a rebuild)
-  or reopening ADR-0004's in-dbt-SQL decision. Neither is taken unilaterally.
-
-This is why work item 3 evaluates `AI.SCORE` first: it is the branch that needs no connection, and
-therefore the one the region constraint cannot reach. Record the result in ADR-0025.
+**`AI.SCORE` needs no connection.** Its signature makes `connection_id` and `endpoint` optional —
+measured, by calling it — so there is no resource to provision and no service account to grant.
+Prefer it over `AI.GENERATE_INT`, which does need a connection, unless the 1–5 contract or the
+provenance columns cannot be expressed through it.
 
 ## Human preconditions (before the prod run; the build itself needs none of these)
 
-- [ ] Vertex AI API enabled. A connection and its service-account grant are needed **only** if the
-      gate above lands on path B.
+- [ ] Vertex AI API enabled.
+- [ ] Application Default Credentials for local prod runs
+      (`gcloud auth application-default login`) — CI uses Workload Identity Federation and needs
+      none.
 - [ ] `config/profile.yaml` filled from the example (private, gitignored — never committed).
 - [ ] In CI/prod, profile content follows the company-list pattern (ADR-0011): a GitHub
       Actions **variable** `PROFILE_YAML_CONTENT` materialized to `config/profile.yaml`
