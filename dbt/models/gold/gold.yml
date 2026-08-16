@@ -64,6 +64,25 @@ models:
           produced it (ADR-0024). Higher is better; may be negative.
         data_type: bigint
         data_tests: [not_null]
+      - name: fit_score
+        description: >
+          1-5 LLM fit against the resume corpus (ADR-0027), or null when the
+          posting has not been scored — extraction failed, the prompt moved, or
+          the run is on the dev target. Nullable by design: the score orders
+          delivery and never filters it (ADR-0020). Out-of-range values are
+          nulled here rather than clamped, so a broken call cannot present as a
+          confident 5.
+        data_type: bigint
+        data_tests:
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
+              quote: false
+      - name: prompt_version
+        description: Which rendered prompt produced fit_score; null when unscored.
+        data_type: varchar
+      - name: scored_at
+        description: When fit_score was computed; null when unscored.
+        data_type: timestamp
       - name: recency_rank
         description: 1 = most recent by posted_or_updated_at; dense unique ordering for the digest.
         data_type: bigint
@@ -81,7 +100,56 @@ unit_tests:
              posted_or_updated_at: 2026-06-01 00:00:00}
           - {job_key: closed, url: "https://x/3", is_active: false,
              posted_or_updated_at: 2026-07-03 00:00:00}
+      - input: ref('int_jobs_scored')
+        rows: []
     expect:
       rows:
         - {job_key: newer, recency_rank: 1}
         - {job_key: older, recency_rank: 2}
+
+  - name: gold_ships_unscored_postings_with_a_null_score
+    description: >
+      The score orders delivery, it never filters it (ADR-0020). A posting with
+      no scored row — extraction failed, the prompt moved, or the target is dev —
+      must still reach gold, carrying null rather than being dropped or defaulted
+      to a number that would sort it somewhere it did not earn.
+    model: fct_job_postings
+    given:
+      - input: ref('silver_jobs')
+        rows:
+          - {job_key: scored, content_hash: h1, url: "https://x/1", is_active: true}
+          - {job_key: unscored, content_hash: h2, url: "https://x/2", is_active: true}
+      - input: ref('int_jobs_scored')
+        rows:
+          - {content_hash: h1, fit_score: 4, prompt_version: "1"}
+    expect:
+      rows:
+        - {job_key: scored, fit_score: 4, prompt_version: "1"}
+        - {job_key: unscored, fit_score: , prompt_version: }
+
+  - name: gold_nulls_an_out_of_range_score_instead_of_clamping_it
+    description: >
+      A model returning 0 or 7 on a 1-5 rubric is a broken call, not a weak or
+      strong match. Clamping would launder that into a confident number the
+      digest would then display; nulling makes it indistinguishable from
+      unscored, which is what it actually is.
+    model: fct_job_postings
+    given:
+      - input: ref('silver_jobs')
+        rows:
+          - {job_key: too_high, content_hash: h1, url: "https://x/1", is_active: true}
+          - {job_key: too_low, content_hash: h2, url: "https://x/2", is_active: true}
+          - {job_key: edge_low, content_hash: h3, url: "https://x/3", is_active: true}
+          - {job_key: edge_high, content_hash: h4, url: "https://x/4", is_active: true}
+      - input: ref('int_jobs_scored')
+        rows:
+          - {content_hash: h1, fit_score: 7}
+          - {content_hash: h2, fit_score: 0}
+          - {content_hash: h3, fit_score: 1}
+          - {content_hash: h4, fit_score: 5}
+    expect:
+      rows:
+        - {job_key: too_high, fit_score: }
+        - {job_key: too_low, fit_score: }
+        - {job_key: edge_low, fit_score: 1}
+        - {job_key: edge_high, fit_score: 5}

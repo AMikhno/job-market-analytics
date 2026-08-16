@@ -63,6 +63,15 @@ _DIGEST_BQ_SCHEMA = [
     ("postings_sent", "INT64"),
 ]
 
+# The rendered scoring prompt. Append-only and versioned rather than overwritten:
+# a fit_score is only comparable to another produced by the same wording, so the
+# prompt that produced a score has to remain readable after the wording moves on.
+_PROMPT_BQ_SCHEMA = [
+    ("prompt_version", "STRING"),
+    ("rendered_prompt", "STRING"),
+    ("rendered_at", "TIMESTAMP"),
+]
+
 
 def ensure_raw_tables(settings: Settings, sources: Sequence[str]) -> None:
     """Idempotently provision the landing objects the pipeline writes to.
@@ -261,6 +270,59 @@ def ensure_digest_table(settings: Settings) -> None:
         con.execute(f"CREATE TABLE IF NOT EXISTS ops_digest_runs ({cols})")
     finally:
         con.close()
+
+
+def scoring_prompt_table(settings: Settings) -> str:
+    """Fully-qualified name of the scoring-prompt table on the active target."""
+    if settings.is_prod:
+        return f"{settings.gcp_project}.{settings.bq_dataset}_ops.scoring_prompt"
+    return "scoring_prompt"
+
+
+def ensure_scoring_prompt_table(settings: Settings) -> None:
+    """Idempotently provision the scoring-prompt table.
+
+    dbt reads it as a source, and a missing source fails the whole DAG rather
+    than the one model that needs it -- so it is provisioned even on a dev target
+    that will never call a model.
+    """
+    if settings.is_prod:
+        from google.cloud import bigquery
+
+        client = bigquery.Client(project=settings.gcp_project, location=settings.bq_location)
+        table = bigquery.Table(
+            f"{settings.gcp_project}.{settings.bq_dataset}_ops.scoring_prompt",
+            schema=[bigquery.SchemaField(name, kind) for name, kind in _PROMPT_BQ_SCHEMA],
+        )
+        client.create_table(table, exists_ok=True)
+        return
+    import duckdb
+
+    Path(settings.duckdb_path).parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(settings.duckdb_path)
+    try:
+        cols = ", ".join(f"{name} VARCHAR" for name, _ in _PROMPT_BQ_SCHEMA)
+        con.execute(f"CREATE TABLE IF NOT EXISTS scoring_prompt ({cols})")
+    finally:
+        con.close()
+
+
+def land_scoring_prompt(*, prompt_version: str, rendered_prompt: str, settings: Settings) -> None:
+    """Append one rendered prompt. Never updates in place -- see the schema note."""
+    _write(
+        [
+            {
+                "prompt_version": prompt_version,
+                "rendered_prompt": rendered_prompt,
+                "rendered_at": datetime.now(UTC).isoformat(),
+            }
+        ],
+        duckdb_table="scoring_prompt",
+        bq_dataset=f"{settings.bq_dataset}_ops",
+        bq_table="scoring_prompt",
+        bq_schema=_PROMPT_BQ_SCHEMA,
+        settings=settings,
+    )
 
 
 def latest_digest_watermark(settings: Settings) -> str | None:

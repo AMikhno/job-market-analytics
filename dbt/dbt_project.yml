@@ -23,6 +23,13 @@ vars:
   match_title_bonus: 2
   match_deal_breaker_penalty: 1
 
+  # The model V2 extraction and scoring call. Pinned, not left to the managed
+  # default: probed 2026-08-16, an unpinned AI.GENERATE answered as
+  # gemini-2.5-flash, a family retiring 2026-10-20 (ADR-0025). An unpinned call
+  # would therefore change model mid-life without anything recording that it had.
+  # Changing this invalidates existing scores -- bump PROMPT_VERSION with it.
+  scoring_endpoint: gemini-3.1-flash-lite
+
 # Three medallion zones = dbt staging -> intermediate -> marts.
 # Folder defaults below; per-model overrides live in-model:
 #   - int_jobs__unioned        -> view  (free; ephemeral would block unit tests)

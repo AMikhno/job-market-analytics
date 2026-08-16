@@ -75,6 +75,25 @@ jobs:
           make dbt-deps
           cd dbt && uv run dbt compile --target prod
 
+      # The resume corpus V2 scores against. A *secret*, not a variable like the
+      # company list: variables are unencrypted and this repo is public, while
+      # this file carries employer history, work authorization and education
+      # (ADR-0027). Absent, the loader falls back to the committed example and
+      # scores every posting against placeholder text -- so the step is skipped
+      # rather than run with a stand-in, leaving fit_score null and delivery on
+      # its V1 ordering, which is the honest degraded state.
+      - name: Materialize the private resume and land the scoring prompt
+        if: ${{ secrets.RESUME_YAML_CONTENT != '' }}
+        env:
+          PIPELINE_TARGET: prod
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+          BQ_DATASET: jobs
+          BQ_LOCATION: us-central1
+          RESUME_YAML_CONTENT: ${{ secrets.RESUME_YAML_CONTENT }}
+        run: |
+          printf '%s' "$RESUME_YAML_CONTENT" > config/resume.yaml
+          make scoring-prompt
+
       - name: Transform (bronze -> silver -> gold) on BigQuery
         env:
           GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
