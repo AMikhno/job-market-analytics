@@ -336,7 +336,7 @@ def test_digest_line_states_unscored_rather_than_omitting_it(tmp_path: Path) -> 
     rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
     body = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
 
-    assert "fit 4/5" in body
+    assert "LLM 4/5" in body
     assert "unscored" in body
 
 
@@ -365,7 +365,57 @@ def test_a_canada_ok_posting_gets_no_location_label(tmp_path: Path) -> None:
 
     assert "canada" not in body.lower()
     assert "B2B SaaS" in body
-    assert "no reports" in body
+    # The good case prints nothing: showing "no reports" on every line makes it
+    # furniture, the same reason canada_ok is silent.
+    assert "reports" not in body
+    assert "manages people" not in body
+
+
+def test_the_two_ai_scores_are_labelled_by_method(tmp_path: Path) -> None:
+    """They disagree, and until human labels say which is right, seeing them
+    disagree is the point — so they are never merged into one number. Similarity
+    prints as a percentage so it cannot read as a second 1-5 rating."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [
+            {
+                "title": "Both",
+                "match_score": 11,
+                "fit_score": 4,
+                "similarity": 0.8231,
+                "desired_tech_hits": 9,
+                "title_match": True,
+                "deal_breaker_terms": "Spark",
+                "company_type": "B2B SaaS",
+                "geo_restriction": "us_only",
+                "manages_people": "yes",
+                "first_seen_at": now,
+            }
+        ],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+    body = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
+
+    assert "match 11 — LLM 4/5, vectors 82% — tech hits: 9" in body
+    assert "title match" in body
+    assert "mentions Spark" in body
+    assert "B2B SaaS" in body
+    assert "US only" in body
+    assert "manages people" in body
+
+
+def test_a_posting_with_neither_ai_score_says_unscored(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(settings, [{"title": "Plain", "match_score": 3, "first_seen_at": now}])
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+    body = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
+
+    assert "match 3 — unscored — tech hits: 0" in body
 
 
 def test_a_us_only_posting_is_called_out(tmp_path: Path) -> None:
@@ -385,7 +435,7 @@ def test_a_us_only_posting_is_called_out(tmp_path: Path) -> None:
     rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
     body = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
 
-    assert "US ONLY" in body
+    assert "US only" in body
     assert "location unclear" in body
 
 
@@ -616,8 +666,8 @@ def test_digest_line_shows_the_score_it_is_sorted_by(tmp_path, monkeypatch, stub
     body = stub_smtp.sent[0].get_body(("plain",)).get_content()
     # a title match no longer jumps the queue ahead of a much stronger tech match
     assert body.index("Tech only") < body.index("Title only")
-    assert "match 8 — tech hits: 8" in body
-    assert "match 2 — tech hits: 0, title match" in body
+    assert "match 8 — unscored — tech hits: 8" in body
+    assert "match 2 — unscored — tech hits: 0, title match" in body
     # the scores read down the page in descending order
     scores = [
         int(line.split("match ")[1].split(" ")[0]) for line in body.splitlines() if "match " in line
