@@ -189,11 +189,18 @@ def _signal_line(row: dict[str, object]) -> str:
         details.append(f"mentions {row['deal_breaker_terms']}")
     if row.get("company_type"):
         details.append(str(row["company_type"]))
+    # Attributed to the description on purpose. The location printed earlier in
+    # the line is the job board's own field, and the two genuinely disagree —
+    # measured, 6% of gold. That disagreement is the signal rather than a fault:
+    # the board field is what says "Remote" while the text says US-only, which is
+    # the case this whole field exists to catch. Labelling it "US only" beside a
+    # location reading "Remote (Canada)" looks like a bug; naming the source
+    # makes it read as the warning it is.
     geo = row.get("geo_restriction")
     if geo == "us_only":
-        details.append("US only")
+        details.append("text says US only")
     elif geo == "unclear":
-        details.append("location unclear")
+        details.append("eligibility unstated")
     if row.get("manages_people") == "yes":
         details.append("manages people")
     # What the embedding actually matched — the thing a 1-5 cannot tell you.
