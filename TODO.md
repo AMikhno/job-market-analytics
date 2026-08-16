@@ -36,13 +36,25 @@ human labels, and cannot double as V2's evaluation set — see the provenance no
 
 - [x] Resume corpus: `shared/resume.py`, `config/resume.example.yaml`, prompt rendering with
       `PROMPT_VERSION` provenance, and the gitignore guard for the real file
-- [ ] `int_jobs_structured` — typed extraction, `content_hash` incremental guard for cost control,
+- [x] `int_jobs_structured` — typed extraction, `content_hash` incremental guard for cost control,
       delimiter defense against untrusted posting text, dev-target stub
-- [ ] `int_jobs_scored` — 1–5 fit score, resume prompt as a static cacheable prefix,
+- [x] `int_jobs_scored` — 1–5 fit score, resume prompt as a static cacheable prefix,
       model/prompt-version/scored-at provenance, `accepted_values` test
-- [ ] Gold and digest become score-aware: the score orders delivery and never filters it
+- [x] Gold and digest become score-aware: the score orders delivery and never filters it
       (ADR-0020); unscored postings still ship
-- [ ] Verify the first-backfill cost against the estimate
+- [x] `make evaluate` — precision@k of the LLM ranking against the keyword one
+
+**What is left is not code.** The scorer runs; nothing yet shows it is *better* than the seeds.
+
+- [ ] **A master resume corpus.** The current `config/resume.yaml` is one tailored version, so it
+      is lossy by construction — a posting missed because the corpus omitted the relevant work is
+      indistinguishable from one correctly scored low. Tagged evidence currently runs 8 / 4 / 3
+      across analytics-engineer / gtm-engineer / forward-deployed-engineer, and that spread
+      measures the tailoring, not the experience
+- [ ] **A few hundred human labels** in `config/labels.csv`, then `make evaluate`. Until then V2 is
+      unfalsifiable: it produces scores, and nothing distinguishes a good scorer from a confident
+      one. The LLM pass in `docs/research/relevance-signals.md` cannot substitute
+- [ ] Re-measure the relevance findings once both exist
 
 ## List repair
 

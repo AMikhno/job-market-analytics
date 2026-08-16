@@ -153,9 +153,39 @@ in a GitHub Actions variable and never in the tree.
 
 ## V2
 
-Relevance scoring, inside dbt, prod-only: typed extraction then a fit score, both as SQL against
-warehouse-native model functions, reading from silver so they only see postings that survived
-filtering. The score **orders** delivery and never filters it (ADR-0020). Untrusted posting text is
-delimited and the output type-constrained, so a posting cannot instruct the scorer. The
-implementation contract is `docs/v2-plan.md`; the measured evidence that motivates it is in
-`docs/research/`.
+Two prod-only models inside silver, both SQL against warehouse-native AI functions (ADR-0004),
+reading from `silver_jobs` so they only ever see postings that survived filtering.
+
+| Model | Does |
+|---|---|
+| `int_jobs_structured` | Typed extraction: seniority, minimum years, required techs, eligibility, and `requirement_text` |
+| `int_jobs_scored` | 1–5 `fit_score` of `requirement_text` against the resume corpus |
+
+**Scoring reads the requirements, not the posting.** Extraction drops the responsibilities blurb
+and the boilerplate, which measured 570 characters out of 6,854 — about 8% of the text. Every
+corporate posting mentions dashboards and stakeholders; only a data role *requires* dbt
+(`docs/research/relevance-signals.md`). The trim is also what makes scoring cheap.
+
+**What it is matched against is a resume corpus, not a skills list** (ADR-0027): work-history
+bullets, each one an independently embeddable unit carrying who it was built for. A skills list
+would make the model do fuzzy keyword matching, which the seeds already do for free.
+
+**The score orders delivery and never filters it** (ADR-0020). Gold joins it `LEFT` and nulls
+anything outside 1–5, so an unscored or mis-scored posting still ships and simply sorts lower;
+while nothing is scored, delivery is byte-for-byte the V1 ordering.
+
+**Cost is controlled by the incremental guard, not by sampling.** Both models key on
+`content_hash`, so the ~24 re-landings each posting accumulates are extracted once. Removing that
+guard re-bills the whole backfill.
+
+**The model endpoint is pinned** (ADR-0025). Left managed, an `AI.GENERATE` call answered as a
+model from a family retiring 2026-10-20 — so an unpinned call would have changed model mid-life
+with nothing recording that it had.
+
+Untrusted posting text is delimited and framed as data rather than instructions at both stages, and
+the output is type-constrained, so a posting cannot instruct the scorer.
+
+**Whether any of this beats the keyword score is an open question**, and deliberately so: `make
+evaluate` compares the two rankings by precision@k over human labels. Labels from an LLM cannot
+settle it — grading a scorer against its predecessor's judgements rewards reproducing that
+predecessor's mistakes.
