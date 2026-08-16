@@ -135,11 +135,48 @@ models:
         # job_keys. The grain was stated in this description and asserted
         # nowhere, so only gold's unique test caught it, one layer too late.
         data_tests: [not_null, unique]
-      - name: requirement_text
+      - name: relevant_text
         description: >
-          Requirements and industry context only, with the responsibilities
-          blurb dropped — scoring this rather than the whole posting is the
-          central finding in docs/research/relevance-signals.md.
+          Requirements, nice-to-haves, responsibilities, and what the company
+          does — with culture, history, hiring process, benefits and EEO
+          boilerplate dropped. Scoring this rather than the whole posting is the
+          central finding in docs/research/relevance-signals.md; keeping
+          responsibilities and nice-to-haves is the correction to it, because a
+          resume is written as accomplishments and nice-to-haves are not
+          optional in this market.
+      - name: company_type
+        description: >
+          Short employer label (B2B SaaS, bank, government, staffing agency…).
+          Earns its place because three data-platform *vendors* contributed
+          1,639 postings and zero relevant ones, while companies that run on
+          data converted well.
+      - name: geo_restriction
+        description: >
+          Where the work may be done from — never visa sponsorship. The one
+          extracted field the rule-based gate provably cannot replace: silver
+          keeps any posting whose location is bare "Remote", so a US-only role
+          reaches gold with a relevant title and the restriction stated only in
+          the description.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [us_only, canada_ok, unclear]
+              config:
+                severity: warn
+      - name: manages_people
+        description: >
+          Whether the described scope includes direct reports or hiring, judged
+          from the work and never the title. Three-state because "unclear" is
+          common and a boolean would force a guess. Years of experience does not
+          substitute: years is a depth bar, this is the shape of the seat.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [yes, no, unclear]
+              config:
+                severity: warn
+      - name: nice_to_have_techs
+        description: Comma-joined; kept because in this market they are rarely optional.
       - name: extract_ok
         description: False when the generation failed; such rows are retried, never scored.
       - name: extract_model

@@ -84,6 +84,18 @@ models:
       - name: scored_at
         description: When fit_score was computed; null when unscored.
         data_type: timestamp
+      - name: company_type
+        description: Short employer label; null when not extracted.
+        data_type: varchar
+      - name: geo_restriction
+        description: >
+          us_only / canada_ok / unclear; null when not extracted. Annotates and
+          orders, never filters (ADR-0020) — shown in the digest only when it is
+          a problem, so a clean line means nothing is wrong.
+        data_type: varchar
+      - name: manages_people
+        description: yes / no / unclear; null when not extracted.
+        data_type: varchar
       - name: recency_rank
         description: 1 = most recent by posted_or_updated_at; dense unique ordering for the digest.
         data_type: bigint
@@ -102,6 +114,8 @@ unit_tests:
           - {job_key: closed, url: "https://x/3", is_active: false,
              posted_or_updated_at: 2026-07-03 00:00:00}
       - input: ref('int_jobs_scored')
+        rows: []
+      - input: ref('int_jobs_structured')
         rows: []
     expect:
       rows:
@@ -123,6 +137,9 @@ unit_tests:
       - input: ref('int_jobs_scored')
         rows:
           - {content_hash: h1, fit_score: 4, prompt_version: "1"}
+      - input: ref('int_jobs_structured')
+        rows:
+          - {content_hash: h1, company_type: B2B SaaS, geo_restriction: canada_ok, manages_people: no}
     expect:
       rows:
         - {job_key: scored, fit_score: 4, prompt_version: "1"}
@@ -148,6 +165,8 @@ unit_tests:
           - {content_hash: h2, fit_score: 0}
           - {content_hash: h3, fit_score: 1}
           - {content_hash: h4, fit_score: 5}
+      - input: ref('int_jobs_structured')
+        rows: []
     expect:
       rows:
         - {job_key: too_high, fit_score: }

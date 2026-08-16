@@ -45,7 +45,7 @@ def fetch_new_postings(settings: Settings, watermark: str) -> list[dict[str, obj
     sql = f"""
         select title, company, location, url, match_score, desired_tech_hits,
                title_match, deal_breaker_hits, deal_breaker_terms, first_seen_at,
-               fit_score
+               fit_score, company_type, geo_restriction, manages_people
         from {storage.gold_table(settings)}
         where first_seen_at > cast(? as timestamp)
         order by fit_score desc nulls last,
@@ -149,6 +149,35 @@ def _skipped(summary: RunSummary) -> str:
     )
 
 
+def _annotations(row: dict[str, object]) -> list[str]:
+    """Extracted labels for one digest line — the exceptions only.
+
+    A geographic restriction is shown when it is a problem (US-only, or the
+    posting never said) and omitted when the role is open to Canada. Printing
+    "canada ok" on every good line would make the label furniture: the eye stops
+    reading it, which is exactly when the one that matters slips past. A clean
+    line means nothing is wrong.
+
+    Company type and management scope always print when known. Neither is good
+    or bad on its own — they are the two facts that most often decide whether a
+    posting is worth opening, and they are short.
+    """
+    out: list[str] = []
+    if row.get("company_type"):
+        out.append(str(row["company_type"]))
+    geo = row.get("geo_restriction")
+    if geo == "us_only":
+        out.append("US ONLY")
+    elif geo == "unclear":
+        out.append("location unclear")
+    manages = row.get("manages_people")
+    if manages == "yes":
+        out.append("manages a team")
+    elif manages == "no":
+        out.append("no reports")
+    return out
+
+
 def build_email(
     rows: list[dict[str, object]], summary: RunSummary | None, settings: Settings
 ) -> EmailMessage:
@@ -173,7 +202,9 @@ def build_email(
         # "unscored" is stated rather than omitted: a missing fit reads as a low
         # one otherwise, and the two mean opposite things about a posting.
         fit = f"fit {r['fit_score']}/5" if r.get("fit_score") is not None else "unscored"
-        signals = f"{fit} — match {r['match_score']} — tech hits: {r['desired_tech_hits']}"
+        parts = [fit, f"match {r['match_score']}", f"tech hits: {r['desired_tech_hits']}"]
+        parts += _annotations(r)
+        signals = " — ".join(parts)
         if r["title_match"]:
             signals += ", title match"
         # Named, not just counted: "Kafka" as a nice-to-have reads very
