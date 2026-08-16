@@ -151,9 +151,25 @@ models:
           nulls an out-of-range value to keep delivery honest, which would also
           hide a systematically broken model if nothing checked upstream.
         data_tests:
+          # WARN, not error, and the two levels here say different things.
+          # Measured on the first backfill: 1 generation in 1,742 came back
+          # outside the rubric's range. Gold nulls such a row, so delivery is
+          # already safe — failing the twice-daily prod run over one bad
+          # generation would be an outage caused by a rounding artifact. The
+          # same test on fct_job_postings stays an ERROR: an out-of-range value
+          # reaching gold means the nulling broke, which is our bug, not the
+          # model having a bad day.
+          #
+          # Nested under `arguments` as of dbt 1.10 — top-level args still work
+          # but emit MissingArgumentsPropertyInGenericTestDeprecation and are
+          # slated to stop working, the same migration the source freshness
+          # config already made.
           - accepted_values:
-              values: [1, 2, 3, 4, 5]
-              quote: false
+              arguments:
+                values: [1, 2, 3, 4, 5]
+                quote: false
+              config:
+                severity: warn
       - name: prompt_version
         description: >
           Which rendered prompt produced the score. A bump re-scores, because a

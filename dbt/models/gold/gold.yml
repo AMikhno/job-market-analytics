@@ -75,8 +75,9 @@ models:
         data_type: bigint
         data_tests:
           - accepted_values:
-              values: [1, 2, 3, 4, 5]
-              quote: false
+              arguments:
+                values: [1, 2, 3, 4, 5]
+                quote: false
       - name: prompt_version
         description: Which rendered prompt produced fit_score; null when unscored.
         data_type: varchar

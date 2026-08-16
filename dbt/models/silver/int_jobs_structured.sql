@@ -50,10 +50,16 @@ with to_extract as (
         clean_text
     from {{ ref('silver_jobs') }}
     {% if is_incremental() %}
-        -- Re-extract only new text, plus rows whose previous attempt failed:
-        -- a failed generation is retried, never silently dropped or scored.
+        -- Re-extract only new text, plus rows whose previous attempt failed (a
+        -- failed generation is retried, never silently dropped or scored) and
+        -- rows extracted by a different model. Comparing the recorded model is
+        -- what makes changing scoring_endpoint reprocess rather than leave two
+        -- models' output mixed in one column -- the pin enforces itself instead
+        -- of depending on someone reading a comment.
         where content_hash not in (
-            select content_hash from {{ this }} where extract_ok
+            select content_hash
+            from {{ this }}
+            where extract_ok and extract_model = '{{ var("scoring_endpoint") }}'
         )
     {% endif %}
 ),
