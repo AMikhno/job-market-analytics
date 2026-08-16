@@ -22,10 +22,37 @@ function — the shape that measurably converts (`docs/research/relevance-signal
 scrapers (ADR-0013 — they also decay silently, which is the failure mode this repo is built
 against).
 
-## V2 — scoped, ready to build
+## V2 — built, unvalidated
 
-Scope is fixed by ADR-0020; the implementation contract is `docs/v2-plan.md`. Execute its work
-items top to bottom, one commit each.
+The code is done and running in prod. **Nothing yet shows it beats the keyword score**, and that
+is the only question left worth answering: a scorer that is confidently wrong looks exactly like
+one that is right until human labels say otherwise.
+
+Two rankings run side by side on purpose — `fit_score` (LLM, 1–5) and `similarity` (embeddings) —
+because choosing between them without measuring is how a project ends up carrying both forever.
+`make evaluate` compares them by precision@k; the loser gets deleted.
+
+### Next, in order
+
+1. **Master resume corpus** → `config/resume.yaml` (gitignored). Template and the reasoning behind
+   its shape are in `config/resume.example.yaml`. The current file is one tailored version, so it
+   is lossy by construction: a posting missed because the corpus omitted the relevant work is
+   indistinguishable from one correctly scored low. Tagged evidence runs 8 / 4 / 3 across
+   analytics-engineer / gtm-engineer / forward-deployed-engineer, which measures the tailoring
+   rather than the experience.
+2. **Human labels** → `make labels-template` writes a worksheet from live gold; fill the
+   `relevant` column with yes/no, blank to skip; then `make evaluate`. A few hundred is plenty.
+   The LLM pass in `docs/research/relevance-signals.md` cannot substitute — grading an LLM scorer
+   against LLM labels rewards reproducing its predecessor's mistakes.
+3. **Turn embeddings on**: create the CLOUD_RESOURCE connection and the remote model
+   (`docs/v2-plan.md`), then set `enable_embeddings: true`. Until then `int_jobs_matched` emits an
+   empty stub, so `similarity` is null and delivery falls back to the LLM score and `match_score`.
+4. **Full refresh once the corpus lands** — `dbt build --full-refresh --select int_jobs_structured+`.
+   Also what the geo_restriction fix needs to take effect: the incremental guard compares text,
+   prompt version and model, none of which a changed *extraction prompt* moves.
+5. **Decide and delete.** Keep whichever ranking the labels favour; remove the other, its column,
+   and its cost. Then re-measure `docs/research/relevance-signals.md` against the real corpus —
+   its numbers predate both the corpus and any human label.
 
 **Read `docs/research/relevance-signals.md` before writing the prompt.** The LLM pass it records
 produced four instructions the current signals cannot express — most importantly that scoring the
@@ -43,18 +70,8 @@ human labels, and cannot double as V2's evaluation set — see the provenance no
 - [x] Gold and digest become score-aware: the score orders delivery and never filters it
       (ADR-0020); unscored postings still ship
 - [x] `make evaluate` — precision@k of the LLM ranking against the keyword one
-
-**What is left is not code.** The scorer runs; nothing yet shows it is *better* than the seeds.
-
-- [ ] **A master resume corpus.** The current `config/resume.yaml` is one tailored version, so it
-      is lossy by construction — a posting missed because the corpus omitted the relevant work is
-      indistinguishable from one correctly scored low. Tagged evidence currently runs 8 / 4 / 3
-      across analytics-engineer / gtm-engineer / forward-deployed-engineer, and that spread
-      measures the tailoring, not the experience
-- [ ] **A few hundred human labels** in `config/labels.csv`, then `make evaluate`. Until then V2 is
-      unfalsifiable: it produces scores, and nothing distinguishes a good scorer from a confident
-      one. The LLM pass in `docs/research/relevance-signals.md` cannot substitute
-- [ ] Re-measure the relevance findings once both exist
+- [x] `int_jobs_matched` — embedding similarity against the resume corpus, behind
+      `enable_embeddings` until its remote model exists
 
 ## List repair
 
@@ -96,3 +113,8 @@ Agents do not run `gh`. Step-by-step versions live in the private runbook.
       Until set, the step logs "disabled" and the switch is not armed
 - [ ] Re-push `COMPANIES_CSV_CONTENT` from `config/companies.active.csv` after any branch that
       changes what the list may contain — deployed code must understand the list before CI gets it
+- [ ] Add `RESUME_YAML_CONTENT` as an encrypted **secret** (not a variable — the repo is public and
+      the corpus is real PII, ADR-0027). Without it the scheduled run skips landing the resume and
+      ships unscored postings on the V1 ordering, which is the intended degraded state, not a fault
+- [ ] Create the embeddings infrastructure, once: a `us-central1` CLOUD_RESOURCE connection, its
+      service account granted Vertex access, and the remote model over `text-embedding-005`
