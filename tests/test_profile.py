@@ -89,10 +89,10 @@ def test_render_preserves_declared_order() -> None:
     assert rendered.index("- dbt") < rendered.index("- SQL") < rendered.index("- Airflow")
 
 
-def test_render_carries_the_four_measured_rules() -> None:
+def test_render_carries_the_four_rules() -> None:
     """The rubric encodes docs/research/relevance-signals.md. Losing a rule
-    silently reverts V2 to the keyword matcher that document disproved, so the
-    prompt is asserted rather than assumed."""
+    silently reverts V2 to the keyword matcher that document argued against, so
+    the prompt is asserted rather than assumed."""
     rendered = render_prompt(Profile.model_validate(VALID))
     assert "REQUIREMENTS" in rendered
     assert "eligibility" in rendered

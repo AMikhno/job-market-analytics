@@ -27,11 +27,12 @@ against).
 Scope is fixed by ADR-0020; the implementation contract is `docs/v2-plan.md`. Execute its work
 items top to bottom, one commit each.
 
-**Read `docs/research/relevance-signals.md` before writing the prompt.** The manual pass it
-records produced four instructions the current signals cannot express — most importantly that
-scoring the *requirements* section beats scoring the whole posting by roughly 3/13 against 1/21,
-because every corporate job mentions dashboards and only a data job requires dbt. Without those,
-V2 rebuilds the keyword matcher that exercise disproved.
+**Read `docs/research/relevance-signals.md` before writing the prompt.** The LLM pass it records
+produced four instructions the current signals cannot express — most importantly that scoring the
+*requirements* section beats scoring the whole posting by roughly 3/13 against 1/21, because every
+corporate job mentions dashboards and only a data job requires dbt. Without those, V2 rebuilds the
+keyword matcher that exercise argued against. Note the ratios are that pass's own selections, not
+human labels, and cannot double as V2's evaluation set — see the provenance note in that file.
 
 - [ ] Profile config: `shared/profile.py`, `config/profile.example.yaml`, prompt rendering with
       `PROMPT_VERSION` provenance, and the gitignore guard for the real file

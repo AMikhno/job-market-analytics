@@ -31,10 +31,12 @@ EXAMPLE_PROFILE: Final = ROOT / "config" / "profile.example.yaml"
 # that forgets it silently mixes two rubrics in one column (docs/v2-plan.md).
 PROMPT_VERSION: Final = "1"
 
-# Each instruction is a measurement from the manual pass recorded in
-# docs/research/relevance-signals.md, not a preference. Drop one and V2 rebuilds
-# the keyword matcher that exercise disproved:
-#   1. requirements-only scoring measured 3/13 against 1/21 for whole-posting;
+# Each instruction comes from the LLM pass recorded in
+# docs/research/relevance-signals.md -- an argued hypothesis, not a preference and
+# not a human-verified measurement (that file's provenance note explains why the
+# distinction matters). Drop one and V2 rebuilds the keyword matcher that pass
+# argued against:
+#   1. requirements-only scoring selected 3/13 against 1/21 for whole-posting;
 #   2. the location gate keeps unqualified "Remote", so eligibility has to be
 #      reported rather than filtered on;
 #   3. the top-ranked posting in the set was titled Manager and described purely
@@ -47,7 +49,7 @@ You are scoring how well one job posting fits one candidate.
 Score 1 to 5, where 5 means the posting's requirements are what this candidate
 already does daily, and 1 means the work is unrelated to their field.
 
-Follow these four rules; each corrects a specific measured failure mode.
+Follow these four rules; each corrects a specific observed failure mode.
 
 1. Judge the REQUIREMENTS, not the whole posting. Every corporate posting
    mentions dashboards, reporting and stakeholders somewhere; only a data role
