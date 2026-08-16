@@ -18,6 +18,10 @@
     )
 }}
 
+{%- set output_schema -%}
+    seniority STRING, years_experience_min INT64, required_techs ARRAY<STRING>, location_eligibility STRING, requirement_text STRING
+{%- endset -%}
+
 {% if target.type == 'duckdb' %}
 
 -- Dev stub: no AI on DuckDB, so emit the prod column shape with typed nulls and
@@ -73,9 +77,10 @@ generated as (
                 || coalesce(clean_text, '') || '</posting>'
             ),
             endpoint => '{{ var("scoring_endpoint") }}',
-            output_schema => 'seniority STRING, years_experience_min INT64, '
-                || 'required_techs ARRAY<STRING>, location_eligibility STRING, '
-                || 'requirement_text STRING'
+            -- Assembled in Jinja, not with `||`: BigQuery requires output_schema
+            -- to be a literal, and a concatenation expression -- however
+            -- constant it looks -- is rejected at parse time.
+            output_schema => '{{ output_schema }}'
         ) as g
     from to_extract
 )

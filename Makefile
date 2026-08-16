@@ -1,4 +1,4 @@
-.PHONY: install ingest validate-companies discover update-company-list companies-variable deliver dbt-deps ensure-raw scoring-prompt dbt-dev dbt-prod dbt-test dbt-docs freshness test lint sql-lint format check
+.PHONY: install ingest validate-companies discover update-company-list companies-variable deliver dbt-deps ensure-raw scoring-prompt evaluate dbt-dev dbt-prod dbt-test dbt-docs freshness test lint sql-lint format check
 
 install:          ## Set up the uv venv, dbt packages, and pre-commit hooks
 	uv sync --extra dev
@@ -49,6 +49,9 @@ ensure-raw:       ## Create empty raw tables so dbt can build without an ingest 
 scoring-prompt:   ## Render the private resume into the prompt V2 scoring reads
 	uv run python -m ingest.land_prompt
 
+evaluate:         ## Does fit_score rank better than match_score? Needs config/labels.csv
+	uv run python -m evaluation.report
+
 dbt-dev: dbt-deps  ## Build the dbt DAG against local DuckDB
 	cd dbt && uv run dbt build --target dev
 
@@ -70,7 +73,7 @@ test:             ## Run the Python test suite with coverage gate
 lint: sql-lint docs-check ## ruff (check + format) + mypy + sqlfluff + doc references
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run mypy shared ingest deliver scripts
+	uv run mypy shared ingest deliver evaluation scripts
 
 docs-check:       ## Fail on docs pointing at files/targets/models that don't exist
 	uv run python scripts/check_docs.py
