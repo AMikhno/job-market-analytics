@@ -13,6 +13,10 @@ NOTES.local.md
 config/resume.yaml
 config/resume.*.yaml
 !config/resume.example.yaml
+# Relevance labels: a job_key is (source, company, external_id), so this is a
+# list of company identifiers plus a judgement about each — both halves of what
+# the company list is private to protect.
+config/labels.csv
 # Extra board refs for the discovery probe — real company identifiers.
 config/probe_extra_refs.json
 # Terms the pre-commit hook blocks from being committed. Holding them in the

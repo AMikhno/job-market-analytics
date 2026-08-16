@@ -155,7 +155,7 @@ docs drift, and it is how a superseded claim survived four days in `docs/researc
 
 ## Commands
 
-`make install · ingest · validate-companies · discover · update-company-list · companies-variable · scoring-prompt · deliver · dbt-dev · dbt-prod · dbt-test · freshness · test · lint · format · check · whois`
+`make install · ingest · validate-companies · discover · update-company-list · companies-variable · scoring-prompt · evaluate · deliver · dbt-dev · dbt-prod · dbt-test · freshness · test · lint · format · check · whois`
 
 ## Pointers
 
