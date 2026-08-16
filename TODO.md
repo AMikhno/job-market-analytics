@@ -106,7 +106,9 @@ detail is in the private list's `notes` column.
 
 ## Human-owned
 
-Agents do not run `gh`. Step-by-step versions live in the private runbook.
+Agents do not run `gh`, and are blocked from creating cloud resources or deleting datasets — so
+anything below needs a person even when the code around it is finished. Step-by-step versions live
+in the private runbook.
 
 - [ ] Arm the dead-man's switch: create the healthchecks.io check and add its ping URL as the
       `HEALTHCHECK_URL` secret (period 1 day, grace ≥ 6h, for a twice-daily cron plus DST drift).
@@ -116,5 +118,31 @@ Agents do not run `gh`. Step-by-step versions live in the private runbook.
 - [ ] Add `RESUME_YAML_CONTENT` as an encrypted **secret** (not a variable — the repo is public and
       the corpus is real PII, ADR-0027). Without it the scheduled run skips landing the resume and
       ships unscored postings on the V1 ordering, which is the intended degraded state, not a fault
-- [ ] Create the embeddings infrastructure, once: a `us-central1` CLOUD_RESOURCE connection, its
-      service account granted Vertex access, and the remote model over `text-embedding-005`
+- [ ] Tag the release once this is on `main`. Tagged after the merge, not before, so the tag names
+      a commit that is actually on the default branch:
+      `git tag -a v0.2.0 -m "V2: AI relevance scoring" && git push origin v0.2.0`
+- [ ] **Embeddings infrastructure — three steps, once.** Everything else is built and gated behind
+      `enable_embeddings`, which stays `false` until these exist; the model emits an empty stub
+      meanwhile, so nothing fails.
+
+      ```bash
+      # 1. the connection (an agent is blocked from creating cloud resources)
+      bq mk --connection --location=us-central1 \
+        --project_id=job-search-pipeline-prod --connection_type=CLOUD_RESOURCE vertex
+
+      # 2. grant its auto-created service account access to Vertex
+      SA=$(bq show --connection --format=json \
+        job-search-pipeline-prod.us-central1.vertex \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)["cloudResource"]["serviceAccountId"])')
+      gcloud projects add-iam-policy-binding job-search-pipeline-prod \
+        --member="serviceAccount:$SA" --role="roles/aiplatform.user"
+
+      # 3. the remote model the SQL references (dbt cannot create this itself)
+      bq query --use_legacy_sql=false --location=us-central1 \
+        "CREATE OR REPLACE MODEL \`jobs_silver.text_embedding\`
+         REMOTE WITH CONNECTION \`us-central1.vertex\`
+         OPTIONS (ENDPOINT = 'text-embedding-005')"
+      ```
+
+      Then set `enable_embeddings: true` in `dbt/dbt_project.yml`. Grant propagation can take a
+      minute or two, so a first run immediately after step 2 may fail on permissions.
