@@ -125,7 +125,16 @@ models:
       being silently dropped or scored.
     columns:
       - name: content_hash
-        description: Extraction key; also the incremental cost guard.
+        description: >
+          Extraction key, the incremental cost guard, and the grain: exactly one
+          row per distinct posting text.
+        # Tested, not just described. The first build selected one row per
+        # *posting* instead, and because a content_hash is hash(title,
+        # clean_text), 17 postings shared one with another — which both billed
+        # the same text twice and fanned gold's join out into duplicate
+        # job_keys. The grain was stated in this description and asserted
+        # nowhere, so only gold's unique test caught it, one layer too late.
+        data_tests: [not_null, unique]
       - name: requirement_text
         description: >
           Requirements and industry context only, with the responsibilities
@@ -144,7 +153,10 @@ models:
       (ADR-0020).
     columns:
       - name: content_hash
-        description: Scoring key; the incremental guard, together with prompt_version.
+        description: >
+          Scoring key and grain — one row per distinct posting text. Part of the
+          incremental guard, with prompt_version and scoring_model.
+        data_tests: [not_null, unique]
       - name: fit_score
         description: >
           1-5, higher is better. Tested here rather than only in gold: gold
