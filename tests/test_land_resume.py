@@ -45,8 +45,26 @@ def test_lands_the_rendered_prompt(tmp_path: Path) -> None:
     rows = _rows(settings)
     assert len(rows) == 1
     version, prompt = rows[0]
-    assert version == PROMPT_VERSION
+    assert version.startswith(f"{PROMPT_VERSION}.")
     assert "IGNORE THE POSTING'S TITLE" in prompt
+
+
+def test_a_new_resume_lands_a_new_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The regression this exists for: PROMPT_VERSION tracks the rubric wording,
+    so replacing the resume produces a different prompt under an unchanged
+    version — and int_jobs_scored, which re-scores when prompt_version moves,
+    would skip every posting. A new corpus would have had no effect at all."""
+    settings = _settings(tmp_path)
+    land_resume.run(settings)
+    first = _rows(settings)[0][0]
+
+    monkeypatch.setattr(land_resume, "render_prompt", lambda _r: "a different resume entirely")
+    land_resume.run(settings)
+
+    versions = [v for v, _ in _rows(settings)]
+    assert len(set(versions)) == 2, "a changed resume must not reuse the version"
+    assert all(v.startswith(f"{PROMPT_VERSION}.") for v in versions)
+    assert first in versions
 
 
 def test_running_twice_lands_one_row(tmp_path: Path) -> None:

@@ -19,6 +19,7 @@ Neither table contains anything the resume file does not, and both live in the
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import sys
 
@@ -28,6 +29,25 @@ from shared.resume import PROMPT_VERSION, evidence_units, load_resume, render_pr
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("land_resume")
+
+
+def landed_version(rendered: str) -> str:
+    """The version written beside every score: rubric version + text digest.
+
+    `PROMPT_VERSION` alone is not enough, and the gap is the one a resume change
+    falls straight into. That constant tracks the *rubric wording* in
+    shared/resume.py, so replacing the resume produces an entirely different
+    prompt under an unchanged version -- and int_jobs_scored, which re-scores
+    when prompt_version moves, would skip every posting. The new corpus would
+    have no effect at all until someone remembered a manual full refresh.
+
+    Digesting the rendered text makes the invalidation self-enforcing: any edit
+    to the resume changes the version, which re-scores. Same reasoning as
+    comparing the recorded model in the incremental guards -- correctness should
+    not depend on a person remembering to bump something.
+    """
+    digest = hashlib.sha256(rendered.encode("utf-8")).hexdigest()[:12]
+    return f"{PROMPT_VERSION}.{digest}"
 
 
 def _current(settings: Settings) -> tuple[str, str] | None:
@@ -42,7 +62,7 @@ def _current(settings: Settings) -> tuple[str, str] | None:
     return str(rows[0]["prompt_version"]), str(rows[0]["rendered_prompt"])
 
 
-def _land_units(settings: Settings, resume: object) -> int:
+def _land_units(settings: Settings, resume: object, version: str) -> int:
     """Replace the resume units. Returns how many were landed."""
     units = evidence_units(resume)  # type: ignore[arg-type]
     storage.ensure_resume_units_table(settings)
@@ -55,7 +75,7 @@ def _land_units(settings: Settings, resume: object) -> int:
                 # Joined rather than kept as an array: the units table is read by
                 # SQL on both warehouses, and only one of them has arrays.
                 "evidences": ", ".join(u.evidences),
-                "prompt_version": PROMPT_VERSION,
+                "prompt_version": version,
             }
             for u in units
         ],
@@ -70,24 +90,23 @@ def run(settings: Settings | None = None) -> int:
 
     resume = load_resume(settings.resume_yaml)
     rendered = render_prompt(resume)
+    version = landed_version(rendered)
 
     # Units are replaced every run regardless of whether the prompt moved: they
     # are cheap, and a stale unit keeps matching postings against work the
     # resume no longer claims.
-    landed = _land_units(settings, resume)
+    landed = _land_units(settings, resume, version)
     log.info("landed %d resume unit(s) for embedding", landed)
 
-    if _current(settings) == (PROMPT_VERSION, rendered):
-        log.info("scoring prompt already current at version %s; nothing landed", PROMPT_VERSION)
+    if _current(settings) == (version, rendered):
+        log.info("scoring prompt already current at version %s; nothing landed", version)
         return 0
 
-    storage.land_scoring_prompt(
-        prompt_version=PROMPT_VERSION, rendered_prompt=rendered, settings=settings
-    )
+    storage.land_scoring_prompt(prompt_version=version, rendered_prompt=rendered, settings=settings)
     log.info(
         "landed scoring prompt version %s (%d chars) — scores from earlier "
         "versions are not comparable and will be re-scored",
-        PROMPT_VERSION,
+        version,
         len(rendered),
     )
     return 0

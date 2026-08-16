@@ -37,7 +37,21 @@ raw to Parquet and reloading therefore preserves "when was this posting first se
 is what made a migration acceptable at all. Verified by diffing row counts for all 11 tables
 against a pre-migration baseline: identical.
 
-Two consequences worth stating. The raw tables are ingestion-time partitioned, and that metadata
+**Two GCS buckets came out of the move**, and they are not equivalent:
+
+| Bucket | Location | Keep? |
+|---|---|---|
+| `job-search-pipeline-prod-raw-archive` | us-central1 | **Yes** — 674 Parquet objects, ~1.4 GiB compressed, a BigQuery-independent copy of raw and ops as of the migration |
+| `job-search-pipeline-prod-migrate-ne2` | northamerica-northeast2 | No — the export staging the copy went through; disposable |
+
+The archive is a one-off snapshot, not a maintained landing zone: nothing refreshes it. Keeping it
+costs pennies and buys a copy that survives anything done to BigQuery, which is the property this
+migration demonstrated the value of. Turning it into a standing Parquet layer is a separate piece
+of work with its own decision — and one the measured duplication argues against, since raw holds
+each posting ~24 times by design and that repetition is what `last_seen_at` and `is_active` are
+derived from.
+
+Two further consequences worth stating. The raw tables are ingestion-time partitioned, and that metadata
 does not survive a Parquet round-trip — so the 180-day expiry clock restarts at reload. It is a
 storage-cost control, not a correctness property, so restarting it costs a few months of extra
 retention on one cohort and nothing else. And the derived zones were not migrated at all: bronze,
