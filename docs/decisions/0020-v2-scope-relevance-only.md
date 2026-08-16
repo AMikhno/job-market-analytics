@@ -22,5 +22,8 @@ redundant.
    either premise changes (openjobdata adoption would change both).
 4. **Adapters and openjobdata stay parked** behind their ADR-0013/0017 gates, unchanged.
 5. **The candidate profile is private config like the company list** (ADR-0011):
-   `config/profile.yaml` (gitignored) with a committed `config/profile.example.yaml`; a typed
+   `config/resume.yaml` (gitignored) with a committed `config/resume.example.yaml`; a typed
    loader renders the deterministic, versioned prompt block the scoring model consumes.
+   *(Refined by ADR-0027: the profile was originally specified as lists of skills and became a
+   corpus of work-history bullets, which is why the filenames say resume. The posture here —
+   private config, typed loader, versioned prompt — is unchanged.)*

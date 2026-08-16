@@ -180,7 +180,14 @@ def test_gitignored_paths_are_allowed_without_an_allowlist_entry() -> None:
     checkout, so testing the filesystem made the gate pass locally and fail in
     CI. .gitignore is committed, so it answers the same everywhere."""
     assert check_docs.is_gitignored("config/companies.active.csv")
-    assert check_docs.is_gitignored("config/profile.yaml")
+    assert check_docs.is_gitignored("config/resume.yaml")
+    # Every tailored variant, not just the master: a resume.gtm.yaml carries the
+    # same employer history and work authorization as the file it was cut from.
+    assert check_docs.is_gitignored("config/resume.gtm.yaml")
+    # ...but the committed example must stay visible, or a clone and CI have no
+    # fallback. This is the one rule whose failure mode is silent: the negation
+    # breaking would make the example vanish, not leak.
+    assert not check_docs.is_gitignored("config/resume.example.yaml")
     assert not check_docs.is_gitignored("ingest/pipeline.py")
 
 

@@ -95,7 +95,9 @@ the private note" discloses that a personal reason exists, which is the thing be
 
 Personal context — employer history, work eligibility, seniority, compensation, preferences,
 availability, confidence — is **input to decisions, never content**. It lives in
-`config/profile.yaml`, `NOTES.local.md`, or agent memory.
+`config/resume.yaml`, `NOTES.local.md`, or agent memory. The resume corpus is the densest
+concentration of it in the tree — gitignored, and a CI **secret** rather than a variable
+(ADR-0027).
 
 > **Test:** would this sentence make sense to a stranger reading the repo as an engineering
 > artifact? If it only reads as sensible because you know the author's situation, delete it.
