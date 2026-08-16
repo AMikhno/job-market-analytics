@@ -1,6 +1,7 @@
 # What actually predicts relevance — measured against a manual pass
 
-**Status:** measured findings from a one-off manual review of a full gold build. Not a decision.
+**Status:** observations from a one-off **LLM** pass over a full gold build. Not a decision, and
+**not measurements** — see the provenance note below before relying on any number here.
 
 V2 scoring (ADR-0020, `docs/v2-plan.md`) automates a judgement that was made once by hand, over
 every posting in gold. Doing it manually produced measurements about *which signals decide
@@ -9,7 +10,23 @@ input contract for the V2 prompt: without them, V2 rebuilds the keyword matcher 
 disproved.
 
 Source: a full local gold build across all active boards — 10,170 postings fetched, 1,179
-surviving to gold. Every gold row was reviewed by title, and a large subset also by description.
+surviving to gold.
+
+> **Provenance, and why it limits what this file can claim.** The pass was a single LLM run, not a
+> human review. It was given a resume and asked to return the ~75–80 best postings by *work* match
+> regardless of title, ordered by recency. So it produced a ranked shortlist, not a judgement on
+> every gold row, and the counts below describe what one model selected rather than what is
+> actually relevant.
+>
+> Two consequences. **These numbers cannot serve as an evaluation set for V2** — grading an LLM
+> scorer against LLM-generated labels measures agreement with a predecessor, including its
+> mistakes, so the eval set has to be human-labelled. And the run predates the resume corpus, so it
+> matched against a single tailored resume version; anything that version omitted was invisible to
+> it. Re-measure once the corpus exists.
+>
+> What survives regardless is the *shape* of the argument: the pass was already doing
+> resume-against-requirements matching, ad hoc and in one prompt. V2 formalizes what it did rather
+> than inventing a new approach.
 
 ## Title matching fails in both directions
 
@@ -29,7 +46,7 @@ Analytics work under an engineering VP gets an engineering title; the same work 
 organization gets a customer-facing one. This is why title cannot be the key, and why ADR-0015
 made the title seed a soft signal rather than a filter.
 
-## Four measurements the V2 prompt has to encode
+## Four instructions the V2 prompt has to encode
 
 **1. Score the requirements section, not the whole posting.**
 A keyword pass over the title-only rejections flagged 21 as analytics-dense. **20 were false
