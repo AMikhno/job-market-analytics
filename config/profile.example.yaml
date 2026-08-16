@@ -1,0 +1,50 @@
+# Example profile. Copy to config/profile.yaml (gitignored) and fill in.
+#
+# This file is committed so a clone and CI can build without the private one, and
+# it is loaded with a warning when config/profile.yaml is absent. Everything here
+# is illustrative placeholder text — the real file is private config (ADR-0020),
+# and it holds preferences, not credentials and not PII.
+#
+# Ordering is meaningful: list entries render into the prompt in the order they
+# appear here, so put what matters most first.
+
+# Titles worth surfacing. Kept broad on purpose — a title names the org chart a
+# seat sits in, not the work being done, so this is a hint to the scorer rather
+# than a filter (docs/research/relevance-signals.md).
+target_roles:
+  - Analytics Engineer
+  - Data Analyst
+  - Business Intelligence Developer
+
+# The daily work. These carry the most weight: a posting that *requires* these is
+# the signal, as against one that merely mentions them.
+core_skills:
+  - SQL
+  - dbt
+  - Python
+  - data modelling
+  - dashboard development
+
+# Real but secondary — presence raises a score, absence never sinks one.
+nice_to_have_skills:
+  - BigQuery
+  - Airflow
+  - experimentation / A-B testing
+
+# Rendered verbatim into the prompt as the level to calibrate against. The scorer
+# infers a posting's level from its described scope, then compares it to this.
+seniority: senior individual contributor
+
+# Reported as eligibility (ok / restricted / unclear), never scored on and never
+# used to drop a posting — see rule 2 of the rubric in shared/profile.py.
+constraints:
+  - must be legally eligible to work in the posting's country
+  - no relocation
+
+# A few sentences in plain prose. This is the part that lets the scorer judge a
+# posting whose vocabulary matches nothing in the lists above.
+summary: >
+  Data practitioner who builds and maintains analytics pipelines end to end:
+  modelling warehouse data, shipping dashboards that stakeholders actually use,
+  and owning the transformation layer rather than only querying it. Most
+  effective on a small data team inside a company that runs on its own data.

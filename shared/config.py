@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     http_user_agent: str = Field(default="job-market-analytics/0.1")
     # Private company list (gitignored); falls back to the committed example if absent.
     companies_csv: str = Field(default="config/companies.csv")
+    # Private candidate profile (gitignored), same fallback: it is what V2 scores
+    # postings against, so it is preferences, never credentials (ADR-0020).
+    profile_yaml: str = Field(default="config/profile.yaml")
     # This repo is public, so its Actions logs are too. Company identifiers are
     # digested before they reach a log line. Default on so CI is safe without
     # config; set REDACT_COMPANY_LOGS=false in your local .env to read names.
