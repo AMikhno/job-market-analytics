@@ -68,9 +68,9 @@ provenance columns cannot be expressed through it.
   retried next run (guard on `content_hash` + `extract_ok`), never silently
   dropped or scored.
 - Schema evolution: `on_schema_change: append_new_columns` on both incremental
-  models; a `--full-refresh` re-bills the entire backfill (cost pending
-  re-measurement — ADR-0025) and must be a deliberate decision, not a reflex ([rebuilds](../ARCHITECTURE.md#rebuilds-not-migrations),
-  "Schema evolution").
+  models; a `--full-refresh` re-bills the entire backfill (~200s per model at 1,742
+  texts; cost measured in ADR-0025) and must be a deliberate decision, not a reflex
+  ([rebuilds](../ARCHITECTURE.md#rebuilds-not-migrations), "Schema evolution").
 - **Dev parity:** on the DuckDB target the model is a stub emitting the same
   columns as typed nulls (`enabled`/target-conditional SQL).
   Downstream models and unit tests run against the stub.

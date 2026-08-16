@@ -29,7 +29,40 @@ measured**; `AI.SCORE` is natively managed and provisions no connection, which w
 question moot. `docs/v2-plan.md` gates the build on that measurement rather than assuming either
 answer.
 
-**Cost is pending re-measurement.** 0009's ~$0.12 backfill + <$0.10/month came from 2.5
-Flash-Lite's $0.05/$0.20 per 1M batch rate. That figure is not carried over on the assumption that
-a same-named tier is priced the same; it is re-measured against the first backfill and recorded
-then.
+**BigQuery's supported endpoints are not Vertex's**, and this is the practical constraint —
+the table above describes what Vertex serves, which turns out to be a poor guide to what the
+in-SQL functions can call. `us-central1` returns 404 for this model at the raw publisher
+endpoint, yet `AI.GENERATE` reaches it from a `us-central1` dataset without trouble: BigQuery
+resolves through its own path against its own allowlist. Probed by calling `AI.GENERATE` with each
+endpoint, 2026-08-16:
+
+| Endpoint | BigQuery |
+|---|---|
+| `gemini-3.1-flash-lite` | works — the newest *flash-lite* it accepts |
+| `gemini-3.5-flash` | works (newer, but the flash tier) |
+| `gemini-3.5-flash-lite` | `Unsupported endpoint` |
+| `gemini-3.1-flash` | `Unsupported endpoint` |
+
+The allowlist is non-contiguous — lite at 3.1, flash at 3.5, neither the other way round — so
+"newest available on Vertex" is the wrong question to ask. Probe BigQuery directly before changing
+`scoring_endpoint`, and prefer an explicit version over the `gemini-flash-lite-latest` alias, which
+resolves but changes the model under a column of scores that claims to be comparable.
+
+**First backfill, measured 2026-08-16** (1,742 distinct posting texts):
+
+| | |
+|---|---|
+| Extraction | 1,742/1,742 succeeded, 200s |
+| Scoring | 1,742 rows, 203s |
+| `requirement_text` | 570 chars average, against 6,854 for the full posting — a 92% trim |
+| Second incremental run | 0 rows, confirming the `content_hash` guard |
+| BigQuery compute, all AI jobs | 0.131 GiB billed, 100.8 slot-minutes — under a cent |
+| Out-of-range generations | 2 in 1,742 scored outside 1–5 |
+
+**The dollar cost is still not measured, and cannot be from here.** 0009's ~$0.12 came from 2.5
+Flash-Lite's $0.05/$0.20 per 1M rate, which is not carried over. Gemini token charges bill through
+Vertex and do not appear in `INFORMATION_SCHEMA.JOBS` — only the BigQuery compute above does — so
+the authoritative figure is the project's billing console, the same conclusion
+[ingestion-cost](../research/ingestion-cost.md) reached about storage rates. Measured input volume
+is ~3.0M tokens per extraction pass and ~3.1M per scoring pass, which bounds it: even at triple the
+old rate this is a sub-dollar backfill.
