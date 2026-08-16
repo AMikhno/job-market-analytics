@@ -10,8 +10,6 @@
 # checkout. Anything else failing the check is drift: fix the doc.
 
 # --- planned: V2 (ADR-0020, docs/v2-plan.md) ---
-shared/profile.py
-config/profile.example.yaml
 int_jobs_structured
 int_jobs_scored
 
