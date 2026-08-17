@@ -73,21 +73,10 @@ work_history:
     location: Somewhere (Remote)
     bullets:
       - text: >
-          Owned the customer health score end to end. Renewal decisions were
-          being made on fragmented signals, so grew a 15-metric SQL view into a
-          governed 50-metric model across 800+ accounts, scheduled and versioned,
-          and it became the single source of truth two teams ran renewals on.
         evidences: [analytics-engineer, gtm-engineer]
       - text: >
-          Built the acquisition-to-revenue funnel by unifying site visits,
-          product usage and CRM records into stage-by-stage conversion, adopted
-          by three teams and used in monthly executive reviews.
         evidences: [gtm-engineer, analytics-engineer]
       - text: >
-          Resolved duplicate customer records after an acquisition, where a CRM
-          merge had split accounts and broken every account-level number. Tiered
-          matching — deterministic id, then fuzzy on names, then human review —
-          persisted as a crosswalk.
         evidences: [analytics-engineer, forward-deployed-engineer]
 
   - org: Example Corp
@@ -99,19 +88,10 @@ work_history:
     progression: Analyst, Senior Analyst, Data Scientist
     bullets:
       - text: >
-          Rebuilt quota and account-health reporting used by 60+ customer-facing
-          staff, replacing spreadsheets that hit row limits and could not hold
-          history, so the team could act on accounts instead of auditing numbers.
         evidences: [gtm-engineer, analytics-engineer]
       - text: >
-          Built embedded client reporting across 100+ enterprise environments:
-          a warehouse-to-BI layer with reusable templates, each client isolated
-          with no path to another's data. Cut manual reporting by five hours per
-          analyst weekly.
         evidences: [forward-deployed-engineer, analytics-engineer]
       - text: >
-          Cut warehouse cost and fixed failing refreshes by optimising the worst
-          queries — hour-long timeouts down to minutes — and right-sizing compute.
         evidences: [analytics-engineer]
 
 # Personal projects count as evidence. Same bullet shape.
