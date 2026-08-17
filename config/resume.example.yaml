@@ -73,21 +73,10 @@ work_history:
     location: Somewhere (Remote)
     bullets:
       - text: >
-          REDACTED
-          REDACTED
-          REDACTED
-          REDACTED
         evidences: [analytics-engineer, gtm-engineer]
       - text: >
-          REDACTED
-          REDACTED
-          REDACTED
         evidences: [gtm-engineer, analytics-engineer]
       - text: >
-          REDACTED
-          REDACTED
-          REDACTED
-          REDACTED
         evidences: [analytics-engineer, forward-deployed-engineer]
 
   - org: Example Corp
@@ -99,19 +88,10 @@ work_history:
     progression: Analyst, Senior Analyst, Data Scientist
     bullets:
       - text: >
-          REDACTED
-          REDACTED
-          REDACTED
         evidences: [gtm-engineer, analytics-engineer]
       - text: >
-          Built embedded client reporting across 100+ enterprise environments:
-          REDACTED
-          REDACTED
-          analyst weekly.
         evidences: [forward-deployed-engineer, analytics-engineer]
       - text: >
-          REDACTED
-          REDACTED
         evidences: [analytics-engineer]
 
 # Personal projects count as evidence. Same bullet shape.
