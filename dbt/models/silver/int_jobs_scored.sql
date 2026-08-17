@@ -2,13 +2,12 @@
 -- relevant_text, never the whole posting: every corporate posting mentions
 -- dashboards, and only a data role requires dbt (docs/research/relevance-signals.md).
 --
--- The score ORDERS delivery and never filters it (ADR-0020). Nothing here drops
--- a posting, and gold ships unscored rows.
+-- The score ORDERS delivery and never filters it (ADR-0020): gold ships
+-- unscored rows.
 --
 -- Same content_hash cost guard as extraction, widened to prompt_version and
--- scoring_model: changed text, reworded prompt, or a moved model each make an
--- existing score incomparable, and each therefore triggers a re-score on its
--- own. Nothing here needs a human to remember to invalidate anything.
+-- scoring_model -- changed text, reworded prompt or moved model each make an
+-- existing score incomparable, so each re-scores on its own.
 {{
     config(
         materialized='incremental',
@@ -17,9 +16,8 @@
     )
 }}
 
-{#- A single literal after templating. Assembled here rather than with `||`
-    because BigQuery requires a real string literal, and rejects a concatenation
-    expression however constant it looks. -#}
+{#- A single literal after templating: BigQuery rejects a concatenation
+    expression here, however constant it looks. -#}
 {%- set instruction -%}
     Score 1 to 5 how well the candidate described below fits the requirements that follow, applying the rules stated in the candidate profile. Respond with the rating only.
 {%- endset -%}
@@ -39,8 +37,7 @@
 
 with prompt as (
     -- One row: the newest rendered resume prompt. Landed by `make land-resume`
-    -- (ingest/land_resume.py) rather than passed as a --vars value, because it is
-    -- several KB of multi-line text with quotes in it.
+    -- rather than passed as --vars -- it is several KB of quoted multi-line text.
     select
         prompt_version,
         rendered_prompt
@@ -54,17 +51,15 @@ to_score as (
         s.content_hash,
         s.relevant_text
     from {{ ref('int_jobs_structured') }} as s
-    -- Only extracted rows are scorable: scoring a null relevant_text would
-    -- rate the posting against nothing and return a confident number for it.
+    -- Only extracted rows are scorable: a null relevant_text would be rated
+    -- against nothing and come back with a confident number anyway.
     where s.extract_ok
         and s.relevant_text is not null
         and s.relevant_text != ''
     {% if is_incremental() %}
-        -- Three things invalidate a score, and all three are compared rather
-        -- than assumed: the posting text changed, the prompt was reworded, or
-        -- the model moved. A score is only comparable to another produced the
-        -- same way, so mixing any of them in one column would make the ordering
-        -- meaningless while still looking fine.
+        -- All three invalidators compared rather than assumed. Mixing any of
+        -- them in one column leaves an ordering that looks fine and means
+        -- nothing.
         and not exists (
             select 1
             from {{ this }} as t
@@ -80,11 +75,10 @@ scored as (
     select
         t.content_hash,
         p.prompt_version,
-        -- AI.SCORE requires at least one string-LITERAL field: it treats literals
-        -- as the instruction and column values as the data being judged. That is
-        -- the injection boundary the function gives us, so the posting text is
-        -- passed as its own column field and never concatenated into the
-        -- instruction, and the delimiters around it are literals too.
+        -- AI.SCORE treats literal fields as the instruction and column values
+        -- as the data being judged (and requires at least one literal). That is
+        -- the injection boundary: the posting text stays its own column field,
+        -- never concatenated in, and its delimiters are literals too.
         AI.SCORE(
             (
                 '{{ instruction }}',
@@ -101,9 +95,9 @@ scored as (
 
 select
     content_hash,
-    -- AI.SCORE returns FLOAT64 (measured: 5.0, not 5). Rounded to the integer
-    -- contract; out-of-range values are kept as-is here and nulled in gold, so a
-    -- bogus number is visible to a test rather than silently clamped into range.
+    -- AI.SCORE returns FLOAT64 (measured: 5.0, not 5), rounded to the integer
+    -- contract. Out-of-range values are kept here and nulled in gold, so a bogus
+    -- number stays visible to a test rather than being clamped into range.
     cast(round(raw_score) as int64) as fit_score,
     '{{ var("scoring_endpoint") }}' as scoring_model,
     prompt_version,

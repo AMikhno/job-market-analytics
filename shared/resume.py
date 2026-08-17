@@ -1,16 +1,11 @@
 """The resume corpus V2 scores postings against, and the prompt it renders.
 
 Private config (ADR-0020 §5, reshaped by ADR-0027), same posture as the company
-list (ADR-0011): the real file is gitignored, a committed example stands in with
-a warning so a clone and CI still build. The path comes from
-`shared.config.Settings` -- nothing here reads the environment directly.
+list (ADR-0011): the real file is gitignored and a committed example stands in
+with a warning, so a clone and CI still build.
 
-Why a corpus of work bullets rather than a list of skills: a skills list makes
-the model do fuzzy keyword matching, which the dbt seeds already do more cheaply.
-The signal only appears when described work meets described requirements
-(ADR-0027). `evidence_units` is what makes that possible at the granularity that
-matters -- one text per bullet rather than one blob per resume, because a long
-mixed document embeds to an average that matches everything weakly.
+Work bullets rather than a skills list, and one text per bullet rather than one
+blob per resume -- both arguments are in ADR-0027.
 """
 
 from __future__ import annotations
@@ -27,23 +22,23 @@ log = logging.getLogger(__name__)
 ROOT: Final = Path(__file__).resolve().parents[1]
 EXAMPLE_RESUME: Final = ROOT / "config" / "resume.example.yaml"
 
-# Bump whenever the rendered wording changes. It lands in int_jobs_scored beside
-# every fit_score, and a bump is what triggers re-scoring -- an edit that forgets
-# it silently mixes two rubrics in one column (docs/v2-plan.md).
+# Bump whenever the rendered wording changes. It lands beside every fit_score and
+# a bump is what triggers re-scoring; forgetting it mixes two rubrics in one
+# column (docs/v2-plan.md).
 PROMPT_VERSION: Final = "2"
 
 # The role families a bullet can be evidence for. Closed on purpose: a typo'd tag
-# in a hand-edited YAML file would silently tag nothing, and a matcher that
-# quietly ignores half the corpus looks exactly like one that is working.
+# would silently tag nothing, and a matcher quietly ignoring half the corpus
+# looks exactly like one that is working.
 ROLE_FAMILIES: Final = frozenset(
     {"analytics-engineer", "forward-deployed-engineer", "gtm-engineer"}
 )
 
 # From the LLM pass in docs/research/relevance-signals.md -- argued hypotheses,
-# not human-verified measurements (that file's provenance note explains the
-# difference). Rule 0 is new in PROMPT_VERSION 2: titles are discounted outright
-# rather than weighted, because the same pass found relevant work under
-# Forward Deployed Engineer, Salesforce Integration Developer and ERP Specialist.
+# not human-verified measurements (see that file's provenance note). Rule 0 is
+# new in PROMPT_VERSION 2: the same pass found relevant work under titles like
+# Forward Deployed Engineer and ERP Specialist, so titles are discounted
+# outright rather than weighted down.
 _RUBRIC: Final = """\
 You are scoring how well one job posting fits one candidate, given the
 candidate's actual work history below.
@@ -136,8 +131,8 @@ class EvidenceUnit(BaseModel):
     """One bullet, flattened with enough context to stand alone.
 
     The unit an embedding is computed over. It carries its origin because a
-    bullet read without knowing where it happened loses the "for whom", which is
-    what distinguishes the role families from each other.
+    bullet read without the "for whom" loses what distinguishes the role
+    families from each other.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -165,10 +160,8 @@ class Resume(BaseModel):
 def evidence_units(resume: Resume) -> list[EvidenceUnit]:
     """Every bullet as a standalone, embeddable unit, in document order.
 
-    Bullet-level rather than whole-resume: a single vector over the full
-    document averages warehouse modelling and revenue tooling into something that
-    matches both weakly. Ordering is the file's, so ids are stable across runs
-    provided the file does not change.
+    Bullet-level rather than whole-resume (ADR-0027). Ordering is the file's, so
+    ids are stable across runs unless the file changes.
     """
     units: list[EvidenceUnit] = []
     for role in resume.work_history:
@@ -196,8 +189,8 @@ def evidence_units(resume: Resume) -> list[EvidenceUnit]:
 def _bullets(items: list[str]) -> str:
     """List entries as prompt bullets, in the order given.
 
-    Not sorted: order in the file expresses priority, and sorting would discard
-    it. Determinism comes from the file, which does not change between renders.
+    Not sorted: order in the file expresses priority. Determinism comes from the
+    file, which does not change between renders.
     """
     return "\n".join(f"- {item}" for item in items) if items else "- (none stated)"
 
@@ -226,10 +219,8 @@ def render_prompt(resume: Resume) -> str:
 def _resume_path(resume_yaml: str) -> Path:
     """Resolve the resume file: the private one if present, else the example.
 
-    Mirrors the company list's fallback (`ingest.pipeline._companies_path`) so a
-    clone and CI both build without the private file; raises only when neither
-    exists, because scoring against a silently absent resume would rate every
-    posting against nothing.
+    Mirrors the company list's fallback (`ingest.pipeline._companies_path`).
+    Raises when neither exists rather than scoring every posting against nothing.
     """
     path = Path(resume_yaml)
     if not path.is_absolute():
@@ -249,9 +240,8 @@ def _resume_path(resume_yaml: str) -> Path:
 def load_resume(resume_yaml: str) -> Resume:
     """Parse the resume YAML into a validated Resume.
 
-    A malformed resume fails here, before any posting is scored -- the same
-    posture as the company list, where a bad row fails the run rather than
-    quietly skewing it.
+    A malformed resume fails here, before any posting is scored -- same posture
+    as the company list.
     """
     path = _resume_path(resume_yaml)
     parsed: Any = yaml.safe_load(path.read_text())

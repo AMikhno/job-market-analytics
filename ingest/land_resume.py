@@ -2,19 +2,15 @@
 
 Two tables, for the two ways a posting is compared against the corpus:
 
-* **scoring_prompt** — the rendered prompt the LLM scorer reads. It travels
-  through a table rather than `dbt --vars` because it is several KB of
-  multi-line text containing quotes, and shell-escaping that into a var is a
-  quoting bug waiting to happen; a table is also auditable after the fact.
-  Append-only and versioned, because a score is only comparable to another from
-  the same wording, so the prompt that produced a score has to stay readable.
+* **scoring_prompt** — the rendered prompt the LLM scorer reads. Through a table
+  rather than `dbt --vars` because it is several KB of quoted multi-line text.
+  Append-only and versioned: a score is only comparable to another from the same
+  wording, so the prompt that produced one has to stay readable.
 
 * **resume_units** — one row per work bullet, for the embedding matcher.
-  Replaced wholesale rather than appended: an edited or deleted bullet must stop
-  being matched against.
+  Replaced wholesale: an edited or deleted bullet must stop being matched.
 
-Neither table contains anything the resume file does not, and both live in the
-`_ops` dataset rather than the repo.
+Both live in the `_ops` dataset, and neither holds anything the resume does not.
 """
 
 from __future__ import annotations
@@ -34,17 +30,11 @@ log = logging.getLogger("land_resume")
 def landed_version(rendered: str) -> str:
     """The version written beside every score: rubric version + text digest.
 
-    `PROMPT_VERSION` alone is not enough, and the gap is the one a resume change
-    falls straight into. That constant tracks the *rubric wording* in
-    shared/resume.py, so replacing the resume produces an entirely different
-    prompt under an unchanged version -- and int_jobs_scored, which re-scores
-    when prompt_version moves, would skip every posting. The new corpus would
-    have no effect at all until someone remembered a manual full refresh.
-
-    Digesting the rendered text makes the invalidation self-enforcing: any edit
-    to the resume changes the version, which re-scores. Same reasoning as
-    comparing the recorded model in the incremental guards -- correctness should
-    not depend on a person remembering to bump something.
+    `PROMPT_VERSION` alone tracks only the *rubric wording*, so replacing the
+    resume would produce a different prompt under an unchanged version and
+    int_jobs_scored would skip every posting -- the new corpus having no effect
+    until someone ran a manual full refresh. Digesting the rendered text makes
+    the invalidation self-enforcing instead.
     """
     digest = hashlib.sha256(rendered.encode("utf-8")).hexdigest()[:12]
     return f"{PROMPT_VERSION}.{digest}"
@@ -72,8 +62,8 @@ def _land_units(settings: Settings, resume: object, version: str) -> int:
                 "unit_id": u.unit_id,
                 "source": u.source,
                 "text": u.text,
-                # Joined rather than kept as an array: the units table is read by
-                # SQL on both warehouses, and only one of them has arrays.
+                # Joined rather than kept as an array: read by SQL on both
+                # warehouses, and only one of them has arrays.
                 "evidences": ", ".join(u.evidences),
                 "prompt_version": version,
             }
@@ -92,9 +82,8 @@ def run(settings: Settings | None = None) -> int:
     rendered = render_prompt(resume)
     version = landed_version(rendered)
 
-    # Units are replaced every run regardless of whether the prompt moved: they
-    # are cheap, and a stale unit keeps matching postings against work the
-    # resume no longer claims.
+    # Replaced every run whether or not the prompt moved: they are cheap, and a
+    # stale unit keeps matching work the resume no longer claims.
     landed = _land_units(settings, resume, version)
     log.info("landed %d resume unit(s) for embedding", landed)
 

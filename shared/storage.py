@@ -63,9 +63,9 @@ _DIGEST_BQ_SCHEMA = [
     ("postings_sent", "INT64"),
 ]
 
-# The rendered scoring prompt. Append-only and versioned rather than overwritten:
-# a fit_score is only comparable to another produced by the same wording, so the
-# prompt that produced a score has to remain readable after the wording moves on.
+# The rendered scoring prompt. Append-only and versioned: a fit_score is only
+# comparable to one from the same wording, so the prompt behind a score has to
+# stay readable after the wording moves on.
 _PROMPT_BQ_SCHEMA = [
     ("prompt_version", "STRING"),
     ("rendered_prompt", "STRING"),
@@ -273,8 +273,7 @@ def ensure_digest_table(settings: Settings) -> None:
 
 
 # One row per resume bullet, for the embedding model to read. Landed rather than
-# embedded from Python because the vectors have to live beside the postings they
-# are compared against -- BigQuery cannot join across a client.
+# embedded from Python: BigQuery cannot join vectors held in a client.
 _UNITS_BQ_SCHEMA = [
     ("unit_id", "STRING"),
     ("source", "STRING"),
@@ -317,11 +316,9 @@ def ensure_resume_units_table(settings: Settings) -> None:
 def replace_resume_units(rows: list[dict[str, object]], *, settings: Settings) -> None:
     """Replace the resume units wholesale.
 
-    Replace, not append, and this is the one place the append-only rule does not
-    apply: a bullet that was edited or deleted must stop being matched against,
-    and an append-only unit table would keep matching postings to work the
-    resume no longer claims. History of the corpus lives in the resume file, not
-    here.
+    The one place the append-only rule does not apply: an edited or deleted
+    bullet must stop being matched against. The corpus's history lives in the
+    resume file, not here.
     """
     if settings.is_prod:
         from google.cloud import bigquery
@@ -361,8 +358,7 @@ def ensure_scoring_prompt_table(settings: Settings) -> None:
     """Idempotently provision the scoring-prompt table.
 
     dbt reads it as a source, and a missing source fails the whole DAG rather
-    than the one model that needs it -- so it is provisioned even on a dev target
-    that will never call a model.
+    than the one model needing it -- so even a dev target gets one.
     """
     if settings.is_prod:
         from google.cloud import bigquery
