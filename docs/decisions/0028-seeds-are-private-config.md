@@ -27,12 +27,19 @@ junk seed table and put it in the DAG.
 part worth reading: what is private is which locations and which technologies, not that a
 `not_null`/`unique` contract exists over them.
 
-**A missing seed falls back with a warning rather than failing.** A fork PR and a fresh clone
-have neither variable nor private file, and both must still build — CI's no-secrets workflow
-is exactly that case. The examples are generic, so the resulting gold is someone else's
-shortlist rather than a wrong one. A *malformed* seed is a hard error: `materialize_seeds`
-asserts each header, because dbt would otherwise accept a renamed column and fail in whichever
-model refs it, one layer from the cause.
+**A missing seed falls back with a warning on dev, and fails on prod.** A fork PR and a fresh
+clone have neither variable nor private file, and both must still build — CI's no-secrets
+workflow is exactly that case, and there the generic examples give someone else's shortlist
+rather than a wrong one. On the prod target the fallback is refused, because it is the only
+way this can be wrong *quietly*: a malformed seed raises, but an unset or misnamed variable
+would filter gold to the example's locations and still exit 0, leaving an empty digest that
+reads as a quiet market. That is the failure mode ADR-0013 is built against, and it is the
+same call `ingest.yml` already makes for the resume, which skips rather than score against a
+stand-in.
+
+A *malformed* seed is a hard error on every target: `materialize_seeds` asserts each header,
+because dbt would otherwise accept a renamed column and fail in whichever model refs it, one
+layer from the cause.
 
 **This does not retract what is already published.** The seed contents are in this public
 repo's history, and the decision here stops future drift rather than removing them. Rewriting

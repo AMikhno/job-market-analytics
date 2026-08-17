@@ -50,10 +50,12 @@ jobs:
       # The filter rules: allowed locations, deal-breaker tech, and the desired
       # tech/title signals (ADR-0028). Variables rather than secrets, on the same
       # test the company list passes — these are preferences, not credentials,
-      # and a masked value is worse to debug for no gain. Absent, `make seeds`
-      # falls back to the committed examples with a warning, which is why this
-      # step has no `if:` guard: the fallback is a usable degraded state, not a
-      # wrong one.
+      # and a masked value is worse to debug for no gain.
+      #
+      # No `if:` guard, because on this (prod) target a missing variable FAILS
+      # rather than falling back: the example rules would filter gold to
+      # somewhere nobody lives and still exit 0. The fallback exists for dev and
+      # for fork PRs, which is where a degraded build is the right answer.
       - name: Materialize the private dbt seeds
         env:
           ALLOWED_LOCATIONS_CSV_CONTENT: ${{ vars.ALLOWED_LOCATIONS_CSV_CONTENT }}

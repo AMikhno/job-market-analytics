@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from ingest import materialize_seeds as ms
+from shared.config import Settings
 
 
 @pytest.fixture(autouse=True)
@@ -82,6 +83,38 @@ def test_header_only_seed_is_rejected() -> None:
 def test_missing_everything_names_all_three_places_it_looked() -> None:
     with pytest.raises(FileNotFoundError, match="DESIRED_TECH_CSV_CONTENT"):
         ms.materialize_seed("desired_tech", env={})
+
+
+def test_prod_refuses_the_example_fallback() -> None:
+    """The one quiet failure: an unset variable would filter gold to the
+    example's locations and still exit 0."""
+    _write_example("desired_tech", "tech,note\nExample,from the example\n")
+
+    with pytest.raises(RuntimeError, match="gh variable set DESIRED_TECH_CSV_CONTENT"):
+        ms.materialize_seed("desired_tech", env={}, allow_example=False)
+
+
+def test_prod_still_accepts_the_variable_and_the_private_file() -> None:
+    assert (
+        ms.materialize_seed(
+            "desired_tech",
+            env={"DESIRED_TECH_CSV_CONTENT": "tech,note\ndbt,x"},
+            allow_example=False,
+        )
+        == "environment"
+    )
+    assert ms.materialize_seed("desired_tech", env={}, allow_example=False) == "private file"
+
+
+def test_run_disallows_the_example_on_the_prod_target() -> None:
+    for seed, header in ms.SEED_HEADERS.items():
+        _write_example(seed, ",".join(header) + "\n" + ",".join("x" for _ in header) + "\n")
+    prod = Settings(pipeline_target="prod", gcp_project="p")
+
+    with pytest.raises(RuntimeError, match="Refusing to fall back"):
+        ms.run(env={}, settings=prod)
+
+    assert ms.run(env={}, settings=Settings(pipeline_target="dev")) == 0
 
 
 def test_run_materializes_every_declared_seed() -> None:
