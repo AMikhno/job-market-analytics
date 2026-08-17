@@ -1,4 +1,4 @@
-# Job Search Pipeline
+# Job Market Analytics
 
 End-to-end **Analytics Engineering** project: typed Python ingestion from every ATS with a
 public keyless feed (nine today — Greenhouse, Lever, Ashby, BambooHR, Recruitee, Workable,
