@@ -101,7 +101,10 @@ technologies, which **demote rather than delete** (ADR-0023) because postings na
 tool are frequently still worth seeing. These collapse into one visible `match_score` that the
 digest sorts by, so the number shown is the number sorted on (ADR-0024).
 
-All of it is seed-driven data, not code, so tightening a rule is an edit to a seed.
+All of it is seed-driven data, not code, so tightening a rule is an edit to a seed. The rules
+themselves are private config (ADR-0028) — `make seeds` materializes `dbt/seeds/*.csv` from an
+Actions variable, a private local file, or the committed `config/seeds/*.example.csv`, in that
+order. A clone with none of them builds on the examples and says so.
 
 What V1 cannot do without a model: tell a requirement from a nice-to-have, infer seniority, or
 judge real eligibility. That is exactly V2's scope.

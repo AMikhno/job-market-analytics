@@ -22,6 +22,12 @@ config/probe_extra_refs.json
 # Terms the pre-commit hook blocks from being committed. Holding them in the
 # repo would be the leak it exists to prevent.
 config/private-terms.txt
+# The dbt seeds are filter rules, and filter rules are preferences: where the
+# work may be done, which tech ranks a posting up, which ranks it down
+# (ADR-0028). Materialized by `make seeds` from an Actions variable or from
+# config/seeds/*.example.csv. seeds.yml stays tracked -- the schema tests are
+# the mechanism, and the mechanism is public.
+dbt/seeds/*.csv
 *.key
 *.pem
 **/keyfile*.json
