@@ -17,10 +17,11 @@ Examples live outside `dbt/seeds/` deliberately. dbt loads *every* CSV under
 seed-paths, so an example sitting beside the real file would materialize a
 second, junk seed table.
 
-Fallback is a warning rather than an error because a clone and a fork PR must
-still build: the rules are generic, and the resulting gold is merely someone
-else's shortlist rather than a wrong one. A malformed seed *is* an error, and
-fails here rather than as a confusing dbt compile error two steps later.
+Falling back to the example is a warning on dev and an ERROR on prod. A clone and
+a fork PR must still build, and there the generic rules give someone else's
+shortlist rather than a wrong one. In prod it is the only quiet way to be wrong:
+a malformed seed raises, but an unset variable would filter gold to the example's
+locations and still exit 0, leaving an empty digest that reads as a quiet market.
 """
 
 from __future__ import annotations
@@ -34,6 +35,8 @@ import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
+
+from shared.config import Settings, get_settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("seeds")
@@ -74,8 +77,18 @@ def _validate(seed: str, text: str, origin: str) -> None:
         raise ValueError(f"{seed}: no data rows from {origin}")
 
 
-def materialize_seed(seed: str, *, env: Mapping[str, str] | None = None) -> str:
-    """Put one seed in place at dbt/seeds/. Returns which source was used."""
+def materialize_seed(
+    seed: str, *, env: Mapping[str, str] | None = None, allow_example: bool = True
+) -> str:
+    """Put one seed in place at dbt/seeds/. Returns which source was used.
+
+    `allow_example` is false on the prod target. A missing variable is the one
+    way this can be wrong *quietly*: a malformed seed raises and fails the run
+    loudly, but an unset or misnamed variable would fall back to the generic
+    examples, filter gold to somewhere nobody lives, and still exit 0 — leaving
+    an empty digest that reads as a quiet market. Same reasoning as the resume
+    step in ingest.yml, which skips rather than score against a stand-in.
+    """
     source: Mapping[str, str] = os.environ if env is None else env
     target = SEED_DIR / f"{seed}.csv"
     example = EXAMPLE_DIR / f"{seed}.example.csv"
@@ -92,6 +105,13 @@ def materialize_seed(seed: str, *, env: Mapping[str, str] | None = None) -> str:
         _validate(seed, target.read_text(), str(target))
         return "private file"
 
+    if not allow_example:
+        raise RuntimeError(
+            f"{seed}: {env_var_for(seed)} is unset and {target} does not exist. "
+            "Refusing to fall back to the example on the prod target — it would "
+            "filter gold to the example's locations and still exit 0. "
+            f"Set the variable: gh variable set {env_var_for(seed)} < dbt/seeds/{seed}.csv"
+        )
     if not example.exists():
         raise FileNotFoundError(f"{seed}: no {env_var_for(seed)}, no {target}, and no {example}")
     text = example.read_text()
@@ -106,9 +126,10 @@ def materialize_seed(seed: str, *, env: Mapping[str, str] | None = None) -> str:
     return "example"
 
 
-def run(env: Mapping[str, str] | None = None) -> int:
+def run(env: Mapping[str, str] | None = None, settings: Settings | None = None) -> int:
+    settings = settings or get_settings()
     for seed in SEED_HEADERS:
-        origin = materialize_seed(seed, env=env)
+        origin = materialize_seed(seed, env=env, allow_example=not settings.is_prod)
         log.info("%s <- %s", seed, origin)
     return 0
 
