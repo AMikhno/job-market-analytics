@@ -47,12 +47,29 @@ jobs:
           COMPANIES_CSV_CONTENT: ${{ vars.COMPANIES_CSV_CONTENT }}
         run: printf '%s' "$COMPANIES_CSV_CONTENT" > config/companies.csv
 
+      # The filter rules: allowed locations, deal-breaker tech, and the desired
+      # tech/title signals (ADR-0028). Variables rather than secrets, on the same
+      # test the company list passes — these are preferences, not credentials,
+      # and a masked value is worse to debug for no gain.
+      #
+      # No `if:` guard, because on this (prod) target a missing variable FAILS
+      # rather than falling back: the example rules would filter gold to
+      # somewhere nobody lives and still exit 0. The fallback exists for dev and
+      # for fork PRs, which is where a degraded build is the right answer.
+      - name: Materialize the private dbt seeds
+        env:
+          ALLOWED_LOCATIONS_CSV_CONTENT: ${{ vars.ALLOWED_LOCATIONS_CSV_CONTENT }}
+          DEAL_BREAKER_TECH_CSV_CONTENT: ${{ vars.DEAL_BREAKER_TECH_CSV_CONTENT }}
+          DESIRED_TECH_CSV_CONTENT: ${{ vars.DESIRED_TECH_CSV_CONTENT }}
+          DESIRED_TITLES_CSV_CONTENT: ${{ vars.DESIRED_TITLES_CSV_CONTENT }}
+        run: make seeds
+
       - name: Ingest -> BigQuery raw
         env:
           PIPELINE_TARGET: prod
           GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
           BQ_DATASET: jobs
-          BQ_LOCATION: northamerica-northeast2
+          BQ_LOCATION: us-central1
           HTTP_USER_AGENT: ${{ vars.HTTP_USER_AGENT }}
         run: make ingest
 
@@ -75,6 +92,25 @@ jobs:
           make dbt-deps
           cd dbt && uv run dbt compile --target prod
 
+      # The resume corpus V2 scores against. A *secret*, not a variable like the
+      # company list: variables are unencrypted and this repo is public, while
+      # this file carries employer history, work authorization and education
+      # (ADR-0027). Absent, the loader falls back to the committed example and
+      # scores every posting against placeholder text -- so the step is skipped
+      # rather than run with a stand-in, leaving fit_score null and delivery on
+      # its V1 ordering, which is the honest degraded state.
+      - name: Materialize the private resume and land the scoring prompt
+        if: ${{ secrets.RESUME_YAML_CONTENT != '' }}
+        env:
+          PIPELINE_TARGET: prod
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+          BQ_DATASET: jobs
+          BQ_LOCATION: us-central1
+          RESUME_YAML_CONTENT: ${{ secrets.RESUME_YAML_CONTENT }}
+        run: |
+          printf '%s' "$RESUME_YAML_CONTENT" > config/resume.yaml
+          make land-resume
+
       - name: Transform (bronze -> silver -> gold) on BigQuery
         env:
           GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
@@ -94,7 +130,7 @@ jobs:
           PIPELINE_TARGET: prod
           GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
           BQ_DATASET: jobs
-          BQ_LOCATION: northamerica-northeast2
+          BQ_LOCATION: us-central1
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           DIGEST_TO: ${{ secrets.DIGEST_TO }}

@@ -1,0 +1,129 @@
+# Example MASTER resume corpus. Copy to config/resume.yaml (gitignored), then
+# replace every bullet below with your own. The content here is fictional; the
+# *shape* is the point.
+#
+# ── This is not a CV ──────────────────────────────────────────────────────────
+# Nobody reads it. There is no page limit, no narrative arc, and no reason to
+# drop the older role or the side project. Every bullet you omit is a posting
+# that cannot match, so write it by ADDITION. A tailored CV is lossy by
+# construction — each version dropped whatever did not serve one application —
+# so build this from what you did, using old versions only as memory joggers.
+#
+# ── What actually affects matching ────────────────────────────────────────────
+# Only `text` inside bullets is embedded and compared against postings. So:
+#   * bullet COUNT and bullet QUALITY are what move results;
+#   * job titles do NOT affect matching — do not invent one hoping to rank
+#     better, it does nothing. Keep them honest so the digest is readable;
+#   * per-technology years are NOT a field. Nothing compares them to a posting's
+#     required years, and a structured number would be false precision. If
+#     duration matters, put it in the bullet text ("owned the dbt layer for
+#     three years"). The role's `period` already implies it.
+#
+# ── How to write a bullet ─────────────────────────────────────────────────────
+# What you built, with what, FOR WHOM, and what changed. The "for whom" is what
+# separates role families:
+#   weak : "Built churn models."
+#   good : "Built churn models the CS team used to prioritise renewal outreach,
+#           replacing a manual account review."
+# One bullet per distinct thing built. Splitting them is what lets a posting
+# match the relevant half of your history instead of an average of all of it.
+#
+# ── evidences: which role families a bullet is evidence for ───────────────────
+# From a closed set (shared/resume.py ROLE_FAMILIES). It does NOT affect
+# matching or scoring — matching is on `text` alone, and the tags are kept out
+# of the scoring prompt on purpose, since a rubric built to ignore job titles
+# should not be handed title-shaped labels. What it buys is a coverage report:
+# `make land-resume` prints bullets per family and warns on any at zero, which
+# is the only way to see that (say) Product Analyst roles score low because
+# nothing in the corpus describes that work — a gap otherwise indistinguishable
+# from those roles genuinely being a poor fit.
+
+summary: >
+  Two or three sentences of plain prose: what you do, the kind of team you do it
+  on, and where you are strongest. This is what lets the scorer judge a posting
+  whose vocabulary matches nothing in the lists below.
+
+# Rendered verbatim as the level to calibrate against. The scorer infers a
+# posting's level from its described scope, then compares it to this.
+seniority: senior individual contributor
+
+# Reported as eligibility, never scored on and never used to drop a posting.
+constraints:
+  - no relocation
+
+# Free-form groups; the names are yours. Context for the LLM, not the matching
+# key — the work history below is what gets matched.
+skills:
+  core_stack:
+    - SQL
+    - Python
+    - dbt
+    - a cloud warehouse
+  gtm_metrics:
+    - retention and expansion
+    - funnel conversion
+  source_systems:
+    - a CRM
+    - a product analytics tool
+  applied_ai:
+    - LLM APIs
+    - embeddings
+
+work_history:
+  # Most recent first. One entry per role, even at the same employer — the
+  # period is what implies duration.
+  - org: Example Corp
+    industry: B2B SaaS
+    # What the work actually was.
+    title: Senior Analytics Engineer
+    # What the org chart called it. Keep both when they differ: the divergence
+    # is normal, and it is exactly why title matching fails.
+    official_title: Software Engineer III, Data
+    period: 2022-07 to 2025-11
+    location: Somewhere (Remote)
+    bullets:
+      - text: >
+          A model or metric layer you owned end to end: what it replaced, how
+          far it grew, and which team made decisions on it afterwards.
+        evidences: [analytics-engineer, gtm-engineer]
+      - text: >
+          A pipeline that unified several source systems into one view, naming
+          the systems and who adopted the result.
+        evidences: [data-engineer, analytics-engineer]
+      - text: >
+          A data-quality problem you fixed: what broke, the approach that
+          resolved it, and what it is persisted as now.
+        evidences: [analytics-engineer, forward-deployed-engineer]
+
+  - org: Example Corp
+    industry: B2B SaaS
+    title: Data Analyst to Senior Analyst
+    period: 2018-06 to 2022-06
+    location: Elsewhere (Hybrid)
+    # Optional: when one entry spans several titles.
+    progression: Analyst, Senior Analyst, Data Scientist
+    bullets:
+      - text: >
+          Reporting you rebuilt for a named audience, saying what it replaced
+          and what the audience could do afterwards that it could not before.
+        evidences: [bi-developer, data-analyst]
+      - text: >
+          Something delivered into customer environments: the scale, the
+          isolation or configuration problem it posed, and the time it saved.
+        evidences: [forward-deployed-engineer, bi-developer]
+      - text: >
+          An analysis of how a feature was actually used, and the product or
+          go-to-market decision that came out of it.
+        evidences: [product-analyst, data-analyst]
+
+# Personal projects count as evidence. Same bullet shape.
+projects:
+  - name: Example Project
+    text: >
+      What it does, what it is built with, and what genuinely works versus what
+      is planned. Be specific about the engineering, not the ambition.
+    evidences: [analytics-engineer, data-engineer]
+
+education:
+  - M.S. Subject, YEAR — Institution, Country.
+  - B.S. Subject, YEAR — Institution, Country.

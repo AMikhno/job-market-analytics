@@ -1,42 +1,59 @@
 # V2 implementation plan — AI relevance inside dbt
 
 The contract for the V2 build. Scope fixed by ADR-0020; design rationale in
-[ARCHITECTURE.md V2](../ARCHITECTURE.md#v2) and ADR-0003/0004/0009. This document is the
+[ARCHITECTURE.md V2](../ARCHITECTURE.md#v2) and ADR-0003/0004/0025/0027. This document is the
 work breakdown an implementation session executes top-to-bottom — decisions
 here are settled; re-derive nothing, but **verify current BigQuery AI-function
-names/signatures and Gemini model availability before writing SQL** (they churn).
+names/signatures before writing SQL** (they churn). Model choice and its region
+constraint are measured in ADR-0025; re-measure rather than trusting their age.
 
 ## Scope
 
 **In:** typed extraction (`int_jobs_structured`), fit scoring (`int_jobs_scored`),
-profile config + prompt rendering, score-aware gold + digest, dev-target stubs,
+resume corpus + prompt rendering, score-aware gold + digest, dev-target stubs,
 tests, docs/ADR sweep.
 
 **Out (parked):** embeddings, new ATS adapters (ADR-0013), openjobdata (ADR-0017), and score
 thresholds or delivery filtering — the last two both reserved by ADR-0020.
 
+## Settled: where inference runs
+
+The region gate is closed (ADR-0026). The warehouse moved to `us-central1` because
+`northamerica-northeast2` served neither a foundational model nor any embedding model, and
+BigQuery enforces co-location between a query and the datasets it reads.
+
+**`AI.SCORE` needs no connection.** Its signature makes `connection_id` and `endpoint` optional —
+measured, by calling it — so there is no resource to provision and no service account to grant.
+Prefer it over `AI.GENERATE_INT`, which does need a connection, unless the 1–5 contract or the
+provenance columns cannot be expressed through it.
+
 ## Human preconditions (before the prod run; the build itself needs none of these)
 
-- [ ] BigQuery ↔ Vertex connection `northamerica-northeast2.vertex` created; its service
-      account granted Vertex access; Vertex AI API enabled. (Connection, dataset and endpoint must all be `northamerica-northeast2` — a mismatch is a
-      hard failure.)
-- [ ] `config/profile.yaml` filled from the example (private, gitignored — never committed).
-- [ ] In CI/prod, profile content follows the company-list pattern (ADR-0011): a GitHub
-      Actions **variable** `PROFILE_YAML_CONTENT` materialized to `config/profile.yaml`
-      (it contains preferences, not credentials; keep real PII out of it).
+- [ ] Vertex AI API enabled.
+- [ ] Application Default Credentials for local prod runs
+      (`gcloud auth application-default login`) — CI uses Workload Identity Federation and needs
+      none.
+- [ ] `config/resume.yaml` filled from the example (private, gitignored — never committed).
+- [ ] In CI/prod, resume content is a GitHub Actions **encrypted secret**
+      `RESUME_YAML_CONTENT`, materialized to `config/resume.yaml` at run start.
+      **Not a variable**, unlike the company list: variables are unencrypted, this repo is
+      public, and the corpus carries employer history, work authorization and education
+      (ADR-0027). The company list is a variable because it names public job boards; a resume
+      is real PII and belongs with the credentials under ADR-0007's boundary. It is well
+      inside the 48 KB cap.
 
 ## Work items (each = one conventional commit with tests, per CLAUDE.md)
 
-### 1. Profile config (`shared/profile.py`, `config/profile.example.yaml`)
-- Pydantic model: `target_roles: list[str]`, `core_skills: list[str]`,
-  `nice_to_have_skills: list[str]`, `seniority: str`, `constraints: list[str]`,
-  `summary: str` (freeform, few sentences).
-- `render_prompt(profile) -> str`: deterministic, versioned prompt block
+### 1. Resume corpus (`shared/resume.py`, `config/resume.example.yaml`) — **built**
+- Pydantic model per ADR-0027: `summary`, `seniority`, `constraints`, grouped `skills`,
+  `work_history` (roles → bullets), `projects`, `education`. No `target_roles`.
+- `evidence_units(resume)`: every bullet as a standalone embeddable unit carrying its
+  origin — the granularity resume-to-requirements matching needs.
+- `render_prompt(resume) -> str`: deterministic, versioned prompt block
   (`PROMPT_VERSION` constant lives here; bump it whenever wording changes —
   it is provenance in the scored table).
 - Loader mirrors `companies.csv` fallback: real file if present, else example
   (with a warning). Tests: schema validation, deterministic rendering, fallback.
-- Add `config/profile.yaml` to `.gitignore` (do this first).
 
 ### 2. `int_jobs_structured` (silver, incremental, prod-only)
 - `AI.GENERATE` (or current equivalent — verify) with `output_schema` emitting typed fields:
@@ -51,9 +68,9 @@ thresholds or delivery filtering — the last two both reserved by ADR-0020.
   retried next run (guard on `content_hash` + `extract_ok`), never silently
   dropped or scored.
 - Schema evolution: `on_schema_change: append_new_columns` on both incremental
-  models; a `--full-refresh` re-bills the entire backfill (~$0.12 at current
-  scale) and must be a deliberate decision, not a reflex ([rebuilds](../ARCHITECTURE.md#rebuilds-not-migrations),
-  "Schema evolution").
+  models; a `--full-refresh` re-bills the entire backfill (~200s per model at 1,742
+  texts; cost measured in ADR-0025) and must be a deliberate decision, not a reflex
+  ([rebuilds](../ARCHITECTURE.md#rebuilds-not-migrations), "Schema evolution").
 - **Dev parity:** on the DuckDB target the model is a stub emitting the same
   columns as typed nulls (`enabled`/target-conditional SQL).
   Downstream models and unit tests run against the stub.
@@ -63,14 +80,14 @@ thresholds or delivery filtering — the last two both reserved by ADR-0020.
   resource connection to provision; rubric-in-prompt, rating output), falling back to
   `AI.GENERATE_INT` (also GA, needs the Vertex connection) if AI.SCORE can't express
   the 1–5 contract or its provenance needs. Whichever is chosen: temperature-0
-  semantics, prompt = profile block (static prefix, from `var('profile_prompt')` —
+  semantics, prompt = resume block (static prefix, from `var('resume_prompt')` —
   static so Gemini context caching discounts it) + the trimmed `requirement_text` —
   never the full posting.
 - Columns: `fit_score` (1–5), `model`, `prompt_version`, `scored_at`.
 - Same incremental guard; re-score is triggered by `content_hash` change or
   `prompt_version` bump.
-- Workflow passes the rendered profile: a make target renders
-  `config/profile.yaml` → `--vars` (add to `ingest.yml` dbt-prod step).
+- Workflow passes the rendered resume: a make target renders
+  `config/resume.yaml` → `--vars` (add to `ingest.yml` dbt-prod step).
 - Range validation: `accepted_values` on 1–5 (out-of-range = flagged, not delivered).
 
 ### 4. Gold + digest become score-aware
@@ -83,7 +100,7 @@ thresholds or delivery filtering — the last two both reserved by ADR-0020.
 
 ### 5. Docs
 - ARCHITECTURE's V2 section → "as built"; TODO sweep; record the measured
-  first-backfill cost against the ~$0.12 expectation, and how to sanity-check it
+  first-backfill cost into ADR-0025 (which leaves it open), and how to sanity-check it
   (row counts in `int_jobs_structured` vs silver survivors after run 1).
 
 ## Acceptance

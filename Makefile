@@ -1,4 +1,4 @@
-.PHONY: install ingest validate-companies discover update-company-list companies-variable deliver dbt-deps ensure-raw dbt-dev dbt-prod dbt-test dbt-docs freshness test lint sql-lint format check
+.PHONY: install ingest validate-companies discover update-company-list companies-variable seeds seeds-variable deliver dbt-deps ensure-raw land-resume labels-template evaluate dbt-dev dbt-prod dbt-test dbt-docs freshness test lint sql-lint format check
 
 install:          ## Set up the uv venv, dbt packages, and pre-commit hooks
 	uv sync --extra dev
@@ -37,6 +37,14 @@ companies-variable: ## Write the active-only projection CI needs + print the pus
 	@echo "push it (human-authenticated):"
 	@echo "  gh variable set COMPANIES_CSV_CONTENT < config/companies.active.csv"
 
+seeds:            ## Put the private dbt seeds in place (env var > private file > example)
+	uv run python -m ingest.materialize_seeds
+
+seeds-variable:   ## Print the gh commands that push the seeds to Actions variables
+	@for s in allowed_locations deal_breaker_tech desired_tech desired_titles; do \
+	  echo "  gh variable set $$(echo $$s | tr a-z A-Z)_CSV_CONTENT < dbt/seeds/$$s.csv"; \
+	done
+
 deliver:          ## Email the digest of new gold postings (no-op without SMTP creds)
 	uv run python -m deliver.digest
 
@@ -46,19 +54,28 @@ dbt-deps:         ## Install dbt package dependencies (dbt_utils)
 ensure-raw:       ## Create empty raw tables so dbt can build without an ingest run
 	uv run python -c "from ingest.pipeline import ensure_raw_tables; ensure_raw_tables()"
 
-dbt-dev: dbt-deps  ## Build the dbt DAG against local DuckDB
+land-resume:      ## Land the private resume into BigQuery for scoring + matching
+	uv run python -m ingest.land_resume
+
+labels-template:  ## Write a labelling worksheet from gold to config/labels.csv
+	uv run python -m evaluation.template
+
+evaluate:         ## Does fit_score rank better than match_score? Needs config/labels.csv
+	uv run python -m evaluation.report
+
+dbt-dev: dbt-deps seeds  ## Build the dbt DAG against local DuckDB
 	cd dbt && uv run dbt build --target dev
 
-dbt-prod: dbt-deps ## Build the dbt DAG against BigQuery
+dbt-prod: dbt-deps seeds ## Build the dbt DAG against BigQuery
 	cd dbt && uv run dbt build --target prod
 
-dbt-test:         ## Run dbt tests
+dbt-test: seeds   ## Run dbt tests
 	cd dbt && uv run dbt test --target dev
 
-dbt-docs: dbt-deps ## Generate self-contained dbt docs (lineage + columns) at dbt/target/index.html
+dbt-docs: dbt-deps seeds ## Generate self-contained dbt docs (lineage + columns) at dbt/target/index.html
 	cd dbt && uv run dbt docs generate --static --target dev
 
-freshness:        ## Assert raw sources are fresh (fails the run if stale/empty)
+freshness: seeds  ## Assert raw sources are fresh (fails the run if stale/empty)
 	cd dbt && uv run dbt source freshness --target prod
 
 test:             ## Run the Python test suite with coverage gate
@@ -67,12 +84,12 @@ test:             ## Run the Python test suite with coverage gate
 lint: sql-lint docs-check ## ruff (check + format) + mypy + sqlfluff + doc references
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run mypy shared ingest deliver scripts
+	uv run mypy shared ingest deliver evaluation scripts
 
 docs-check:       ## Fail on docs pointing at files/targets/models that don't exist
 	uv run python scripts/check_docs.py
 
-sql-lint: dbt-deps ## Lint dbt SQL (dbt templater, DuckDB dialect; run from dbt/)
+sql-lint: dbt-deps seeds ## Lint dbt SQL (dbt templater, DuckDB dialect; run from dbt/)
 	mkdir -p data                         # DuckDB path the profile resolves to
 	cd dbt && uv run sqlfluff lint models
 

@@ -3,6 +3,7 @@
 import json
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
+from pathlib import Path
 
 import duckdb
 import pytest
@@ -38,7 +39,9 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
                 title VARCHAR, company VARCHAR, location VARCHAR, url VARCHAR,
                 desired_tech_hits BIGINT, title_match BOOLEAN,
                 deal_breaker_hits BIGINT, deal_breaker_terms VARCHAR,
-                match_score BIGINT,
+                match_score BIGINT, fit_score BIGINT,
+                company_type VARCHAR, geo_restriction VARCHAR, manages_people VARCHAR,
+                similarity DOUBLE, best_match_source VARCHAR,
                 first_seen_at TIMESTAMP, posted_or_updated_at TIMESTAMP)"""
         )
         for r in rows:
@@ -46,7 +49,8 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
             # it, while the pipeline's own ISO strings keep their UTC wall-clock.
             first_seen = r["first_seen_at"].replace(tzinfo=None)
             con.execute(
-                "INSERT INTO main_gold.fct_job_postings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO main_gold.fct_job_postings "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     r.get("title", "Analytics Engineer"),
                     r.get("company", "acme"),
@@ -63,6 +67,14 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
                         + (2 if r.get("title_match", False) else 0)
                         - r.get("deal_breaker_hits", 0),
                     ),
+                    # Default null: unscored is the normal state until V2 has run,
+                    # and the state the digest must handle without special-casing.
+                    r.get("fit_score"),
+                    r.get("company_type"),
+                    r.get("geo_restriction"),
+                    r.get("manages_people"),
+                    r.get("similarity"),
+                    r.get("best_match_source"),
                     first_seen,
                     first_seen,
                 ],
@@ -255,6 +267,227 @@ def test_footer_reports_skipped_boards_even_when_healthy() -> None:
     assert "make whois" in footer
 
 
+def test_fit_score_leads_the_ordering(tmp_path: Path) -> None:
+    """The LLM score orders the digest; match_score breaks ties beneath it.
+
+    The weak-keyword/strong-fit posting is the point of V2 — under V1's ordering
+    it sorted last, and it is the case relevance-signals found the keyword rules
+    getting wrong.
+    """
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [
+            {
+                "title": "Strong keywords weak fit",
+                "fit_score": 2,
+                "match_score": 9,
+                "first_seen_at": now,
+            },
+            {
+                "title": "Weak keywords strong fit",
+                "fit_score": 5,
+                "match_score": 0,
+                "first_seen_at": now,
+            },
+        ],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+
+    assert [r["title"] for r in rows] == [
+        "Weak keywords strong fit",
+        "Strong keywords weak fit",
+    ]
+
+
+def test_unscored_postings_sort_last_but_still_ship(tmp_path: Path) -> None:
+    """`nulls last` is what keeps the score an ordering and not a filter
+    (ADR-0020): an unscored posting sinks below scored ones, and is delivered."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [
+            {"title": "Unscored", "match_score": 99, "first_seen_at": now},
+            {"title": "Scored low", "fit_score": 1, "match_score": 0, "first_seen_at": now},
+        ],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+
+    assert [r["title"] for r in rows] == ["Scored low", "Unscored"]
+
+
+def test_digest_line_states_unscored_rather_than_omitting_it(tmp_path: Path) -> None:
+    """A missing fit reads as a low one if the line just leaves it out, and the
+    two mean opposite things about a posting."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [
+            {"title": "Has a score", "fit_score": 4, "first_seen_at": now},
+            {"title": "Has none", "first_seen_at": now},
+        ],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+    body = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
+
+    assert "LLM 4/5" in body
+    assert "unscored" in body
+
+
+def test_a_canada_ok_posting_gets_no_location_label(tmp_path: Path) -> None:
+    """The exception is annotated, not the norm. Printing "canada ok" on every
+    good line makes the label furniture — the eye stops reading it, which is
+    exactly when the one that matters slips past."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [
+            {
+                "title": "Fine",
+                "fit_score": 4,
+                "company_type": "B2B SaaS",
+                "geo_restriction": "canada_ok",
+                "manages_people": "no",
+                "first_seen_at": now,
+            }
+        ],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+    body = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
+
+    assert "canada" not in body.lower()
+    assert "B2B SaaS" in body
+    # The good case prints nothing: showing "no reports" on every line makes it
+    # furniture, the same reason canada_ok is silent.
+    assert "reports" not in body
+    assert "manages people" not in body
+
+
+def test_the_two_ai_scores_are_labelled_by_method(tmp_path: Path) -> None:
+    """They disagree, and until human labels say which is right, seeing them
+    disagree is the point — so they are never merged into one number. Similarity
+    prints as a percentage so it cannot read as a second 1-5 rating."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [
+            {
+                "title": "Both",
+                "match_score": 11,
+                "fit_score": 4,
+                "similarity": 0.8231,
+                "desired_tech_hits": 9,
+                "title_match": True,
+                "deal_breaker_terms": "Spark",
+                "company_type": "B2B SaaS",
+                "geo_restriction": "us_only",
+                "manages_people": "yes",
+                "first_seen_at": now,
+            }
+        ],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+    body = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
+
+    assert "match 11 — LLM 4/5, vectors 82% — tech hits: 9" in body
+    assert "title match" in body
+    assert "mentions Spark" in body
+    assert "B2B SaaS" in body
+    assert "text says US only" in body
+    assert "manages people" in body
+
+
+def test_a_posting_with_neither_ai_score_says_unscored(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(settings, [{"title": "Plain", "match_score": 3, "first_seen_at": now}])
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+    body = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
+
+    assert "match 3 — unscored — tech hits: 0" in body
+
+
+def test_a_us_only_posting_is_called_out(tmp_path: Path) -> None:
+    """The case the location rule provably cannot catch: silver keeps bare
+    "Remote", so this arrives with a relevant title and the restriction stated
+    only in the description."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [
+            {"title": "Restricted", "geo_restriction": "us_only", "first_seen_at": now},
+            {"title": "Vague", "geo_restriction": "unclear", "first_seen_at": now},
+        ],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+    body = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
+
+    assert "text says US only" in body
+    assert "eligibility unstated" in body
+
+
+def test_a_us_only_posting_is_still_delivered(tmp_path: Path) -> None:
+    """Annotate, never drop (ADR-0015 / ADR-0020). Postings lie about location
+    in both directions, so hiding on an extracted value would lose real roles to
+    a model's mistake — it is labelled and left in."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [{"title": "Restricted", "geo_restriction": "us_only", "first_seen_at": now}],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+
+    assert [r["title"] for r in rows] == ["Restricted"]
+
+
+def test_unextracted_annotations_are_simply_absent(tmp_path: Path) -> None:
+    """Nothing extracted yet is the normal state before V2 has run, and it must
+    not produce empty separators or the word None in an email."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(settings, [{"title": "Plain", "first_seen_at": now}])
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+    body = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
+
+    assert "None" not in body
+    assert "—  —" not in body
+
+
+def test_ordering_is_unchanged_while_nothing_is_scored(tmp_path: Path) -> None:
+    """V2 must not disturb delivery before it produces anything: with every
+    fit_score null the order is exactly V1's match_score order."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [
+            {"title": "Low", "match_score": 1, "first_seen_at": now},
+            {"title": "High", "match_score": 8, "first_seen_at": now},
+            {"title": "Mid", "match_score": 4, "first_seen_at": now},
+        ],
+    )
+
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+
+    assert [r["title"] for r in rows] == ["High", "Mid", "Low"]
+
+
 def test_footer_skipped_refs_are_never_raw() -> None:
     """The footer text also reaches the run summary and the public step output,
     so it must carry digests only -- never a board_ref."""
@@ -433,8 +666,8 @@ def test_digest_line_shows_the_score_it_is_sorted_by(tmp_path, monkeypatch, stub
     body = stub_smtp.sent[0].get_body(("plain",)).get_content()
     # a title match no longer jumps the queue ahead of a much stronger tech match
     assert body.index("Tech only") < body.index("Title only")
-    assert "match 8 — tech hits: 8" in body
-    assert "match 2 — tech hits: 0, title match" in body
+    assert "match 8 — unscored — tech hits: 8" in body
+    assert "match 2 — unscored — tech hits: 0, title match" in body
     # the scores read down the page in descending order
     scores = [
         int(line.split("match ")[1].split(" ")[0]) for line in body.splitlines() if "match " in line
