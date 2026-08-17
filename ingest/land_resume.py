@@ -21,7 +21,14 @@ import sys
 
 from shared import storage
 from shared.config import Settings, get_settings
-from shared.resume import PROMPT_VERSION, evidence_units, load_resume, render_prompt
+from shared.resume import (
+    PROMPT_VERSION,
+    EvidenceUnit,
+    evidence_units,
+    family_coverage,
+    load_resume,
+    render_prompt,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("land_resume")
@@ -52,9 +59,25 @@ def _current(settings: Settings) -> tuple[str, str] | None:
     return str(rows[0]["prompt_version"]), str(rows[0]["rendered_prompt"])
 
 
-def _land_units(settings: Settings, resume: object, version: str) -> int:
+def _log_coverage(units: list[EvidenceUnit]) -> None:
+    """Report bullets per role family, so a thin one is seen before it costs you.
+
+    Untagged bullets still match -- the tag drives nothing at query time -- so a
+    zero here is a reporting gap only if the work genuinely exists and was left
+    untagged. Either way it is worth looking at.
+    """
+    counts = family_coverage(units)
+    log.info("role-family coverage: %s", ", ".join(f"{k} {v}" for k, v in counts.items()))
+    empty = [family for family, n in counts.items() if n == 0]
+    if empty:
+        log.warning(
+            "no bullets tagged for %s — postings of that shape will match weakly",
+            ", ".join(empty),
+        )
+
+
+def _land_units(settings: Settings, units: list[EvidenceUnit], version: str) -> int:
     """Replace the resume units. Returns how many were landed."""
-    units = evidence_units(resume)  # type: ignore[arg-type]
     storage.ensure_resume_units_table(settings)
     storage.replace_resume_units(
         [
@@ -84,8 +107,10 @@ def run(settings: Settings | None = None) -> int:
 
     # Replaced every run whether or not the prompt moved: they are cheap, and a
     # stale unit keeps matching work the resume no longer claims.
-    landed = _land_units(settings, resume, version)
+    units = evidence_units(resume)
+    landed = _land_units(settings, units, version)
     log.info("landed %d resume unit(s) for embedding", landed)
+    _log_coverage(units)
 
     if _current(settings) == (version, rendered):
         log.info("scoring prompt already current at version %s; nothing landed", version)

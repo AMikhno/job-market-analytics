@@ -112,3 +112,49 @@ def test_first_run_provisions_the_table(tmp_path: Path) -> None:
 def test_prod_table_name_is_fully_qualified() -> None:
     settings = Settings(pipeline_target="prod", gcp_project="proj", bq_dataset="jobs")
     assert storage.scoring_prompt_table(settings) == "proj.jobs_ops.scoring_prompt"
+
+
+def test_reports_role_family_coverage(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """The count per family is the corpus gap made visible before a scoring run."""
+    settings = _settings(tmp_path)
+
+    with caplog.at_level(logging.INFO, logger="land_resume"):
+        assert land_resume.run(settings) == 0
+
+    coverage = [r.getMessage() for r in caplog.records if "role-family coverage" in r.getMessage()]
+    assert len(coverage) == 1
+    # The example corpus tags every declared family, so none should be at zero.
+    assert "analytics-engineer" in coverage[0]
+    assert "product-analyst" in coverage[0]
+    assert not [r for r in caplog.records if "no bullets tagged" in r.getMessage()]
+
+
+def test_warns_when_a_family_has_no_bullets(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A silent zero is indistinguishable from those roles being a poor fit."""
+    resume = tmp_path / "resume.yaml"
+    resume.write_text(
+        "summary: Builds analytics pipelines.\n"
+        "seniority: senior individual contributor\n"
+        "work_history:\n"
+        "  - org: Example Corp\n"
+        "    title: Analyst\n"
+        "    period: 2020 to 2024\n"
+        "    bullets:\n"
+        "      - text: Built one thing.\n"
+        "        evidences: [analytics-engineer]\n"
+    )
+    settings = Settings(
+        pipeline_target="dev",
+        duckdb_path=str(tmp_path / "jobs.duckdb"),
+        resume_yaml=str(resume),
+    )
+
+    with caplog.at_level(logging.INFO, logger="land_resume"):
+        assert land_resume.run(settings) == 0
+
+    warnings = [r.getMessage() for r in caplog.records if "no bullets tagged" in r.getMessage()]
+    assert len(warnings) == 1
+    assert "product-analyst" in warnings[0]
+    assert "analytics-engineer" not in warnings[0]

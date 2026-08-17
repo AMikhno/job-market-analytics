@@ -27,11 +27,27 @@ EXAMPLE_RESUME: Final = ROOT / "config" / "resume.example.yaml"
 # column (docs/v2-plan.md).
 PROMPT_VERSION: Final = "2"
 
-# The role families a bullet can be evidence for. Closed on purpose: a typo'd tag
-# would silently tag nothing, and a matcher quietly ignoring half the corpus
-# looks exactly like one that is working.
+# The role families a bullet can be evidence for: work SHAPES, deliberately
+# fewer than the titles they cover, because a family exists to group bullets and
+# a title does not describe work (ADR-0027 rule 0). bi-developer covers BI
+# Developer and Tableau Developer; data-analyst covers Senior Data Analyst and
+# Senior Data Specialist.
+#
+# Closed on purpose, and it is coverage reporting that makes closed the right
+# call rather than merely a typo guard: `make land-resume` reports bullets per
+# family, and "0 bullets for product-analyst" cannot be reported for a family
+# nobody declared. Tags never reach the scoring prompt -- that would smuggle
+# title-shaped signal back into a rubric built to ignore titles.
 ROLE_FAMILIES: Final = frozenset(
-    {"analytics-engineer", "forward-deployed-engineer", "gtm-engineer"}
+    {
+        "analytics-engineer",
+        "bi-developer",
+        "data-analyst",
+        "data-engineer",
+        "forward-deployed-engineer",
+        "gtm-engineer",
+        "product-analyst",
+    }
 )
 
 # From the LLM pass in docs/research/relevance-signals.md -- argued hypotheses,
@@ -184,6 +200,22 @@ def evidence_units(resume: Resume) -> list[EvidenceUnit]:
             )
         )
     return units
+
+
+def family_coverage(units: list[EvidenceUnit]) -> dict[str, int]:
+    """Bullets per role family, zeros included, in family order.
+
+    The zeros are the point. ADR-0027 notes that corpus completeness is the one
+    thing the pipeline cannot observe -- a posting missed because no bullet
+    described the relevant work looks identical to one correctly scored low.
+    A family with no bullets is that gap, visible before a scoring run rather
+    than inferred from a disappointing digest weeks later.
+    """
+    counts = dict.fromkeys(sorted(ROLE_FAMILIES), 0)
+    for unit in units:
+        for family in unit.evidences:
+            counts[family] += 1  # validated against ROLE_FAMILIES at parse time
+    return counts
 
 
 def _bullets(items: list[str]) -> str:
