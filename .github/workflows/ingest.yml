@@ -47,6 +47,21 @@ jobs:
           COMPANIES_CSV_CONTENT: ${{ vars.COMPANIES_CSV_CONTENT }}
         run: printf '%s' "$COMPANIES_CSV_CONTENT" > config/companies.csv
 
+      # The filter rules: allowed locations, deal-breaker tech, and the desired
+      # tech/title signals (ADR-0028). Variables rather than secrets, on the same
+      # test the company list passes — these are preferences, not credentials,
+      # and a masked value is worse to debug for no gain. Absent, `make seeds`
+      # falls back to the committed examples with a warning, which is why this
+      # step has no `if:` guard: the fallback is a usable degraded state, not a
+      # wrong one.
+      - name: Materialize the private dbt seeds
+        env:
+          ALLOWED_LOCATIONS_CSV_CONTENT: ${{ vars.ALLOWED_LOCATIONS_CSV_CONTENT }}
+          DEAL_BREAKER_TECH_CSV_CONTENT: ${{ vars.DEAL_BREAKER_TECH_CSV_CONTENT }}
+          DESIRED_TECH_CSV_CONTENT: ${{ vars.DESIRED_TECH_CSV_CONTENT }}
+          DESIRED_TITLES_CSV_CONTENT: ${{ vars.DESIRED_TITLES_CSV_CONTENT }}
+        run: make seeds
+
       - name: Ingest -> BigQuery raw
         env:
           PIPELINE_TARGET: prod
