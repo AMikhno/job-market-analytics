@@ -33,17 +33,21 @@ log = logging.getLogger("deliver")
 def fetch_new_postings(settings: Settings, watermark: str) -> list[dict[str, object]]:
     """Gold postings first seen after the watermark, best fit first.
 
-    Ordered by the single `match_score` (ADR-0024) rather than by several keys in
-    priority order. The old form sorted on title_match before desired_tech_hits,
-    so the tech count printed on each line reset partway down the email — the
-    visible number was not the sort key. Now it is.
+    `fit_score` leads, `match_score` (ADR-0024) breaks ties and carries the
+    unscored tail. `nulls last` is what keeps the score an ordering and not a
+    filter (ADR-0020): an unscored posting sinks below scored ones but still
+    ships, and while nothing is scored the order is exactly the V1 order.
     """
     sql = f"""
         select title, company, location, url, match_score, desired_tech_hits,
-               title_match, deal_breaker_hits, deal_breaker_terms, first_seen_at
+               title_match, deal_breaker_hits, deal_breaker_terms, first_seen_at,
+               fit_score, company_type, geo_restriction, manages_people,
+               similarity, best_match_source
         from {storage.gold_table(settings)}
         where first_seen_at > cast(? as timestamp)
-        order by match_score desc, posted_or_updated_at desc nulls last
+        order by fit_score desc nulls last,
+                 match_score desc,
+                 posted_or_updated_at desc nulls last
     """
     return storage.query_rows(sql, params=[watermark], settings=settings)
 
@@ -142,6 +146,65 @@ def _skipped(summary: RunSummary) -> str:
     )
 
 
+def _signal_line(row: dict[str, object]) -> str:
+    """The bracketed signals on one digest line, in three groups.
+
+        match 11 — LLM 4/5, vectors 82% — tech hits: 9, title match, B2B SaaS
+
+    Keyword score, then the two AI rankings, then the details -- grouped
+    because the three answer different questions and a flat comma list reads as
+    one blur. The AI scores are labelled by *method* rather than merged: until
+    human labels say which is right, seeing them disagree is the point.
+    Similarity prints as a percentage so it cannot be mistaken for a second 1-5.
+
+    Exceptions are annotated, norms are not: a geographic restriction shows only
+    when it is a problem. Printing "canada ok" on every good line makes the
+    label furniture, and the eye stops reading it.
+    """
+    groups: list[list[str]] = [[f"match {row['match_score']}"]]
+
+    # "unscored" is stated, not omitted: an absent score otherwise reads as a
+    # low one, and the two mean opposite things.
+    ai: list[str] = []
+    if row.get("fit_score") is not None:
+        ai.append(f"LLM {row['fit_score']}/5")
+    if row.get("similarity") is not None:
+        ai.append(f"vectors {float(row['similarity']) * 100:.0f}%")  # type: ignore[arg-type]
+    groups.append(ai or ["unscored"])
+
+    details: list[str] = [f"tech hits: {row['desired_tech_hits']}"]
+    if row.get("title_match"):
+        details.append("title match")
+    # Named, not just counted: "Kafka" as a nice-to-have reads very differently
+    # from a posting built on Spark + Flink, and only you can tell which.
+    if row.get("deal_breaker_terms"):
+        details.append(f"mentions {row['deal_breaker_terms']}")
+    if row.get("company_type"):
+        details.append(str(row["company_type"]))
+    # Attributed to the description on purpose: the location earlier in the line
+    # is the board's own field, and the two disagree honestly in exactly the case
+    # this exists to catch -- board says "Remote", text says US-only. Naming the
+    # source makes that read as a warning rather than a bug.
+    #
+    # A posting open to both countries shows one location per job_key but shares
+    # one content_hash, so a US-located row can legitimately carry canada_ok.
+    # Counting that as a disagreement once overstated the error rate sevenfold.
+    geo = row.get("geo_restriction")
+    if geo == "us_only":
+        details.append("text says US only")
+    elif geo == "unclear":
+        details.append("eligibility unstated")
+    if row.get("manages_people") == "yes":
+        details.append("manages people")
+    # What the embedding actually matched — the thing a 1-5 cannot tell you. The
+    # source, not the bullet text: enough to recognise, short enough to fit.
+    if row.get("best_match_source"):
+        details.append(f"like: {row['best_match_source']}")
+    groups.append(details)
+
+    return " — ".join(", ".join(g) for g in groups)
+
+
 def build_email(
     rows: list[dict[str, object]], summary: RunSummary | None, settings: Settings
 ) -> EmailMessage:
@@ -161,16 +224,7 @@ def build_email(
         title, company = str(r["title"]), str(r["company"])
         location = str(r["location"]) if r["location"] is not None else "location unknown"
         url = str(r["url"])
-        # The score leads, then the parts that produced it — the list is ordered
-        # by that first number, so the ranking is checkable from the line itself.
-        signals = f"match {r['match_score']} — tech hits: {r['desired_tech_hits']}"
-        if r["title_match"]:
-            signals += ", title match"
-        # Named, not just counted: "Kafka" as a nice-to-have reads very
-        # differently from a posting built on Spark + Flink, and only you can
-        # tell which from the line.
-        if r.get("deal_breaker_terms"):
-            signals += f", mentions {r['deal_breaker_terms']}"
+        signals = _signal_line(r)
         text_lines.append(f"- {title} @ {company} ({location}) [{signals}]\n  {url}")
         html_items.append(
             f'<li><a href="{html.escape(url, quote=True)}">{html.escape(title)}</a>'

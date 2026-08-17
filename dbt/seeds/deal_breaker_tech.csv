@@ -1,6 +1,0 @@
-tech,reason
-Kafka,"heavy streaming infra signals Data Engineer not Analytics Engineer"
-Spark,"distributed processing signals DE not AE"
-Flink,"stream processing, out of scope"
-Scala,"JVM data-eng stack, out of scope"
-Hadoop,"legacy big-data infra, out of scope"

@@ -7,12 +7,27 @@ config/discovery/
 # Personal runbook: the manual half of the system (gh commands, secrets setup).
 # No secret values in it, but it is a private runbook, not project documentation.
 NOTES.local.md
-config/profile.yaml
+# The resume corpus V2 scores against: employer history, work authorization,
+# education. Real PII, and the most sensitive file in the working tree.
+# Every version, not just the master, so a tailored variant cannot slip in.
+config/resume.yaml
+config/resume.*.yaml
+!config/resume.example.yaml
+# Relevance labels: a job_key is (source, company, external_id), so this is a
+# list of company identifiers plus a judgement about each — both halves of what
+# the company list is private to protect.
+config/labels.csv
 # Extra board refs for the discovery probe — real company identifiers.
 config/probe_extra_refs.json
 # Terms the pre-commit hook blocks from being committed. Holding them in the
 # repo would be the leak it exists to prevent.
 config/private-terms.txt
+# The dbt seeds are filter rules, and filter rules are preferences: where the
+# work may be done, which tech ranks a posting up, which ranks it down
+# (ADR-0028). Materialized by `make seeds` from an Actions variable or from
+# config/seeds/*.example.csv. seeds.yml stays tracked -- the schema tests are
+# the mechanism, and the mechanism is public.
+dbt/seeds/*.csv
 *.key
 *.pem
 **/keyfile*.json

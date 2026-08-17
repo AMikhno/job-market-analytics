@@ -1,0 +1,20 @@
+# Human relevance labels. Copy to config/labels.csv (gitignored) and fill in.
+#
+# These are the ONLY ground truth this project has. The LLM pass recorded in
+# docs/research/relevance-signals.md cannot serve: grading an LLM scorer against
+# LLM labels rewards agreeing with a predecessor's mistakes.
+#
+# One question per row, and keep it the same question every time:
+#   "Would I actually apply to this?"   yes / no
+#
+# Not a 1-5 rating. "Would I apply" has a stable answer; "is this a 3 or a 4"
+# does not, and an unstable label turns the metric into noise.
+#
+# Get job_key values from gold, e.g.:
+#   select job_key, title, company, url from <gold> order by first_seen_at desc limit 100
+#
+# A few hundred rows is plenty. Label the ambiguous ones too — a set containing
+# only obvious yeses and obvious noes makes every ranking look good.
+job_key,relevant
+example-source:example-company:00000,yes
+example-source:example-company:00001,no

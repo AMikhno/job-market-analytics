@@ -116,6 +116,111 @@ models:
         data_type: boolean
         data_tests: [not_null]
 
+  - name: int_jobs_structured
+    description: >
+      Typed extraction from posting text (V2, prod-only — a typed-null stub on
+      DuckDB). One row per content_hash: incremental, because re-extracting the
+      ~24 re-landings each posting accumulates would re-bill every run. A failed
+      generation lands extract_ok = false and is retried next run rather than
+      being silently dropped or scored.
+    columns:
+      - name: content_hash
+        description: >
+          Extraction key, the incremental cost guard, and the grain: exactly one
+          row per distinct posting text.
+        # Tested, not just described: the first build selected one row per
+        # *posting*, 17 of which shared a hash with another — double-billing the
+        # same text and fanning gold's join out into duplicate job_keys. Only
+        # gold's unique test caught it, one layer too late.
+        data_tests: [not_null, unique]
+      - name: relevant_text
+        description: >
+          Requirements, nice-to-haves, responsibilities, and what the company
+          does — with culture, history, hiring process, benefits and EEO
+          boilerplate dropped. Scoring this rather than the whole posting is the
+          central finding in docs/research/relevance-signals.md; keeping
+          responsibilities and nice-to-haves corrects it, because a resume is
+          written as accomplishments and nice-to-haves are rarely optional here.
+      - name: company_type
+        description: >
+          Short employer label (B2B SaaS, bank, government, staffing agency…).
+          Earns its place because three data-platform *vendors* contributed
+          1,639 postings and zero relevant ones, while companies that run on
+          data converted well.
+      - name: geo_restriction
+        description: >
+          Where the work may be done from — never visa sponsorship. The one
+          extracted field the rule-based gate provably cannot replace: silver
+          keeps any posting whose location is bare "Remote", so a US-only role
+          reaches gold with the restriction stated only in the description.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [us_only, canada_ok, unclear]
+              config:
+                severity: warn
+      - name: manages_people
+        description: >
+          Whether the described scope includes direct reports or hiring, judged
+          from the work and never the title. Three-state because "unclear" is
+          common and a boolean would force a guess. Years of experience does not
+          substitute: years is a depth bar, this is the shape of the seat.
+        data_tests:
+          # QUOTED, and that is not style: YAML 1.1 parses bare yes/no as
+          # booleans, so `[yes, no, unclear]` became True/False/unclear and the
+          # test flagged every correctly-extracted row. It warned rather than
+          # failed, which is how a wrong gate survives — as skippable noise.
+          - accepted_values:
+              arguments:
+                values: ["yes", "no", "unclear"]
+              config:
+                severity: warn
+      - name: nice_to_have_techs
+        description: Comma-joined; kept because in this market they are rarely optional.
+      - name: extract_ok
+        description: False when the generation failed; such rows are retried, never scored.
+      - name: extract_model
+        description: Model that produced the extraction, read back from the API response.
+
+  - name: int_jobs_scored
+    description: >
+      1-5 fit score of requirement_text against the resume corpus (ADR-0027),
+      prod-only with a typed-null stub on DuckDB. Scores only rows that
+      extracted successfully; the score orders delivery and never filters it
+      (ADR-0020).
+    columns:
+      - name: content_hash
+        description: >
+          Scoring key and grain — one row per distinct posting text. Part of the
+          incremental guard, with prompt_version and scoring_model.
+        data_tests: [not_null, unique]
+      - name: fit_score
+        description: >
+          1-5, higher is better. Tested here as well as in gold, because gold's
+          nulling of out-of-range values would otherwise hide a systematically
+          broken model.
+        data_tests:
+          # WARN here, ERROR on fct_job_postings, and the difference is the
+          # point: the first backfill produced a handful of out-of-range
+          # generations (ADR-0025), and gold nulls them, so failing the
+          # twice-daily prod run over one would be an outage caused by a
+          # rounding artifact. One reaching *gold* means the nulling broke.
+          #
+          # Nested under `arguments` as of dbt 1.10; top-level args still work
+          # but are deprecated.
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5]
+                quote: false
+              config:
+                severity: warn
+      - name: prompt_version
+        description: >
+          Which rendered prompt produced the score. A bump re-scores, because a
+          score is only comparable to another from the same wording.
+      - name: scoring_model
+        description: Pinned endpoint, not the managed default (ADR-0025).
+
 unit_tests:
   - name: dedup_keeps_the_most_recently_ingested_row
     description: >

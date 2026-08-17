@@ -1,5 +1,5 @@
 name: job_pipeline
-version: "0.1.6"
+version: "0.2.0"
 config-version: 2
 profile: job_pipeline
 
@@ -22,6 +22,40 @@ vars:
   # match_score as an integer type under the dbt contract.
   match_title_bonus: 2
   match_deal_breaker_penalty: 1
+
+  # The model V2 extraction and scoring call. Pinned to an explicit version, not
+  # left to the managed default and not the `gemini-flash-lite-latest` alias:
+  # probed 2026-08-16, the unpinned default answered as gemini-2.5-flash, a
+  # family retiring 2026-10-20 (ADR-0025). A floating alias has the same defect
+  # more slowly -- it changes model under a column of scores that claims to be
+  # comparable.
+  #
+  # Changing this re-processes both AI models rather than mixing outputs: their
+  # incremental guards compare the recorded model, so the change enforces itself
+  # instead of relying on someone remembering to bump something.
+  # BigQuery keeps its own allowlist of endpoints, narrower than what Vertex
+  # serves, so "newest on Vertex" is not the question -- "newest BigQuery
+  # accepts" is. Probed 2026-08-16 from us-central1:
+  #   gemini-3.1-flash-lite  works        <- newest flash-lite BigQuery accepts
+  #   gemini-3.5-flash       works        (newer, but the flash tier, not lite)
+  #   gemini-3.5-flash-lite  Unsupported endpoint
+  #   gemini-3.1-flash       Unsupported endpoint
+  # 3.5-flash-lite does answer on Vertex's global endpoint; the in-SQL functions
+  # cannot reach it. Re-probe before assuming this list still holds.
+  scoring_endpoint: gemini-3.1-flash-lite
+
+  # The embedding matcher (int_jobs_matched). Unlike AI.GENERATE/AI.SCORE, which
+  # are managed and take an endpoint name, ML.GENERATE_EMBEDDING needs a remote
+  # MODEL object created once by DDL over a CLOUD_RESOURCE connection -- see the
+  # preconditions in docs/v2-plan.md. Two vars because the SQL needs the
+  # unquoted reference and the provenance column needs the quoted name.
+  embedding_model: jobs_silver.text_embedding
+  embedding_model_name: "'text-embedding-005'"
+  # False until the connection and remote model exist. With it off,
+  # int_jobs_matched emits its empty stub on every target, so similarity is null
+  # and delivery falls back to the LLM score and match_score — the same degraded
+  # state as before embeddings were written, rather than a failed build.
+  enable_embeddings: false
 
 # Three medallion zones = dbt staging -> intermediate -> marts.
 # Folder defaults below; per-model overrides live in-model:

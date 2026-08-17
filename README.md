@@ -41,7 +41,7 @@ flowchart LR
 - **Tests gate every commit.** 110 pytest tests (95%+ coverage, enforced), 40 dbt
   schema/unit tests, mypy `--strict`, sqlfluff, plus a CI parse of the prod target — a
   fork-safe pipeline with no secrets in CI.
-- **Every non-obvious choice has an ADR** — 24 so far, in `docs/decisions/`. <!-- check:adrs -->
+- **Every non-obvious choice has an ADR** — 28 so far, in `docs/decisions/`. <!-- check:adrs -->
 
 **Browse the [dbt docs & lineage DAG](https://amikhno.github.io/job-market-analytics/)** —
 generated in CI on every push to main (raw sources → bronze → silver → gold → the email-digest
@@ -79,7 +79,7 @@ docs/        decisions/, v2-plan.md, research/  (ARCHITECTURE.md at repo root)
 .github/     ci.yml (DuckDB, secretless, fork-safe) + ingest.yml (scheduled, WIF, SHA-pinned)
 ```
 
-Currently 9 ingestion sources, 12 dbt models and 24 ADRs. <!-- check:sources check:dbt_models check:adrs -->
+Currently 9 ingestion sources, 15 dbt models and 28 ADRs. <!-- check:sources check:dbt_models check:adrs -->
 
 ## Quality gates
 
@@ -114,10 +114,18 @@ GitHub Actions (twice-daily ingest, freshness gate, email digest of new postings
 
 ## Status & roadmap
 
-**V1.6 in production** — twice-daily ingestion to BigQuery, transform, freshness gate,
-email digest. **V2 (scoped, ADR-0020):** LLM extraction + 1–5 fit scoring inside BigQuery
-(`AI.SCORE` / `AI.GENERATE_INT`), score-*ordered* (never filtered) delivery — plan in
-`docs/v2-plan.md`. Full design: `ARCHITECTURE.md`.
+**V2 (0.2.0) in production** — twice-daily ingestion to BigQuery, transform, freshness gate,
+email digest, plus AI relevance: typed extraction and a 1–5 fit score as dbt models against
+BigQuery's in-SQL AI functions, score-*ordered* (never filtered) delivery (ADR-0020), and an
+embedding matcher that reports which piece of experience a posting resembles.
+
+**Deliberately unvalidated so far.** Two rankings run side by side — the LLM score and embedding
+similarity — because choosing between them without measuring is how a project ends up carrying
+both forever. `make evaluate` compares them by precision@k against human labels; the loser gets
+deleted. Labels from an LLM cannot settle it: grading a scorer against its predecessor's
+judgements rewards reproducing that predecessor's mistakes.
+
+Full design: `ARCHITECTURE.md`. What is next: `TODO.md`.
 
 ## License
 

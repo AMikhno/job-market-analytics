@@ -63,6 +63,15 @@ _DIGEST_BQ_SCHEMA = [
     ("postings_sent", "INT64"),
 ]
 
+# The rendered scoring prompt. Append-only and versioned: a fit_score is only
+# comparable to one from the same wording, so the prompt behind a score has to
+# stay readable after the wording moves on.
+_PROMPT_BQ_SCHEMA = [
+    ("prompt_version", "STRING"),
+    ("rendered_prompt", "STRING"),
+    ("rendered_at", "TIMESTAMP"),
+]
+
 
 def ensure_raw_tables(settings: Settings, sources: Sequence[str]) -> None:
     """Idempotently provision the landing objects the pipeline writes to.
@@ -261,6 +270,133 @@ def ensure_digest_table(settings: Settings) -> None:
         con.execute(f"CREATE TABLE IF NOT EXISTS ops_digest_runs ({cols})")
     finally:
         con.close()
+
+
+# One row per resume bullet, for the embedding model to read. Landed rather than
+# embedded from Python: BigQuery cannot join vectors held in a client.
+_UNITS_BQ_SCHEMA = [
+    ("unit_id", "STRING"),
+    ("source", "STRING"),
+    ("text", "STRING"),
+    ("evidences", "STRING"),
+    ("prompt_version", "STRING"),
+]
+
+
+def resume_units_table(settings: Settings) -> str:
+    """Fully-qualified name of the resume-units table on the active target."""
+    if settings.is_prod:
+        return f"{settings.gcp_project}.{settings.bq_dataset}_ops.resume_units"
+    return "resume_units"
+
+
+def ensure_resume_units_table(settings: Settings) -> None:
+    """Idempotently provision the resume-units table (a dbt source)."""
+    if settings.is_prod:
+        from google.cloud import bigquery
+
+        client = bigquery.Client(project=settings.gcp_project, location=settings.bq_location)
+        table = bigquery.Table(
+            f"{settings.gcp_project}.{settings.bq_dataset}_ops.resume_units",
+            schema=[bigquery.SchemaField(name, kind) for name, kind in _UNITS_BQ_SCHEMA],
+        )
+        client.create_table(table, exists_ok=True)
+        return
+    import duckdb
+
+    Path(settings.duckdb_path).parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(settings.duckdb_path)
+    try:
+        cols = ", ".join(f"{name} VARCHAR" for name, _ in _UNITS_BQ_SCHEMA)
+        con.execute(f"CREATE TABLE IF NOT EXISTS resume_units ({cols})")
+    finally:
+        con.close()
+
+
+def replace_resume_units(rows: list[dict[str, object]], *, settings: Settings) -> None:
+    """Replace the resume units wholesale.
+
+    The one place the append-only rule does not apply: an edited or deleted
+    bullet must stop being matched against. The corpus's history lives in the
+    resume file, not here.
+    """
+    if settings.is_prod:
+        from google.cloud import bigquery
+
+        client = bigquery.Client(project=settings.gcp_project, location=settings.bq_location)
+        table_id = f"{settings.gcp_project}.{settings.bq_dataset}_ops.resume_units"
+        job_config = bigquery.LoadJobConfig(
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+            schema=[bigquery.SchemaField(n, k) for n, k in _UNITS_BQ_SCHEMA],
+            autodetect=False,
+        )
+        client.load_table_from_json(rows, table_id, job_config=job_config).result()
+        return
+    import duckdb
+
+    con = duckdb.connect(settings.duckdb_path)
+    try:
+        con.execute("DELETE FROM resume_units")
+        placeholders = ", ".join("?" for _ in _UNITS_BQ_SCHEMA)
+        con.executemany(
+            f"INSERT INTO resume_units VALUES ({placeholders})",
+            [[None if v is None else str(v) for v in r.values()] for r in rows],
+        )
+    finally:
+        con.close()
+
+
+def scoring_prompt_table(settings: Settings) -> str:
+    """Fully-qualified name of the scoring-prompt table on the active target."""
+    if settings.is_prod:
+        return f"{settings.gcp_project}.{settings.bq_dataset}_ops.scoring_prompt"
+    return "scoring_prompt"
+
+
+def ensure_scoring_prompt_table(settings: Settings) -> None:
+    """Idempotently provision the scoring-prompt table.
+
+    dbt reads it as a source, and a missing source fails the whole DAG rather
+    than the one model needing it -- so even a dev target gets one.
+    """
+    if settings.is_prod:
+        from google.cloud import bigquery
+
+        client = bigquery.Client(project=settings.gcp_project, location=settings.bq_location)
+        table = bigquery.Table(
+            f"{settings.gcp_project}.{settings.bq_dataset}_ops.scoring_prompt",
+            schema=[bigquery.SchemaField(name, kind) for name, kind in _PROMPT_BQ_SCHEMA],
+        )
+        client.create_table(table, exists_ok=True)
+        return
+    import duckdb
+
+    Path(settings.duckdb_path).parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(settings.duckdb_path)
+    try:
+        cols = ", ".join(f"{name} VARCHAR" for name, _ in _PROMPT_BQ_SCHEMA)
+        con.execute(f"CREATE TABLE IF NOT EXISTS scoring_prompt ({cols})")
+    finally:
+        con.close()
+
+
+def land_scoring_prompt(*, prompt_version: str, rendered_prompt: str, settings: Settings) -> None:
+    """Append one rendered prompt. Never updates in place -- see the schema note."""
+    _write(
+        [
+            {
+                "prompt_version": prompt_version,
+                "rendered_prompt": rendered_prompt,
+                "rendered_at": datetime.now(UTC).isoformat(),
+            }
+        ],
+        duckdb_table="scoring_prompt",
+        bq_dataset=f"{settings.bq_dataset}_ops",
+        bq_table="scoring_prompt",
+        bq_schema=_PROMPT_BQ_SCHEMA,
+        settings=settings,
+    )
 
 
 def latest_digest_watermark(settings: Settings) -> str | None:

@@ -16,7 +16,11 @@ class Settings(BaseSettings):
 
     gcp_project: str = Field(default="")
     bq_dataset: str = Field(default="jobs")
-    bq_location: str = Field(default="northamerica-northeast2")
+    # us-central1, not a Canadian region: northamerica-northeast2 serves no
+    # foundational model at all, and BigQuery's AI functions can only reach a
+    # model co-located with the dataset (ADR-0026). No residency requirement
+    # applies -- the pipeline reads public job postings.
+    bq_location: str = Field(default="us-central1")
     # Raw landings are append-only and would grow forever; ingestion-time
     # partitions older than this are dropped (keeps storage under the free tier).
     # 180 days, not 400: a job posting older than six months is not a lead, and
@@ -31,6 +35,10 @@ class Settings(BaseSettings):
     http_user_agent: str = Field(default="job-market-analytics/0.1")
     # Private company list (gitignored); falls back to the committed example if absent.
     companies_csv: str = Field(default="config/companies.csv")
+    # Private resume corpus (gitignored), same fallback: it is the work history V2
+    # scores postings against, so it is real PII -- never a secret, never commitable
+    # (ADR-0027).
+    resume_yaml: str = Field(default="config/resume.yaml")
     # This repo is public, so its Actions logs are too. Company identifiers are
     # digested before they reach a log line. Default on so CI is safe without
     # config; set REDACT_COMPANY_LOGS=false in your local .env to read names.
