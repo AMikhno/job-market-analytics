@@ -1,19 +1,15 @@
 """Write a labelling worksheet from live gold (`make labels-template`).
 
-Labelling is the one step nothing can automate — the whole point is that a
-person decides — so the job here is to make it as close to mindless as possible:
-one file, one column to fill, enough context per row to answer without opening
-the posting most of the time.
+Labelling is the one step nothing can automate, so the file is built to be
+mindless to fill: one column to answer, enough context per row to answer it
+without opening the posting.
 
-Rows are drawn across the score range rather than from the top, which matters
-more than it sounds. A worksheet of only high-scoring postings can measure
-precision but never recall: if the scorer buried something relevant at rank 900,
-a top-50 sample will never contain it, and the evaluation will report that
-everything is fine.
+Rows are drawn across the score range rather than from the top. A worksheet of
+only high-scoring postings can measure precision but never recall: something
+relevant buried at rank 900 never enters a top-50 sample, and the evaluation
+reports that everything is fine.
 
-Output goes to `config/labels.csv`, gitignored — a job_key is
-(source, company, external_id), so a labelled file is a list of company
-identifiers plus a judgement about each.
+Output goes to `config/labels.csv`, gitignored (see evaluation/labels.py).
 """
 
 from __future__ import annotations
@@ -52,8 +48,7 @@ COLUMNS: Final = [
 def _sample(settings: Settings, size: int) -> list[dict[str, object]]:
     """Postings spread across the fit range, newest first within each band.
 
-    Deterministic: same gold, same worksheet, so re-running does not reshuffle a
-    file someone has started filling in.
+    Deterministic, so re-running does not reshuffle a part-filled file.
     """
     sql = f"""
         select job_key, title, company, location, geo_restriction,
@@ -81,8 +76,7 @@ def run(
         target = ROOT / target
 
     if target.exists():
-        # Never overwrite: this file is hand-typed judgement, and regenerating it
-        # is not worth the risk of destroying an evening's work.
+        # Never overwrite: this file is hand-typed judgement.
         log.error("%s already exists — move or delete it first; refusing to overwrite", target)
         return 1
 

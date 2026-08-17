@@ -73,10 +73,16 @@ work_history:
     location: Somewhere (Remote)
     bullets:
       - text: >
+          A model or metric layer you owned end to end: what it replaced, how
+          far it grew, and which team made decisions on it afterwards.
         evidences: [analytics-engineer, gtm-engineer]
       - text: >
+          A pipeline that unified several source systems into one view, naming
+          the systems and who adopted the result.
         evidences: [gtm-engineer, analytics-engineer]
       - text: >
+          A data-quality problem you fixed: what broke, the approach that
+          resolved it, and what it is persisted as now.
         evidences: [analytics-engineer, forward-deployed-engineer]
 
   - org: Example Corp
@@ -88,10 +94,16 @@ work_history:
     progression: Analyst, Senior Analyst, Data Scientist
     bullets:
       - text: >
+          Reporting you rebuilt for a named audience, saying what it replaced
+          and what the audience could do afterwards that it could not before.
         evidences: [gtm-engineer, analytics-engineer]
       - text: >
+          Something delivered into customer environments: the scale, the
+          isolation or configuration problem it posed, and the time it saved.
         evidences: [forward-deployed-engineer, analytics-engineer]
       - text: >
+          A performance or cost problem you diagnosed and fixed, with the
+          before-and-after that makes the size of it legible.
         evidences: [analytics-engineer]
 
 # Personal projects count as evidence. Same bullet shape.

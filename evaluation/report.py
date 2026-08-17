@@ -1,15 +1,10 @@
 """Does the LLM score rank better than the keyword score?
 
-That is the only question worth asking of V2, and it cannot be answered by
-looking at scores — a scorer that is confidently wrong looks identical to one
-that is right until something checks it against human judgement.
-
-The comparison is deliberately an A/B on the *same* labelled postings: precision
-at k under `fit_score` ordering against `match_score` ordering. Both rank the
-same rows, so any difference is the ranking and not the sample. Precision@k
-rather than accuracy because delivery is ordered, never filtered (ADR-0020) —
-what matters is whether the good ones surface near the top of an email, not
-whether every posting got the right number.
+An A/B on the *same* labelled postings: precision at k under `fit_score`
+ordering against `match_score` ordering, so any difference is the ranking and
+not the sample. Precision@k rather than accuracy because delivery is ordered,
+never filtered (ADR-0020) — what matters is whether the good ones surface near
+the top of an email, not whether every posting got the right number.
 """
 
 from __future__ import annotations
@@ -25,14 +20,10 @@ from shared.config import Settings, get_settings
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("evaluation")
 
-# Sized to a digest, not to a dataset: these are how many postings a person
-# actually reads before losing patience, which is what the ranking competes for.
-#
-# A cutoff at or above the number of candidates is degenerate — every ordering
-# contains the same rows, so precision is identical and the comparison says
-# nothing. `evaluate` reports such cutoffs as None rather than as a tie, because
-# a tie reads as "the rankings performed the same" when the truth is "this
-# cutoff could not tell them apart".
+# Sized to a digest, not to a dataset: how many postings a person actually reads
+# before losing patience is what the ranking competes for. A cutoff at or above
+# the candidate count is degenerate — every ordering holds the same rows — so
+# `evaluate` reports it as None rather than as a tie.
 CUTOFFS: Final = (5, 10, 20)
 
 
@@ -63,9 +54,8 @@ def _fetch_scored(settings: Settings, job_keys: list[str]) -> list[dict[str, obj
 def _rank(rows: list[dict[str, object]], key: str) -> list[str]:
     """Order job_keys by `key`, descending, unscored last.
 
-    Ties and nulls both resolve by job_key so the ordering is deterministic —
-    otherwise the metric moves between runs on identical data and a real change
-    is indistinguishable from noise.
+    Ties and nulls resolve by job_key, so the metric cannot move between runs on
+    identical data.
     """
 
     def sort_key(row: dict[str, object]) -> tuple[int, float, str]:
@@ -80,9 +70,8 @@ def _rank(rows: list[dict[str, object]], key: str) -> list[str]:
 def evaluate(ranking: Ranking, labels: dict[str, bool]) -> Result:
     """Precision at each cutoff for one ranking.
 
-    A cutoff that takes the whole candidate set scores None, not a number: every
-    ordering contains the same rows there, so the value is identical by
-    construction and reporting it would invite reading a tie as a result.
+    A cutoff that takes the whole candidate set scores None, not a number:
+    identical by construction, and a tie there would read as a result.
     """
     precision: dict[int, float | None] = {}
     found: dict[int, int] = {}
@@ -149,8 +138,8 @@ def run(settings: Settings | None = None, labels_path: str = "config/labels.csv"
 
     rows = _fetch_scored(settings, list(by_key))
     if not rows:
-        # Not an error worth a traceback: it means the labels name postings that
-        # have aged out of gold, which is expected as a label file gets older.
+        # Not worth a traceback: the labels name postings that have aged out of
+        # gold, which is expected as a label file gets older.
         log.error("none of the %d labelled postings are in gold right now", len(labels))
         return 1
 

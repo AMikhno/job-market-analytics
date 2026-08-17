@@ -35,12 +35,8 @@ def fetch_new_postings(settings: Settings, watermark: str) -> list[dict[str, obj
 
     `fit_score` leads, `match_score` (ADR-0024) breaks ties and carries the
     unscored tail. `nulls last` is what keeps the score an ordering and not a
-    filter (ADR-0020): an unscored posting sinks below scored ones but is still
-    delivered, and while nothing is scored the order is exactly the V1 order.
-
-    Both numbers print on the line. They measure different things — one is
-    keyword hits, the other an LLM's judgement — and until the LLM score has been
-    checked against human labels, seeing them disagree is the point.
+    filter (ADR-0020): an unscored posting sinks below scored ones but still
+    ships, and while nothing is scored the order is exactly the V1 order.
     """
     sql = f"""
         select title, company, location, url, match_score, desired_tech_hits,
@@ -155,24 +151,20 @@ def _signal_line(row: dict[str, object]) -> str:
 
         match 11 — LLM 4/5, vectors 82% — tech hits: 9, title match, B2B SaaS
 
-    Group 1 is the keyword score, group 2 the two AI rankings, group 3 the
-    details. Grouping matters because the three answer different questions and
-    a flat comma list makes them read as one undifferentiated blur.
+    Keyword score, then the two AI rankings, then the details -- grouped
+    because the three answer different questions and a flat comma list reads as
+    one blur. The AI scores are labelled by *method* rather than merged: until
+    human labels say which is right, seeing them disagree is the point.
+    Similarity prints as a percentage so it cannot be mistaken for a second 1-5.
 
-    The AI scores are labelled by *method*, not merged into one number: they
-    disagree, and until human labels say which is right, seeing them disagree is
-    the point. Similarity prints as a percentage precisely so it cannot be
-    mistaken for a second 1-5 rating -- it is a distance, not a verdict.
-
-    Exceptions are annotated, norms are not: a geographic restriction shows when
-    it is a problem and stays silent when the role is open to Canada. Printing
-    "canada ok" on every good line makes the label furniture, and the eye stops
-    reading it exactly when the one that matters slips past.
+    Exceptions are annotated, norms are not: a geographic restriction shows only
+    when it is a problem. Printing "canada ok" on every good line makes the
+    label furniture, and the eye stops reading it.
     """
     groups: list[list[str]] = [[f"match {row['match_score']}"]]
 
-    # "unscored" is stated rather than omitted: a missing score reads as a low
-    # one otherwise, and the two mean opposite things about a posting.
+    # "unscored" is stated, not omitted: an absent score otherwise reads as a
+    # low one, and the two mean opposite things.
     ai: list[str] = []
     if row.get("fit_score") is not None:
         ai.append(f"LLM {row['fit_score']}/5")
@@ -189,17 +181,14 @@ def _signal_line(row: dict[str, object]) -> str:
         details.append(f"mentions {row['deal_breaker_terms']}")
     if row.get("company_type"):
         details.append(str(row["company_type"]))
-    # Attributed to the description on purpose. The location printed earlier in
-    # the line is the job board's own field, and the two can disagree honestly:
-    # the board says "Remote" while the text restricts the role to the US, which
-    # is the case this field exists to catch. Labelling that "US only" beside a
-    # location reading "Remote (Canada)" looks like a bug; naming the source
-    # makes it read as the warning it is.
+    # Attributed to the description on purpose: the location earlier in the line
+    # is the board's own field, and the two disagree honestly in exactly the case
+    # this exists to catch -- board says "Remote", text says US-only. Naming the
+    # source makes that read as a warning rather than a bug.
     #
     # A posting open to both countries shows one location per job_key but shares
     # one content_hash, so a US-located row can legitimately carry canada_ok.
-    # That is not a disagreement, and counting it as one is what made an earlier
-    # measurement of this overstate the error rate sevenfold.
+    # Counting that as a disagreement once overstated the error rate sevenfold.
     geo = row.get("geo_restriction")
     if geo == "us_only":
         details.append("text says US only")
@@ -207,8 +196,8 @@ def _signal_line(row: dict[str, object]) -> str:
         details.append("eligibility unstated")
     if row.get("manages_people") == "yes":
         details.append("manages people")
-    # What the embedding actually matched — the thing a 1-5 cannot tell you.
-    # The source, not the bullet text: enough to recognise, short enough to fit.
+    # What the embedding actually matched — the thing a 1-5 cannot tell you. The
+    # source, not the bullet text: enough to recognise, short enough to fit.
     if row.get("best_match_source"):
         details.append(f"like: {row['best_match_source']}")
     groups.append(details)

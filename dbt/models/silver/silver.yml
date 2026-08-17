@@ -128,12 +128,10 @@ models:
         description: >
           Extraction key, the incremental cost guard, and the grain: exactly one
           row per distinct posting text.
-        # Tested, not just described. The first build selected one row per
-        # *posting* instead, and because a content_hash is hash(title,
-        # clean_text), 17 postings shared one with another — which both billed
-        # the same text twice and fanned gold's join out into duplicate
-        # job_keys. The grain was stated in this description and asserted
-        # nowhere, so only gold's unique test caught it, one layer too late.
+        # Tested, not just described: the first build selected one row per
+        # *posting*, 17 of which shared a hash with another — double-billing the
+        # same text and fanning gold's join out into duplicate job_keys. Only
+        # gold's unique test caught it, one layer too late.
         data_tests: [not_null, unique]
       - name: relevant_text
         description: >
@@ -141,9 +139,8 @@ models:
           does — with culture, history, hiring process, benefits and EEO
           boilerplate dropped. Scoring this rather than the whole posting is the
           central finding in docs/research/relevance-signals.md; keeping
-          responsibilities and nice-to-haves is the correction to it, because a
-          resume is written as accomplishments and nice-to-haves are not
-          optional in this market.
+          responsibilities and nice-to-haves corrects it, because a resume is
+          written as accomplishments and nice-to-haves are rarely optional here.
       - name: company_type
         description: >
           Short employer label (B2B SaaS, bank, government, staffing agency…).
@@ -155,8 +152,7 @@ models:
           Where the work may be done from — never visa sponsorship. The one
           extracted field the rule-based gate provably cannot replace: silver
           keeps any posting whose location is bare "Remote", so a US-only role
-          reaches gold with a relevant title and the restriction stated only in
-          the description.
+          reaches gold with the restriction stated only in the description.
         data_tests:
           - accepted_values:
               arguments:
@@ -170,11 +166,10 @@ models:
           common and a boolean would force a guess. Years of experience does not
           substitute: years is a depth bar, this is the shape of the seat.
         data_tests:
-          # QUOTED, and that is not style. YAML 1.1 parses bare yes/no as
-          # booleans, so `values: [yes, no, unclear]` silently became
-          # True/False/unclear and the test flagged every correctly-extracted
-          # row. It warned rather than failed, which is how a gate that asserts
-          # the wrong thing survives: it becomes noise everyone learns to skip.
+          # QUOTED, and that is not style: YAML 1.1 parses bare yes/no as
+          # booleans, so `[yes, no, unclear]` became True/False/unclear and the
+          # test flagged every correctly-extracted row. It warned rather than
+          # failed, which is how a wrong gate survives — as skippable noise.
           - accepted_values:
               arguments:
                 values: ["yes", "no", "unclear"]
@@ -201,23 +196,18 @@ models:
         data_tests: [not_null, unique]
       - name: fit_score
         description: >
-          1-5, higher is better. Tested here rather than only in gold: gold
-          nulls an out-of-range value to keep delivery honest, which would also
-          hide a systematically broken model if nothing checked upstream.
+          1-5, higher is better. Tested here as well as in gold, because gold's
+          nulling of out-of-range values would otherwise hide a systematically
+          broken model.
         data_tests:
-          # WARN, not error, and the two levels here say different things.
-          # Measured on the first backfill: 1 generation in 1,742 came back
-          # outside the rubric's range. Gold nulls such a row, so delivery is
-          # already safe — failing the twice-daily prod run over one bad
-          # generation would be an outage caused by a rounding artifact. The
-          # same test on fct_job_postings stays an ERROR: an out-of-range value
-          # reaching gold means the nulling broke, which is our bug, not the
-          # model having a bad day.
+          # WARN here, ERROR on fct_job_postings, and the difference is the
+          # point: the first backfill produced a handful of out-of-range
+          # generations (ADR-0025), and gold nulls them, so failing the
+          # twice-daily prod run over one would be an outage caused by a
+          # rounding artifact. One reaching *gold* means the nulling broke.
           #
-          # Nested under `arguments` as of dbt 1.10 — top-level args still work
-          # but emit MissingArgumentsPropertyInGenericTestDeprecation and are
-          # slated to stop working, the same migration the source freshness
-          # config already made.
+          # Nested under `arguments` as of dbt 1.10; top-level args still work
+          # but are deprecated.
           - accepted_values:
               arguments:
                 values: [1, 2, 3, 4, 5]

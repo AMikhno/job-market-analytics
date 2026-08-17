@@ -1,17 +1,14 @@
 """Human relevance labels — the only ground truth this project has.
 
-They must be human. `docs/research/relevance-signals.md` records an LLM pass over
-gold, and grading an LLM scorer against LLM labels measures agreement with a
-predecessor including its mistakes: a scorer that reproduced every one of that
-pass's errors would score perfectly. So these come from a person or they are
-worthless.
+They must be human: grading an LLM scorer against the LLM labels in
+`docs/research/relevance-signals.md` would measure agreement with a predecessor
+including its mistakes.
 
-Private, and gitignored: a `job_key` is `(source, company, external_id)`, so a
-label file is a list of company identifiers plus a judgement about each — both
-halves of what the company list is private to protect.
+Gitignored, because a `job_key` is `(source, company, external_id)` — a label
+file is a list of company identifiers plus a judgement about each.
 
-Binary, not 1-5. "Would I apply to this?" is a question with a stable answer;
-"is this a 3 or a 4?" is not, and an unstable label makes the metric noise.
+Binary, not 1-5. "Would I apply to this?" has a stable answer; "is this a 3 or a
+4?" does not, and an unstable label makes the metric noise.
 """
 
 from __future__ import annotations
@@ -52,9 +49,8 @@ class Label(BaseModel):
 def _parse_relevant(raw: str) -> bool:
     """Accept the spellings a human actually types, reject anything else.
 
-    Silently treating an unrecognized value as False would quietly relabel a
-    relevant posting as irrelevant, which moves every metric in the flattering
-    direction — fewer false positives, and nothing to notice.
+    Treating an unrecognized value as False would relabel a relevant posting as
+    irrelevant — moving every metric in the flattering direction, invisibly.
     """
     value = raw.strip().lower()
     if value in _TRUE:
@@ -67,9 +63,8 @@ def _parse_relevant(raw: str) -> bool:
 def load_labels(path: str | Path) -> list[Label]:
     """Read a label CSV (`job_key,relevant`). Raises on a malformed row.
 
-    Duplicates are rejected rather than deduplicated: two rows for one posting
-    means the file was edited twice with different answers, and silently keeping
-    one of them picks a judgement the labeller did not make.
+    Duplicates are rejected, not deduplicated: keeping one of two answers picks
+    a judgement the labeller did not make.
     """
     resolved = Path(path)
     if not resolved.is_absolute():
@@ -80,10 +75,9 @@ def load_labels(path: str | Path) -> list[Label]:
             "postings — without them the score cannot be evaluated, only computed."
         )
 
-    # Strip leading comments and blanks before the header. csv.DictReader takes
-    # the first line it sees as the header, so a `#` note at the top of a
-    # hand-edited file would silently become the column names and every row
-    # would then parse as empty.
+    # Strip leading comments and blanks: csv.DictReader takes the first line it
+    # sees as the header, so a `#` note at the top of a hand-edited file would
+    # become the column names and every row would parse as empty.
     lines = [
         line
         for line in resolved.read_text().splitlines()
@@ -96,10 +90,9 @@ def load_labels(path: str | Path) -> list[Label]:
         key = (row.get("job_key") or "").strip()
         if not key:
             continue
-        # A blank verdict means "skipped", not "irrelevant". The worksheet is
-        # pre-filled with rows to judge, and treating an unanswered one as `no`
-        # would silently invent judgements the labeller declined to make — and
-        # invent them in the direction that flatters every ranking.
+        # A blank verdict means "skipped", not "irrelevant": the worksheet
+        # ships pre-filled, and reading an unanswered row as `no` would invent
+        # judgements in the direction that flatters every ranking.
         if not (row.get("relevant") or "").strip():
             continue
         if key in seen:
