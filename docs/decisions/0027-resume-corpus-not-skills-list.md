@@ -21,9 +21,18 @@ postings, applied to the other side of the comparison.
    resume averages unrelated work into something that matches everything weakly; short specific
    texts also embed more reliably. Each unit carries its origin, because a bullet read without
    knowing who it was built for loses the distinction between role families.
-3. **Bullets may be tagged with role families**, from a closed set. Closed because a typo'd tag in
-   a hand-edited file would silently tag nothing, and a matcher quietly ignoring part of the corpus
-   is indistinguishable from one that works.
+3. **Bullets may be tagged with role families**, from a closed set — seven work *shapes*,
+   deliberately fewer than the titles they cover. The tag drives no matching: scoring and
+   similarity both read `text` alone, and the tags are kept out of the prompt on purpose, since a
+   rubric built to ignore job titles should not be handed title-shaped labels.
+   **What the closed set buys is the coverage report** (`make land-resume`), which counts bullets
+   per family and warns on any at zero. That is the only reading of the corpus-completeness
+   problem this ADR ends on: a family at zero is why postings of that shape score low, and it
+   cannot be reported for a family nobody declared.
+
+   *Amended:* the set was originally three families, justified by a matcher-integrity argument
+   for a matcher that was never built — nothing consumed the tag. It opened to seven when the
+   target range turned out to be wider than three, and it earned its keep at the same time.
 4. **`target_roles` is dropped entirely**, and the rubric instructs the model to ignore the
    posting's title outright rather than weighting it down. A list of wanted titles would
    reintroduce title matching through the back door — the exact failure

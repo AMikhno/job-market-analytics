@@ -15,6 +15,7 @@ from shared.resume import (
     ROLE_FAMILIES,
     Resume,
     evidence_units,
+    family_coverage,
     load_resume,
     render_prompt,
 )
@@ -101,6 +102,49 @@ def test_every_declared_family_is_accepted() -> None:
     role["bullets"] = [{"text": "x", "evidences": sorted(ROLE_FAMILIES)}]
     resume = Resume.model_validate({**VALID, "work_history": [role]})
     assert set(resume.work_history[0].bullets[0].evidences) == set(ROLE_FAMILIES)
+
+
+def test_families_cover_the_full_target_range_not_one_role() -> None:
+    """The set groups work SHAPES; a narrow set silently rejects real bullets."""
+    assert {
+        "analytics-engineer",
+        "bi-developer",
+        "data-analyst",
+        "data-engineer",
+        "forward-deployed-engineer",
+        "gtm-engineer",
+        "product-analyst",
+    } == set(ROLE_FAMILIES)
+
+
+def test_family_coverage_counts_every_family_including_the_empty_ones() -> None:
+    """A zero is the signal: it is the corpus gap ADR-0027 says nothing observes."""
+    coverage = family_coverage(evidence_units(Resume.model_validate(VALID)))
+
+    assert set(coverage) == set(ROLE_FAMILIES)
+    assert coverage["analytics-engineer"] == 2  # one bullet + one project
+    assert coverage["gtm-engineer"] == 1
+    assert coverage["product-analyst"] == 0
+
+
+def test_family_coverage_counts_a_bullet_once_per_family_it_claims() -> None:
+    role = {**VALID["work_history"][0]}  # type: ignore[dict-item]
+    role["bullets"] = [{"text": "x", "evidences": ["bi-developer", "data-analyst"]}]
+    coverage = family_coverage(
+        evidence_units(Resume.model_validate({**VALID, "work_history": [role], "projects": []}))
+    )
+
+    assert coverage["bi-developer"] == 1
+    assert coverage["data-analyst"] == 1
+    assert coverage["analytics-engineer"] == 0
+
+
+def test_role_family_tags_never_reach_the_prompt() -> None:
+    """Rule 0 tells the model to ignore titles; family labels are title-shaped."""
+    rendered = render_prompt(Resume.model_validate(VALID))
+
+    for family in ROLE_FAMILIES:
+        assert family not in rendered
 
 
 def test_bullet_text_is_whitespace_normalised() -> None:

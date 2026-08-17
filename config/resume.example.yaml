@@ -27,6 +27,16 @@
 #           replacing a manual account review."
 # One bullet per distinct thing built. Splitting them is what lets a posting
 # match the relevant half of your history instead of an average of all of it.
+#
+# ── evidences: which role families a bullet is evidence for ───────────────────
+# From a closed set (shared/resume.py ROLE_FAMILIES). It does NOT affect
+# matching or scoring — matching is on `text` alone, and the tags are kept out
+# of the scoring prompt on purpose, since a rubric built to ignore job titles
+# should not be handed title-shaped labels. What it buys is a coverage report:
+# `make land-resume` prints bullets per family and warns on any at zero, which
+# is the only way to see that (say) Product Analyst roles score low because
+# nothing in the corpus describes that work — a gap otherwise indistinguishable
+# from those roles genuinely being a poor fit.
 
 summary: >
   Two or three sentences of plain prose: what you do, the kind of team you do it
@@ -79,7 +89,7 @@ work_history:
       - text: >
           A pipeline that unified several source systems into one view, naming
           the systems and who adopted the result.
-        evidences: [gtm-engineer, analytics-engineer]
+        evidences: [data-engineer, analytics-engineer]
       - text: >
           A data-quality problem you fixed: what broke, the approach that
           resolved it, and what it is persisted as now.
@@ -96,15 +106,15 @@ work_history:
       - text: >
           Reporting you rebuilt for a named audience, saying what it replaced
           and what the audience could do afterwards that it could not before.
-        evidences: [gtm-engineer, analytics-engineer]
+        evidences: [bi-developer, data-analyst]
       - text: >
           Something delivered into customer environments: the scale, the
           isolation or configuration problem it posed, and the time it saved.
-        evidences: [forward-deployed-engineer, analytics-engineer]
+        evidences: [forward-deployed-engineer, bi-developer]
       - text: >
-          A performance or cost problem you diagnosed and fixed, with the
-          before-and-after that makes the size of it legible.
-        evidences: [analytics-engineer]
+          An analysis of how a feature was actually used, and the product or
+          go-to-market decision that came out of it.
+        evidences: [product-analyst, data-analyst]
 
 # Personal projects count as evidence. Same bullet shape.
 projects:
@@ -112,7 +122,7 @@ projects:
     text: >
       What it does, what it is built with, and what genuinely works versus what
       is planned. Be specific about the engineering, not the ambition.
-    evidences: [analytics-engineer]
+    evidences: [analytics-engineer, data-engineer]
 
 education:
   - M.S. Subject, YEAR — Institution, Country.
