@@ -14,7 +14,9 @@ dependencies = [
     "google-cloud-bigquery>=3.25",
     "mashumaro[msgpack]>=3.17",   # newer build is needed for Python 3.14
     "pyyaml>=6.0.3",
-]
+] 
+[tool.uv]
+prerelease = "disallow"
 
 [project.optional-dependencies]
 dev = [
