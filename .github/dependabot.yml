@@ -12,3 +12,35 @@ updates:
       github-actions:
         patterns: ["*"]
     open-pull-requests-limit: 5
+
+  # Python dependencies (uv.lock). This block exists mainly for its `ignore`
+  # rules: with no uv entry at all, Dependabot *security* updates still open PRs
+  # here, and there was nothing to constrain what they resolved to. A bump of a
+  # single transitive pin (sqlparse 0.5.5 -> 0.6.0) once excluded every real
+  # dbt-core and re-resolved the lock onto dbt-core 2.0.0b1 — a placeholder
+  # release carrying no dependencies and no dbt — which no ingest run survives.
+  # Ignore rules apply to security updates as well as version updates.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+    groups:
+      python:
+        patterns: ["*"]
+    ignore:
+      # The dbt packages move together and carry the warehouse dialects; a major
+      # bump is a migration to plan, never a PR to merge on green. The matching
+      # upper bounds in pyproject.toml are the enforcement — this only stops the
+      # noise of PRs that cannot merge.
+      - dependency-name: "dbt-core"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "dbt-duckdb"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "dbt-bigquery"
+        update-types: ["version-update:semver-major"]
+      # Pinned by dbt-core, and the package that triggered the 2.0.0b1 resolution.
+      # It has no stable release, so every "update" here is a pre-release swap.
+      - dependency-name: "dbt-core-experimental-parser"
+    open-pull-requests-limit: 5
