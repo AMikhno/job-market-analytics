@@ -113,8 +113,9 @@ labels by construction, per the provenance note, and none exist yet.
 
 Two conditions on reading these numbers. The corpus is a **2026-08-16 snapshot**: ingestion had
 stalled and the figures do not describe the market on the date in the heading. And the fit scores
-were produced against a *tailored* resume rather than the full corpus, so their distribution
-measures the tailoring as much as the market.
+were produced against **9 evidence units**, where the corpus on disk now renders 29 — measured,
+not assumed: the landed prompt is 6,478 characters against 22,401 today. Their distribution
+therefore measures a third of the evidence, and the trough at 2 may be an artefact of that alone.
 
 Also excluded: anything computed from the seeds. The warehouse was running an older, much smaller
 rule set than the one now in place, so `title_match`, `match_score` and `deal_breaker_hits` were

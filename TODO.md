@@ -37,12 +37,16 @@ Until it is a third ranking in that report, running embeddings produces a column
 
 ### Next, in order
 
-1. **Master resume corpus** → `config/resume.yaml` (gitignored). Template and the reasoning behind
-   its shape are in `config/resume.example.yaml`. The current file is one tailored version, so it
-   is lossy by construction: a posting missed because the corpus omitted the relevant work is
-   indistinguishable from one correctly scored low. Tagged evidence runs 8 / 4 / 3 across
-   analytics-engineer / gtm-engineer / forward-deployed-engineer, which measures the tailoring
-   rather than the experience.
+1. **Land the corpus that already exists.** `config/resume.yaml` (gitignored) renders **29
+   evidence units**; the prompt the warehouse scored against carries **9**. So the gap is not the
+   corpus — it is that the richer one has never reached prod. A posting missed because the landed
+   corpus omitted the relevant work is indistinguishable from one correctly scored low.
+   - **`PROMPT_VERSION` does not move when the corpus changes**, only when the rubric wording
+     does, and `int_jobs_scored`'s guard compares content_hash + prompt_version + scoring_model.
+     Landing 29 units under the same version therefore re-scores nothing, and any posting scored
+     afterwards is compared against a different corpus than the rows beside it — two corpora
+     silently mixed in one column that still looks comparable. Either bump the version when the
+     rendered prompt changes (hash it), or force a re-score when landing.
 2. **Human labels** → `make labels-template` writes a worksheet from live gold; fill the
    `relevant` column with yes/no, blank to skip; then `make evaluate`. A few hundred is plenty.
    The LLM pass in `docs/research/relevance-signals.md` cannot substitute — grading an LLM scorer
