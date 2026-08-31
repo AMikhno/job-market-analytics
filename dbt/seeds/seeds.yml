@@ -9,11 +9,14 @@ seeds:
   - name: allowed_locations
     description: >
       Positive Canadian location markers for the V1 filter (word-matched,
-      case-insensitive). A posting is kept if its location is null, is bare
-      "Remote", or word-matches one of these markers (Canada, Ontario, ON,
-      Ottawa, Toronto, Montreal). Word-matched so "ON" hits "Ottawa, ON" but not
-      "London"; keep entries regex-metacharacter-free. No country blocklist;
-      V2's LLM does true location eligibility.
+      case-insensitive). A posting is kept if its location is unknown (null or
+      blank), is bare "Remote", or word-matches one of these markers (Canada,
+      Ontario, ON, Ottawa, Toronto, Montreal). Word-matched so "ON" hits
+      "Ottawa, ON" but not "London"; keep entries regex-metacharacter-free.
+      Accented spellings do not fold: the boundary class is ASCII and lower()
+      leaves the accent, so a French place name needs both spellings seeded (or
+      the province abbreviation, which covers the province in one row). No
+      country blocklist; V2's LLM does true location eligibility.
     columns:
       - name: pattern
         data_tests: [not_null, unique]
