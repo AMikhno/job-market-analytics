@@ -24,9 +24,11 @@ against).
 
 ## V2 — built, unvalidated
 
-The code is done and running in prod. **Nothing yet shows it beats the keyword score**, and that
+The code is done and has run in prod. **Nothing yet shows it beats the keyword score**, and that
 is the only question left worth answering: a scorer that is confidently wrong looks exactly like
-one that is right until human labels say otherwise.
+one that is right until human labels say otherwise. Note the warehouse currently holds a
+2026-08-16 snapshot — see the recovery item under [Human-owned](#human-owned) — so anything
+measured against it describes that day, not today.
 
 Two rankings run side by side on purpose — `fit_score` (LLM, 1–5) and `similarity` (embeddings) —
 because choosing between them without measuring is how a project ends up carrying both forever.
@@ -127,9 +129,17 @@ Agents do not run `gh`, and are blocked from creating cloud resources or deletin
 anything below needs a person even when the code around it is finished. Step-by-step versions live
 in the private runbook.
 
+- [ ] **Confirm ingestion has recovered.** A `secrets` context in a step `if:` made the workflow
+      fail validation from 2026-08-16, and a workflow that fails validation does not run on its
+      schedule and sends no failed-run email — so the pipeline was silent for two weeks and the
+      warehouse still holds that day's data. The expression is fixed and `actionlint` now blocks
+      the class, but the recovery itself needs a person: dispatch a run, confirm it lands rows,
+      and check the seed tables match the pushed variables
 - [ ] Arm the dead-man's switch: create the healthchecks.io check and add its ping URL as the
       `HEALTHCHECK_URL` secret (period 1 day, grace ≥ 6h, for a twice-daily cron plus DST drift).
-      Until set, the step logs "disabled" and the switch is not armed
+      Until set, the step logs "disabled" and the switch is not armed. **This is the item that
+      would have caught the outage above on day one** — layers 1–3 of the health design all assume
+      the workflow runs at all
 - [ ] Re-push `COMPANIES_CSV_CONTENT` from `config/companies.active.csv` after any branch that
       changes what the list may contain — deployed code must understand the list before CI gets it
 - [x] `RESUME_YAML_CONTENT` set as an encrypted **secret** (not a variable — the repo is public and
