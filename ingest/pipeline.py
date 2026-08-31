@@ -28,6 +28,7 @@ import csv
 import logging
 import sys
 import uuid
+from collections import defaultdict
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -278,6 +279,38 @@ def _volume_drops(runs: Sequence[IngestRun], settings: Settings) -> list[VolumeD
     return drops
 
 
+def _interleave_by_host(
+    work: list[tuple[SourceAdapter, str, Company]],
+) -> list[tuple[SourceAdapter, str, Company]]:
+    """Spread each host's boards evenly through the queue, keeping its own order.
+
+    The pool consumes this list in order, so the order decides which hosts the
+    workers contend on at any moment. Grouped by source, that is one host at a
+    time and the run costs the sum of its sources.
+
+    Spread *proportionally*, not round-robin. Round-robin gives every host one
+    slot per cycle, which starves the host that has the most boards — precisely
+    the one setting the wall time. Proportional keeps each host's share of the
+    workers equal to its share of the boards, so the busiest host stays fed
+    while the rest overlap it. A host with half the boards holds about half the
+    pool; a host with one board takes one slot and gets out of the way.
+
+    Position `(i + 0.5) / n` places a host's i-th board of n at that fraction of
+    the queue. The sort is stable, so ties keep list order and a single-host
+    list comes back untouched — no order makes one host faster than its own
+    interval.
+    """
+    buckets: dict[str, list[int]] = defaultdict(list)
+    for index, (_, source_name, company) in enumerate(work):
+        buckets[_SOURCE_BY_ADAPTER[source_name].host_for(company.board_ref)].append(index)
+
+    position = [0.0] * len(work)
+    for indexes in buckets.values():
+        for i, index in enumerate(indexes):
+            position[index] = (i + 0.5) / len(indexes)
+    return [work[i] for i in sorted(range(len(work)), key=lambda i: position[i])]
+
+
 def _fetch_all(
     companies_by_source: dict[str, list[Company]],
     sessions: SessionPool,
@@ -289,6 +322,13 @@ def _fetch_all(
     One pool across all sources, not one per source: the rate limiter is keyed by
     host, so the pool's only job is to keep enough boards in flight that the
     slowest host — not the sum of all of them — sets the wall time.
+
+    That only holds if the boards in flight target *different* hosts, which is
+    why the queue is interleaved by host before it is submitted. Grouped by
+    source, every worker queues behind one host's interval and the sources run
+    one after another: measured at 168 boards, the two largest shared-host
+    sources took 12m20s and 3m14s back to back when they could have overlapped.
+    Interleaved, the wall time is the slowest host rather than their sum.
     """
     results: dict[str, list[_BoardResult]] = {source: [] for source in companies_by_source}
     work: list[tuple[SourceAdapter, str, Company]] = []
@@ -297,6 +337,7 @@ def _fetch_all(
         work.extend((adapter, source_name, company) for company in companies)
     if not work:
         return results
+    work = _interleave_by_host(work)
 
     workers = max(1, min(settings.fetch_workers, len(work)))
     log.info("fetching %d board(s) with %d worker(s)", len(work), workers)
