@@ -69,3 +69,8 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 branch = true
+
+[dependency-groups]
+dev = [
+    "actionlint-py>=1.7.12.24",
+]

@@ -1,4 +1,4 @@
-.PHONY: install ingest validate-companies discover update-company-list companies-variable seeds seeds-variable deliver dbt-deps ensure-raw land-resume labels-template evaluate dbt-dev dbt-prod dbt-test dbt-docs freshness test lint sql-lint format check
+.PHONY: install ingest validate-companies discover update-company-list companies-variable seeds seeds-variable deliver dbt-deps ensure-raw land-resume labels-template evaluate dbt-dev dbt-prod dbt-test dbt-docs freshness test lint sql-lint workflow-lint format check
 
 install:          ## Set up the uv venv, dbt packages, and pre-commit hooks
 	uv sync --extra dev
@@ -81,13 +81,21 @@ freshness: seeds  ## Assert raw sources are fresh (fails the run if stale/empty)
 test:             ## Run the Python test suite with coverage gate
 	uv run pytest
 
-lint: sql-lint docs-check ## ruff (check + format) + mypy + sqlfluff + doc references
+lint: sql-lint docs-check workflow-lint ## ruff + mypy + sqlfluff + doc references + workflows
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run mypy shared ingest deliver evaluation scripts
 
 docs-check:       ## Fail on docs pointing at files/targets/models that don't exist
 	uv run python scripts/check_docs.py
+
+# An invalid workflow does not fail loudly: GitHub records a 0s "startup failure"
+# against a push and stops running the file on its schedule, with no failed-run
+# email because no run ever started. That silence cost this pipeline two weeks
+# once (a `secrets` context in a step `if:`), which is the whole reason this
+# target exists. Runs in CI too, since `make lint` is what CI calls.
+workflow-lint:    ## Validate GitHub Actions workflows (expressions, contexts, schema)
+	uv run actionlint .github/workflows/*.yml
 
 sql-lint: dbt-deps seeds ## Lint dbt SQL (dbt templater, DuckDB dialect; run from dbt/)
 	mkdir -p data                         # DuckDB path the profile resolves to
