@@ -158,26 +158,9 @@ Agents do not run `gh`, and are blocked from creating cloud resources or deletin
 anything below needs a person even when the code around it is finished. Step-by-step versions live
 in the private runbook.
 
-- [x] **Ingestion recovered 2026-08-31**, after 15 days of silence. Three independent faults, each
-      hidden by the one before it, all now fixed — recorded because each failed *quietly*:
-      1. A `secrets` context in a step `if:` made the workflow fail validation from 2026-08-16. A
-         workflow that fails validation does not run on its schedule and sends no failed-run
-         email, so a dead pipeline and a healthy one looked identical. `actionlint` in `make lint`
-         now blocks the class.
-      2. `RESUME_YAML_CONTENT` existed at *both* repository and environment scope. The job declares
-         `environment: production`, so the environment copy shadowed the repository one and two
-         updates landed on a secret nothing reads. Keep one scope per secret.
-      3. The CI service account held `bigquery.dataEditor` and `bigquery.jobUser` and nothing for
-         Vertex, so every AI function failed under it — invisible for months because no run had
-         yet reached one with rows to process. Note **`AI.SCORE` authorizes at plan time**: it
-         fails even when the incremental guard leaves zero rows to score, so this would have
-         broken every run, not just busy ones. Fixed with `roles/aiplatform.user`
-- [x] Dead-man's switch armed: healthchecks.io check created and its ping URL set as the
-      `HEALTHCHECK_URL` secret (period 1 day, grace 6h — alert after ~30h of silence, matching the
-      freshness gate's threshold). No code change was needed; the step reads the secret and
-      self-enables. **This is the layer that would have caught the outage above on day one** —
-      layers 1–3 of the health design all assume the workflow runs at all. Still unproven until a
-      successful run pings it: the step is gated on `if: success()`
+- [x] Dead-man's switch armed: `HEALTHCHECK_URL` set, period 1 day, grace 6h — alert after ~30h
+      without a successful run, matching the freshness gate's threshold. The step reads the secret
+      and self-enables; absent, it logs "disabled"
 - [ ] Re-push `COMPANIES_CSV_CONTENT` from `config/companies.active.csv` after any branch that
       changes what the list may contain — deployed code must understand the list before CI gets it
 - [x] `RESUME_YAML_CONTENT` set as an encrypted **secret** (not a variable — the repo is public and

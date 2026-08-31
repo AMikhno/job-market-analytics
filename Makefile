@@ -91,9 +91,9 @@ docs-check:       ## Fail on docs pointing at files/targets/models that don't ex
 
 # An invalid workflow does not fail loudly: GitHub records a 0s "startup failure"
 # against a push and stops running the file on its schedule, with no failed-run
-# email because no run ever started. That silence cost this pipeline two weeks
-# once (a `secrets` context in a step `if:`), which is the whole reason this
-# target exists. Runs in CI too, since `make lint` is what CI calls.
+# email, because no run ever started. A scheduled pipeline therefore goes silent
+# and looks healthy, which is why this validates before the file can land. Runs
+# in CI too, since `make lint` is what CI calls.
 workflow-lint:    ## Validate GitHub Actions workflows (expressions, contexts, schema)
 	uv run actionlint .github/workflows/*.yml
 
