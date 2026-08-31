@@ -12,9 +12,10 @@ disproved.
 Source: a full local gold build across all active boards — 10,170 postings fetched, 1,179
 surviving to gold.
 
-**Partially re-measured 2026-08-31** against the prod warehouse (1,742 silver survivors, 1,293
-gold) — see [Re-measured](#re-measured-2026-08-31) at the end. Only the counting claims could be
-re-run; every precision claim below still rests on the single LLM pass described next.
+**Re-measured 2026-08-31** against the prod warehouse — 2,137 silver survivors, 1,361 gold, under
+the deployed rules and the full resume corpus. See [Re-measured](#re-measured-2026-08-31) at the
+end: the counting claims were re-run and hold, and three of them now have a third independent
+sample. Every precision claim below still rests on the single LLM pass described next.
 
 > **Provenance, and why it limits what this file can claim.** The pass was a single LLM run, not a
 > human review. It was given a resume and asked to return the ~75–80 best postings by *work* match
@@ -106,63 +107,51 @@ That last point is the list-building rule, and it replaces "add large well-known
 
 ## Re-measured 2026-08-31
 
-Against the prod warehouse rather than the original local build: **1,742 silver survivors, 1,293
-gold**, roughly half again as large as the set above. Only the claims that are pure counting are
-re-run here. Every precision claim in this file — 1/21 against 3/13, 5/5, 31/43 — needs human
-labels by construction, per the provenance note, and none exist yet.
+**2,137 silver survivors, 1,361 gold, 2,276 scored** — the first measurement where the rules, the
+corpus and the postings are all current. Everything below is counting. Every precision claim above
+— 1/21 against 3/13, 5/5, 31/43 — still needs human labels by construction, per the provenance
+note, and none exist yet.
 
-These figures are from a **2026-08-16 snapshot**, scored against **9 evidence units** where the
-corpus renders 29, and computed under a much smaller seed set than the one now deployed. All three
-were fixed later the same day; [the section below](#re-measured-on-the-first-healthy-corpus)
-supersedes anything here that the seeds or the corpus touch. What is kept here is the
-seed-independent half — measured against posting text, titles and the extraction fields directly —
-because it is what the two runs can be compared across.
+**The deal-breaker rate holds a third time.** The five terms the original pass counted appear in
+**222 of 2,137 postings (10.4%)**, against 9.4% and ~9% on the two earlier fetches. Three
+independent samples inside a point of each other makes "roughly 9-10% of the market" a property of
+the market, not of a snapshot; ADR-0023 rests on it and does not need revisiting. The deployed
+35-term seed flags **475 (22.2%)** — one posting in five now carries a demotion, a heavier thumb on
+`match_score` than the rule was carrying when it was written. Worth watching, not yet worth
+changing.
 
-**The deal-breaker rate holds.** Measured against posting text: **164 of 1,742 postings (9.4%)**
-name one of the five terms the original pass counted, against 123 of 1,179 (~9%) before. Per term:
-Spark 108, Kafka 73, Scala 22, Flink 23, Hadoop 12. The corpus grew by half and the proportion
-moved by 0.4 points, so "roughly 9% of the market" is a property of the market, not of one
-snapshot. ADR-0023 rests on this and does not need revisiting.
+**Scarcity holds.** Titles word-matching "Analytics Engineer": **7 of 2,137**, 0.3% of the corpus,
+against 6 and 5 before — the share has not moved across three fetches. "Analyst" appears in 79,
+"Data Engineer" in 10, "Data Analyst" in 9. The supply argument stands: no amount of better scoring
+produces more of them.
 
-**Scarcity holds.** Titles word-matching "Analytics Engineer": **6**, up from 5, out of 1,742 —
-0.3% of the corpus. Titles matching "Analyst": 60, up from 43. The supply argument stands: no
-amount of better scoring produces more of them.
+**Concentration holds.** **78 of 126 companies** with a live posting produced no title-matched role
+at all — 62%, against 73% and 65% before. The three largest boards contribute 271 of 2,137
+postings (13%), so volume and relevance remain unrelated.
 
-**Concentration holds.** **87 of 119 companies** with a live posting produced no title-matched
-role at all, against 73 of 113 before — the same roughly-three-quarters shape.
+**Title match rose to 6.1%** (131 of 2,137) on the real 31-pattern seed, against 3.6% under the
+seven-pattern set the warehouse had been running. Still a nudge, not a gate.
 
 ### What the original pass could not measure
 
-The V2 extraction fields did not exist when this file was written. Three of them now quantify
-claims that were previously arguments.
+The V2 extraction fields did not exist when this file was written. They turn two of its arguments
+into measurements.
 
-**Instruction 3 is now a measurement, and it is the strongest result here.** Of postings *titled*
-Manager, Lead or Head, **207 describe no people management against 135 that do**, with 20 unclear
-— so **58% of manager-titled postings are individual-contributor work**. The error runs the other
-way too: **124 of 931 postings (13%) not titled that way do manage people**. A title-based rule for
-seniority would therefore be wrong more often than right on the postings it fired on, which is the
-org-chart-naming claim at the top of this file, now with a number under it.
+**Instruction 3 is the strongest result here, and it reproduces.** Of postings *titled* Manager,
+Lead or Head, **219 describe no people management against 141 that do**, with 19 unclear — so
+**60.5% of manager-titled postings are individual-contributor work**, against 58% on the previous
+corpus. The error runs the other way too: **127 of 982 (12.9%)** postings not titled that way do
+manage people, against 13%. Two independent fetches agreeing twice makes this a property of how
+companies name roles rather than a sampling artefact, and it is the org-chart claim at the top of
+this file with a number under it.
 
-**Instruction 2's predicted leak is real and sized.** Of 1,293 gold postings the location gate
-admitted, **160 (12%) are `us_only`** on the description, and **423 (33%) are `unclear`**. The
-rule-based gate cannot see either, which is what the instruction argued; a third of gold being
-`unclear` also says the field is doing honest work rather than guessing.
+**Instruction 2's predicted leak is real and sized.** Of 1,361 gold postings the location gate
+admitted, **166 (12.2%) are `us_only`** on the description — the rule-based gate cannot see it,
+which is what the instruction argued.
 
-**The fit-score distribution is bimodal, and unexplained.** 722 postings score 1, 103 score 2, 399
-score 3, 41 score 4, 28 score 5. The trough at 2 and the pile at 1 and 3 is the shape a rubric
-produces when it is really answering a three-way question, not a five-way one. Only 5% score 4 or
-5. Whether that is the market being genuinely thin or the scorer compressing its range is exactly
-what human labels decide — do not tune the rubric against this shape before they exist.
+**The fit-score distribution moved when the corpus did, and that settles a question.**
 
-## Re-measured on the first healthy corpus
-
-Same day, after a full fetch under the deployed seeds and the complete 29-unit resume: **2,137
-silver survivors, 1,361 gold, 2,276 scored**. This is the first measurement where the rules, the
-corpus and the postings are all current, so the seed-derived figures are finally meaningful.
-
-**The corpus changed the middle of the score distribution and left the top alone.**
-
-| fit_score | 9 units | 29 units |
+| fit_score | 9 evidence units | 29 evidence units |
 |---|---|---|
 | 1 | 722 | 628 |
 | 2 | 103 | **528** |
@@ -170,25 +159,12 @@ corpus and the postings are all current, so the seed-derived figures are finally
 | 4 | 41 | 36 |
 | 5 | 28 | 29 |
 
-The trough moved from 2 to 3, which answers the question the previous section left open: the shape
-*was* an artefact of the thin corpus, not a property of the market. Given the full evidence the
-model stops parking postings at 3 and commits them to 2. What barely moves is the top — 69 postings
-scored 4-or-5 before, 65 after. The corpus fix re-sorted the middle and confirmed the shortlist.
-
-**The market rate for deal-breakers holds a third time.** The original five terms now appear in
-222 of 2,137 postings (**10.4%**), against 9.4% and ~9% before, across three different fetches. The
-deployed 35-term seed flags **475 (22.2%)** — so roughly one posting in five now carries a
-demotion, which is a much heavier thumb on `match_score` than the rule was carrying when ADR-0023
-was written. Worth watching, not yet worth changing.
-
-**Title match rose from 3.6% to 6.1%** (131 of 2,137) on the real 31-pattern seed against the old
-seven. Still a nudge, not a gate.
-
-**Titles misdescribe scope at a stable rate.** Of manager/lead/head-titled postings, 219 describe
-no people management against 141 that do — **60.5% are individual-contributor work**, against 58%
-measured on the previous corpus. The converse holds too: **127 of 982 (12.9%)** postings not titled
-that way do manage people, against 13%. Two independent fetches, the same answer twice; this is a
-property of how companies name roles, not a sampling artefact.
+An earlier reading of the left-hand column called the trough at 2 unexplained and warned against
+tuning the rubric to it. Correct call: scoring the same postings against the full corpus moved the
+trough to 3. It was an artefact of thin evidence, not a property of the market — given the whole
+history the model stops parking postings at 3 and commits them to 2. What barely moved is the top:
+**69 postings scored 4-or-5 before, 65 after**. The corpus fix re-sorted the middle and confirmed
+the shortlist.
 
 ### The extraction prompt was worth 5× on eligibility
 
