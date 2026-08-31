@@ -273,3 +273,26 @@ def test_land_uses_batch_load_job_on_prod(monkeypatch) -> None:
     assert job_config.write_disposition == "WRITE_APPEND"
     assert job_config.autodetect is False
     assert [f.name for f in job_config.schema] == storage.RAW_COLUMNS
+
+
+def test_bq_param_types_match_the_python_value() -> None:
+    """Every parameter used to bind as STRING, which BigQuery rejects the moment
+    one is compared to a non-string column -- INT64 <= STRING has no common
+    supertype. DuckDB accepts it either way, so the failure was prod-only."""
+    assert storage.bq_param("abc") == ("STRING", "abc")
+    assert storage.bq_param(33) == ("INT64", 33)
+    assert storage.bq_param(1.5) == ("FLOAT64", 1.5)
+
+
+def test_bq_param_treats_bool_as_bool_not_int() -> None:
+    """bool is a subclass of int, so the order of the checks decides the type."""
+    assert storage.bq_param(True) == ("BOOL", True)
+    assert storage.bq_param(False) == ("BOOL", False)
+
+
+def test_bq_param_stringifies_anything_else() -> None:
+    """Timestamps ride as ISO text and are cast in the SQL, per query_rows."""
+    ts = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
+    kind, value = storage.bq_param(ts)
+    assert kind == "STRING"
+    assert value == str(ts)
