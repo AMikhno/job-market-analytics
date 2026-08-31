@@ -10,7 +10,7 @@ function — the shape that measurably converts (`docs/research/relevance-signal
 
 | # | Work | Why it is here | Cost |
 |---|---|---|---|
-| 1 | **V2 scoring** | Relevance is the measured constraint: 10,170 postings fetched → 1,179 gold → 40 title-matched, and those 40 were largely the *wrong* 40. Also the instrument that makes every later expansion self-evaluating instead of costing a manual evening | Scoped — ADR-0020, `docs/v2-plan.md`; backfill ~200s/model, measured in ADR-0025 |
+| 1 | **V2 validation** | The scorer is built and running in prod; nothing yet shows it beats the keyword baseline. Relevance is still the measured constraint: 10,170 postings fetched → 1,179 gold → 40 title-matched, and those 40 were largely the *wrong* 40. Validation is also what makes every later expansion self-evaluating instead of costing a manual evening | Human labels, then `make evaluate` — see [below](#v2--built-unvalidated) |
 | 2 | **More companies on already-built ATS** | No engineering at all. The best measured conversion came from a mid-size company on an existing adapter — 11 postings, 4 worth applying to. Staffing and recruiting agencies count as a deliberate company type | List work |
 | 3 | **Aggregator source** | Fixes list representativeness at the root: stops requiring the curated list to be a fair sample of the market. After V2, because without scoring it is ten times the noise for the same manual triage | ADR-0017, gates unmet. Main cost is content-based dedup, since `job_key` is `(source, company, external_id)` — ADR-0008 |
 | 4 | **List repair** | Wrong data rather than missing adapters, so it is free at runtime | Small — see below |
@@ -30,7 +30,10 @@ one that is right until human labels say otherwise.
 
 Two rankings run side by side on purpose — `fit_score` (LLM, 1–5) and `similarity` (embeddings) —
 because choosing between them without measuring is how a project ends up carrying both forever.
-`make evaluate` compares them by precision@k; the loser gets deleted.
+
+**`make evaluate` does not yet grade `similarity`.** It compares `fit_score` against `match_score`
+and hardcodes a two-way verdict, so the embedding ranking currently ships to the digest ungraded.
+Until it is a third ranking in that report, running embeddings produces a column nothing measures.
 
 ### Next, in order
 
@@ -44,15 +47,25 @@ because choosing between them without measuring is how a project ends up carryin
    `relevant` column with yes/no, blank to skip; then `make evaluate`. A few hundred is plenty.
    The LLM pass in `docs/research/relevance-signals.md` cannot substitute — grading an LLM scorer
    against LLM labels rewards reproducing its predecessor's mistakes.
-3. **Turn embeddings on**: create the CLOUD_RESOURCE connection and the remote model
+3. **Grade `similarity` in `make evaluate`** — a third `Ranking` in `evaluation/report.py` and an
+   n-way verdict in place of the two-way one. Before embeddings go on, not after: the point of
+   running both is the comparison, and an ungraded column is just cost.
+4. **Turn embeddings on**: create the CLOUD_RESOURCE connection and the remote model
    (`docs/v2-plan.md`), then set `enable_embeddings: true`. Until then `int_jobs_matched` emits an
    empty stub, so `similarity` is null and delivery falls back to the LLM score and `match_score`.
-4. **Full refresh once the corpus lands** — `dbt build --full-refresh --select int_jobs_structured+`.
+   No `--full-refresh` is needed for this one: the stub already materialized the table with the
+   right column shape and no rows, so the ordinary incremental run backfills every posting.
+5. **Full refresh once the corpus lands** — `dbt build --full-refresh --select int_jobs_structured+`.
    Also what the geo_restriction fix needs to take effect: the incremental guard compares text,
    prompt version and model, none of which a changed *extraction prompt* moves.
-5. **Decide and delete.** Keep whichever ranking the labels favour; remove the other, its column,
-   and its cost. Then re-measure `docs/research/relevance-signals.md` against the real corpus —
-   its numbers predate both the corpus and any human label.
+
+**Deliberately held, not pending: keep both rankings for ~a month of live runs before deleting
+either.** A single precision@k pass on one labelling session decides the question on one day's
+data; a month shows whether the winner stays the winner as the list and the market move. The
+holding cost is one embedding call per new posting, which is the cheaper half of the pair. Revisit
+once the labels exist *and* the month has run — then remove the losing ranking, its column and its
+cost, and re-measure `docs/research/relevance-signals.md` against the real corpus, whose numbers
+predate both the corpus and any human label.
 
 **Read `docs/research/relevance-signals.md` before writing the prompt.** The LLM pass it records
 produced four instructions the current signals cannot express — most importantly that scoring the
@@ -94,8 +107,9 @@ detail is in the private list's `notes` column.
   identity, cadence and lifecycle mapping (ADR-0017, `docs/research/openjobdata.md`)
 - **BreezyHR** — only if a keyless route to a description appears. Four paths tried; today the
   list alone would land rows that can never be ranked (ADR-0021)
-- **Embeddings** — deferred: as a cost pre-filter they save pennies at this scale, and
-  cross-source dedup is moot while each company sits on one ATS (ADR-0020)
+- **Embeddings as a cost pre-filter or a dedup key** — deferred, and distinct from the embedding
+  *ranking*, which is built (`int_jobs_matched`, above). As a pre-filter they save pennies at this
+  scale, and cross-source dedup is moot while each company sits on one ATS (ADR-0020)
 - **Auth-gated ATS** (iCIMS, Teamtailor, SuccessFactors, Dayforce, ADP, UKG, JazzHR, Phenom) —
   no keyless feed exists; they stay inventory-only (ADR-0013)
 - ~~**Storage levers**~~ — **retired, not deferred.** The bytes are now converted to dollars: at
@@ -115,12 +129,11 @@ in the private runbook.
       Until set, the step logs "disabled" and the switch is not armed
 - [ ] Re-push `COMPANIES_CSV_CONTENT` from `config/companies.active.csv` after any branch that
       changes what the list may contain — deployed code must understand the list before CI gets it
-- [ ] Add `RESUME_YAML_CONTENT` as an encrypted **secret** (not a variable — the repo is public and
+- [x] `RESUME_YAML_CONTENT` set as an encrypted **secret** (not a variable — the repo is public and
       the corpus is real PII, ADR-0027). Without it the scheduled run skips landing the resume and
       ships unscored postings on the V1 ordering, which is the intended degraded state, not a fault
-- [ ] Tag the release once this is on `main`. Tagged after the merge, not before, so the tag names
-      a commit that is actually on the default branch:
-      `git tag -a v0.2.0 -m "V2: AI relevance scoring" && git push origin v0.2.0`
+- [x] `v0.2.0` tagged and pushed, after the merge rather than before, so the tag names a commit
+      that is actually on the default branch
 - [ ] **Embeddings infrastructure — three steps, once.** Everything else is built and gated behind
       `enable_embeddings`, which stays `false` until these exist; the model emits an empty stub
       meanwhile, so nothing fails.
