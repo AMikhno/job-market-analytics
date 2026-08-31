@@ -12,6 +12,10 @@ disproved.
 Source: a full local gold build across all active boards — 10,170 postings fetched, 1,179
 surviving to gold.
 
+**Partially re-measured 2026-08-31** against the prod warehouse (1,742 silver survivors, 1,293
+gold) — see [Re-measured](#re-measured-2026-08-31) at the end. Only the counting claims could be
+re-run; every precision claim below still rests on the single LLM pass described next.
+
 > **Provenance, and why it limits what this file can claim.** The pass was a single LLM run, not a
 > human review. It was given a resume and asked to return the ~75–80 best postings by *work* match
 > regardless of title, ordered by recency. So it produced a ranked shortlist, not a judgement on
@@ -99,3 +103,56 @@ older postings warrant a different action rather than a lower score.
   was a mid-size company with 11 postings, 4 of them relevant.
 
 That last point is the list-building rule, and it replaces "add large well-known companies".
+
+## Re-measured 2026-08-31
+
+Against the prod warehouse rather than the original local build: **1,742 silver survivors, 1,293
+gold**, roughly half again as large as the set above. Only the claims that are pure counting are
+re-run here. Every precision claim in this file — 1/21 against 3/13, 5/5, 31/43 — needs human
+labels by construction, per the provenance note, and none exist yet.
+
+Two conditions on reading these numbers. The corpus is a **2026-08-16 snapshot**: ingestion had
+stalled and the figures do not describe the market on the date in the heading. And the fit scores
+were produced against a *tailored* resume rather than the full corpus, so their distribution
+measures the tailoring as much as the market.
+
+Also excluded: anything computed from the seeds. The warehouse was running an older, much smaller
+rule set than the one now in place, so `title_match`, `match_score` and `deal_breaker_hits` were
+not comparable to anything and are omitted. What follows is seed-independent — measured against
+posting text, titles and the V2 extraction fields directly.
+
+**The deal-breaker rate holds.** Measured against posting text: **164 of 1,742 postings (9.4%)**
+name one of the five terms the original pass counted, against 123 of 1,179 (~9%) before. Per term:
+Spark 108, Kafka 73, Scala 22, Flink 23, Hadoop 12. The corpus grew by half and the proportion
+moved by 0.4 points, so "roughly 9% of the market" is a property of the market, not of one
+snapshot. ADR-0023 rests on this and does not need revisiting.
+
+**Scarcity holds.** Titles word-matching "Analytics Engineer": **6**, up from 5, out of 1,742 —
+0.3% of the corpus. Titles matching "Analyst": 60, up from 43. The supply argument stands: no
+amount of better scoring produces more of them.
+
+**Concentration holds.** **87 of 119 companies** with a live posting produced no title-matched
+role at all, against 73 of 113 before — the same roughly-three-quarters shape.
+
+### What the original pass could not measure
+
+The V2 extraction fields did not exist when this file was written. Three of them now quantify
+claims that were previously arguments.
+
+**Instruction 3 is now a measurement, and it is the strongest result here.** Of postings *titled*
+Manager, Lead or Head, **207 describe no people management against 135 that do**, with 20 unclear
+— so **58% of manager-titled postings are individual-contributor work**. The error runs the other
+way too: **124 of 931 postings (13%) not titled that way do manage people**. A title-based rule for
+seniority would therefore be wrong more often than right on the postings it fired on, which is the
+org-chart-naming claim at the top of this file, now with a number under it.
+
+**Instruction 2's predicted leak is real and sized.** Of 1,293 gold postings the location gate
+admitted, **160 (12%) are `us_only`** on the description, and **423 (33%) are `unclear`**. The
+rule-based gate cannot see either, which is what the instruction argued; a third of gold being
+`unclear` also says the field is doing honest work rather than guessing.
+
+**The fit-score distribution is bimodal, and unexplained.** 722 postings score 1, 103 score 2, 399
+score 3, 41 score 4, 28 score 5. The trough at 2 and the pile at 1 and 3 is the shape a rubric
+produces when it is really answering a three-way question, not a five-way one. Only 5% score 4 or
+5. Whether that is the market being genuinely thin or the scorer compressing its range is exactly
+what human labels decide — do not tune the rubric against this shape before they exist.
