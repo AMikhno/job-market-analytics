@@ -52,6 +52,11 @@ Until it is a third ranking in that report, running embeddings produces a column
    `relevant` column with yes/no, blank to skip; then `make evaluate`. A few hundred is plenty.
    The LLM pass in `docs/research/relevance-signals.md` cannot substitute — grading an LLM scorer
    against LLM labels rewards reproducing its predecessor's mistakes.
+   - **Label the top `match_score` quartile first.** Measured: 56 of the 65 postings the LLM rates
+     4-or-5 already sit there, and the keyword score's bottom half has no resolution at all
+     (quartiles 1 and 2 average 1.43 and 1.41). The two rankings only differ where the keyword one
+     is confident, so labelling spread evenly across gold spends most of the effort where both
+     agree.
 3. **Grade `similarity` in `make evaluate`** — a third `Ranking` in `evaluation/report.py` and an
    n-way verdict in place of the two-way one. Before embeddings go on, not after: the point of
    running both is the comparison, and an ungraded column is just cost.
@@ -60,9 +65,13 @@ Until it is a third ranking in that report, running embeddings produces a column
    empty stub, so `similarity` is null and delivery falls back to the LLM score and `match_score`.
    No `--full-refresh` is needed for this one: the stub already materialized the table with the
    right column shape and no rows, so the ordinary incremental run backfills every posting.
-5. **Full refresh once the corpus lands** — `dbt build --full-refresh --select int_jobs_structured+`.
-   Also what the geo_restriction fix needs to take effect: the incremental guard compares text,
-   prompt version and model, none of which a changed *extraction prompt* moves.
+5. **Full refresh to re-extract under the fixed prompt** —
+   `dbt build --full-refresh --select int_jobs_structured+`. The incremental guard compares text,
+   prompt version and model, none of which a changed *extraction prompt* moves, so gold currently
+   mixes two vintages. Now costed on both sides: rows extracted under the old prompt are **32.5%
+   `unclear` on eligibility against 6.8%** under the fixed one, and **559 rows** still carry the
+   old answer (`docs/research/relevance-signals.md`). Weigh that against re-billing the extraction
+   backfill (ADR-0025).
 
 **Deliberately held, not pending: keep both rankings for ~a month of live runs before deleting
 either.** A single precision@k pass on one labelling session decides the question on one day's
@@ -148,12 +157,20 @@ Agents do not run `gh`, and are blocked from creating cloud resources or deletin
 anything below needs a person even when the code around it is finished. Step-by-step versions live
 in the private runbook.
 
-- [ ] **Confirm ingestion has recovered.** A `secrets` context in a step `if:` made the workflow
-      fail validation from 2026-08-16, and a workflow that fails validation does not run on its
-      schedule and sends no failed-run email — so the pipeline was silent for two weeks and the
-      warehouse still holds that day's data. The expression is fixed and `actionlint` now blocks
-      the class, but the recovery itself needs a person: dispatch a run, confirm it lands rows,
-      and check the seed tables match the pushed variables
+- [x] **Ingestion recovered 2026-08-31**, after 15 days of silence. Three independent faults, each
+      hidden by the one before it, all now fixed — recorded because each failed *quietly*:
+      1. A `secrets` context in a step `if:` made the workflow fail validation from 2026-08-16. A
+         workflow that fails validation does not run on its schedule and sends no failed-run
+         email, so a dead pipeline and a healthy one looked identical. `actionlint` in `make lint`
+         now blocks the class.
+      2. `RESUME_YAML_CONTENT` existed at *both* repository and environment scope. The job declares
+         `environment: production`, so the environment copy shadowed the repository one and two
+         updates landed on a secret nothing reads. Keep one scope per secret.
+      3. The CI service account held `bigquery.dataEditor` and `bigquery.jobUser` and nothing for
+         Vertex, so every AI function failed under it — invisible for months because no run had
+         yet reached one with rows to process. Note **`AI.SCORE` authorizes at plan time**: it
+         fails even when the incremental guard leaves zero rows to score, so this would have
+         broken every run, not just busy ones. Fixed with `roles/aiplatform.user`
 - [x] Dead-man's switch armed: healthchecks.io check created and its ping URL set as the
       `HEALTHCHECK_URL` secret (period 1 day, grace 6h — alert after ~30h of silence, matching the
       freshness gate's threshold). No code change was needed; the step reads the secret and
