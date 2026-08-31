@@ -3,10 +3,13 @@
 How the job-matching pipeline works. Decisions and their alternatives are in `docs/decisions/`;
 what is planned next is in `TODO.md`.
 
-V1 is **ingestion plus dbt transformations — no LLM, no scoring**. It produces a deduplicated,
-rule-filtered table of postings from every ATS with a public, keyless feed, on a dual-target dbt
-project: DuckDB for development, BigQuery for production, from the first commit, so there is no
-migration later. Relevance ranking needs a model and is V2 (ADR-0020).
+Two layers, and the lower one stands alone. **V1 is ingestion plus dbt transformations — no LLM,
+no scoring**: it produces a deduplicated, rule-filtered table of postings from every ATS with a
+public, keyless feed, on a dual-target dbt project — DuckDB for development, BigQuery for
+production, from the first commit, so there is no migration later. **V2 adds AI relevance on top**
+(ADR-0020): prod-only models that order delivery and never filter it, so with them absent, failing
+or unscored, the pipeline still ships the V1 result rather than nothing. That is why the dev target
+stubs them instead of requiring a model to build the DAG.
 
 ## Shape
 
@@ -16,7 +19,7 @@ migration later. Relevance ranking needs a model and is V2 (ADR-0020).
 │ INGEST │ → │ BRONZE  │ → │              SILVER               │ → │ GOLD │ → DELIVER
 └────────┘   └─────────┘   │  int_jobs__unioned    (view)      │   └──────┘   (links)
  ATS APIs     stg_* views  │  silver_jobs          (table)     │    fct_job_postings
- 1 table/src               │  ┄ V2: extraction → scoring       │    (table)
+ 1 table/src               │  ┄ AI: extract → score, match     │    (table)
  + run meta                └───────────────────────────────────┘
 ```
 
@@ -93,8 +96,11 @@ failing ages out of gold within a day instead of leaving zombie postings behind.
 ## Filtering: one rule removes, the rest rank
 
 **Allowed location is the only hard filter.** It is deliberately coarse — keep a posting whose
-location is null, is bare "Remote", or word-matches an allowed marker; drop the rest. It cannot
-tell "Remote" from "Remote (US)", which is a known limit, not an oversight.
+location is unknown, is bare "Remote", or word-matches an allowed marker; drop the rest. Unknown
+means null *or* blank, because a board that omits the field and one that publishes an empty string
+mean the same thing. It cannot tell "Remote" from "Remote (US)", which is a known limit, not an
+oversight — and matching is ASCII word-boundary, so an accented place name needs both spellings
+seeded or an abbreviation that covers the region.
 
 Everything else annotates and orders: `desired_tech_hits`, `title_match`, and deal-breaker
 technologies, which **demote rather than delete** (ADR-0023) because postings naming an unwanted
@@ -124,6 +130,47 @@ stating:
 
 V2's incremental models are the exception — they exist to avoid recomputation, so a schema change
 there re-bills a backfill and is a costed decision (`docs/v2-plan.md`).
+
+## Automation
+
+Four workflows, split by **what may trigger them** and **what credentials they may hold**. The
+split is the security boundary: merging any pair would give the merged workflow the union of both
+permission sets on the union of both triggers.
+
+| Workflow | Trigger | Holds | Does |
+|---|---|---|---|
+| Ingest | twice-daily cron + manual dispatch | `id-token: write`, prod environment | The pipeline: fetch → land → transform → deliver |
+| CI | every push and PR | nothing | Lint, tests, the DuckDB DAG, a prod-target parse, gitleaks |
+| Docs | push to `main` | `pages: write` | Publishes the dbt lineage DAG to GitHub Pages |
+| Tag release | push to `main` touching `pyproject.toml` | `contents: write` | Publishes `v<version>` if it does not exist yet |
+
+Only Ingest can reach the warehouse: `id-token: write` is what mints the OIDC token that Workload
+Identity Federation exchanges for GCP credentials, and no other workflow has it. That is also why
+its actions are pinned to commit SHAs rather than tags — a hijacked moving tag in *that* file could
+exfiltrate the exchange. CI holds no secrets at all, which is what makes it safe on fork PRs, and
+is why CI builds against the example seeds and can say nothing about the rules production is using.
+
+One Ingest run, in order. Every step after authentication is a `make` target, so the same sequence
+runs locally:
+
+1. **Authenticate** to GCP via WIF — no key file exists to leak.
+2. **Materialize private config** — the company list and the four filter seeds, from Actions
+   variables. On the prod target a missing seed variable *fails the run* rather than falling back
+   to the committed example, which would filter gold to somewhere nobody lives and still exit 0.
+3. **Ingest** every active board into `raw_<source>_jobs`, then **surface warnings** as
+   annotations and a run summary.
+4. **Compile dbt against BigQuery** before building anything — a dialect error fails here, cheaply,
+   instead of halfway through a materialization.
+5. **Land the resume corpus** and the rendered scoring prompt, if the secret is present. Absent, the
+   step is skipped and postings ship unscored on the V1 ordering — the honest degraded state.
+6. **Transform** bronze → silver → gold, then run the **freshness gate**.
+7. **Deliver** the digest of postings new since the last watermark, or a heartbeat if none.
+8. **Ping the dead-man's switch**, only on full success.
+
+The workflows are themselves linted (`make workflow-lint`). An invalid workflow is not a failed
+run — GitHub records a zero-second startup failure, stops honouring the schedule, and sends no
+failed-run email, because no run ever started. Silence is indistinguishable from health, so the
+validation has to happen before the file lands.
 
 ## Health
 
@@ -156,13 +203,23 @@ in a GitHub Actions variable and never in the tree.
 
 ## V2
 
-Two prod-only models inside silver, both SQL against warehouse-native AI functions (ADR-0004),
-reading from `silver_jobs` so they only ever see postings that survived filtering.
+Three prod-only models inside silver, all SQL against warehouse-native AI functions (ADR-0004),
+reading from `silver_jobs` so they only ever see postings that survived filtering. On the DuckDB
+target each emits a typed-null stub with the same column shape, so the dev DAG and its unit tests
+run without a model.
 
 | Model | Does |
 |---|---|
-| `int_jobs_structured` | Typed extraction: seniority, minimum years, required techs, eligibility, and `requirement_text` |
-| `int_jobs_scored` | 1–5 `fit_score` of `requirement_text` against the resume corpus |
+| `int_jobs_structured` | Typed extraction: `company_type`, `geo_restriction`, `manages_people`, minimum years, required and nice-to-have techs, and `relevant_text` |
+| `int_jobs_scored` | 1–5 `fit_score` of `relevant_text` against the resume corpus |
+| `int_jobs_matched` | Embedding `similarity` of `relevant_text` to the closest single resume bullet, and which bullet it was |
+
+The third answers the same question as the second by different means, and runs beside it on
+purpose until labels say which is better. Embeddings take only that half: similarity is blind to
+polarity — "we do not sponsor visas" and "we sponsor visas" are nearly identical vectors — so
+`geo_restriction` and `manages_people` stay with the LLM and never move there. It is gated behind
+`enable_embeddings`, which stays false until its remote model exists; off, the model emits its
+stub and `similarity` is simply null.
 
 **Scoring reads the requirements, not the posting.** Extraction drops the responsibilities blurb
 and the boilerplate, which measured 570 characters out of 6,854 — about 8% of the text. Every
@@ -189,6 +246,6 @@ Untrusted posting text is delimited and framed as data rather than instructions 
 the output is type-constrained, so a posting cannot instruct the scorer.
 
 **Whether any of this beats the keyword score is an open question**, and deliberately so: `make
-evaluate` compares the two rankings by precision@k over human labels. Labels from an LLM cannot
-settle it — grading a scorer against its predecessor's judgements rewards reproducing that
-predecessor's mistakes.
+evaluate` scores a ranking by precision@k over human labels. Labels from an LLM cannot settle it —
+grading a scorer against its predecessor's judgements rewards reproducing that predecessor's
+mistakes. Until those labels exist, all three orderings are carried and none is trusted.

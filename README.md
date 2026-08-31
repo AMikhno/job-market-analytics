@@ -38,9 +38,9 @@ flowchart LR
   Identity Federation (keyless); GH Actions SHA-pinned (`id-token: write` hygiene);
   gitleaks in CI; the company list and candidate profile are private config, never
   committed.
-- **Tests gate every commit.** 110 pytest tests (95%+ coverage, enforced), 40 dbt
-  schema/unit tests, mypy `--strict`, sqlfluff, plus a CI parse of the prod target — a
-  fork-safe pipeline with no secrets in CI.
+- **Tests gate every commit.** A pytest suite behind an enforced 85% coverage floor, dbt
+  schema and unit tests on every model, mypy `--strict`, sqlfluff, actionlint on the
+  workflows, plus a CI parse of the prod target — a fork-safe pipeline with no secrets in CI.
 - **Every non-obvious choice has an ADR** — 28 so far, in `docs/decisions/`. <!-- check:adrs -->
 
 **Browse the [dbt docs & lineage DAG](https://amikhno.github.io/job-market-analytics/)** —
@@ -76,7 +76,7 @@ dbt/         one dual-target project: models/{bronze,silver,gold}, seeds, macros
 scripts/     repo gates that are not lint or tests (see below)
 tests/       pytest suite + sanitized fixtures
 docs/        decisions/, v2-plan.md, research/  (ARCHITECTURE.md at repo root)
-.github/     ci.yml (DuckDB, secretless, fork-safe) + ingest.yml (scheduled, WIF, SHA-pinned)
+.github/     four workflows, split by permission scope — see ARCHITECTURE.md#automation
 ```
 
 Currently 9 ingestion sources, 15 dbt models and 28 ADRs. <!-- check:sources check:dbt_models check:adrs -->
@@ -97,6 +97,7 @@ blocks merge:
 | `dbt source freshness` | a source that silently stopped landing rows |
 | **`scripts/check_docs.py`** | **documentation that points at things which no longer exist** |
 | `gitleaks` | committed secrets |
+| `actionlint` | a workflow that fails validation — which does not fail loudly: it stops running on its schedule and sends no alert, because no run ever starts |
 | Dependabot | stale dependencies (`uv.lock` + `pyproject.toml` together) |
 
 The docs check is the unusual one. Prose drifts silently — a file is renamed, a make target goes
@@ -121,9 +122,10 @@ embedding matcher that reports which piece of experience a posting resembles.
 
 **Deliberately unvalidated so far.** Two rankings run side by side — the LLM score and embedding
 similarity — because choosing between them without measuring is how a project ends up carrying
-both forever. `make evaluate` compares them by precision@k against human labels; the loser gets
-deleted. Labels from an LLM cannot settle it: grading a scorer against its predecessor's
-judgements rewards reproducing that predecessor's mistakes.
+both forever. `make evaluate` scores a ranking by precision@k against human labels, and labels
+from an LLM cannot settle it: grading a scorer against its predecessor's judgements rewards
+reproducing that predecessor's mistakes. Both rankings are kept until labels exist *and* a month
+of live runs has shown the winner stays the winner; only then does the loser get deleted.
 
 Full design: `ARCHITECTURE.md`. What is next: `TODO.md`.
 

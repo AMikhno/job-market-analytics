@@ -32,6 +32,14 @@ repos:
         entry: uv run python scripts/check_private_terms.py
         language: system
         stages: [commit-msg]
+      # A workflow that fails validation is not a failed run — it is no run at
+      # all, on a schedule, with no email. Cheap to catch here; `make lint`
+      # re-runs it in CI so --no-verify cannot land one.
+      - id: actionlint
+        name: actionlint (GitHub Actions workflows)
+        entry: uv run actionlint
+        language: system
+        files: ^\.github/workflows/.*\.ya?ml$
       # Every push must have passing, covered tests.
       - id: pytest
         name: pytest (with coverage gate)

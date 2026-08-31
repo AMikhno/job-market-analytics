@@ -53,11 +53,16 @@ deal_breaker_matches as (
 ),
 
 -- Location rule (V1, deliberately coarse): keep a posting whose location is
--- unknown (null), is bare "Remote", or word-matches an allowed Canadian marker
--- (Canada / Ontario / ON / Ottawa / Toronto / Montreal — seeded). Word-matched,
--- not substring, so "ON" hits "Ottawa, ON" but not "London". No country blocklist.
--- So "Remote - United Kingdom" is dropped while "Remote, Canada" is kept; V2's
--- LLM does true location eligibility.
+-- unknown, is bare "Remote", or word-matches an allowed marker from the seed.
+-- Word-matched, not substring, so a province abbreviation matches "City, XX"
+-- and not a longer word containing those letters. No country blocklist, so a
+-- posting whose location names an out-of-scope country is dropped only because
+-- it matches nothing; V2's LLM does true location eligibility.
+--
+-- "Unknown" is null OR blank. Adapters pass the ATS field through untouched, so
+-- a board that publishes an empty location string and one that omits the field
+-- mean the same thing and must be treated the same; testing only for null once
+-- made the first kind lose every posting while the second kept them.
 location_ok as (
     select d.job_key
     from deduped d
@@ -65,7 +70,7 @@ location_ok as (
         on {{ regexp_word_ci('d.location', 'a.pattern') }}
     group by d.job_key
     having
-        max(d.location) is null
+        coalesce(trim(max(d.location)), '') = ''
         or lower(trim(max(d.location))) = 'remote'
         or count(a.pattern) > 0
 ),
