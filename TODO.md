@@ -106,7 +106,7 @@ detail is in the private list's `notes` column.
 
 ## Parked, with the gate that would unpark it
 
-- **openjobdata** — decisive gate is a real Ottawa-coverage pull from the dataset; then licence,
+- **openjobdata** — decisive gate is a real local-coverage pull from the dataset; then licence,
   identity, cadence and lifecycle mapping (ADR-0017, `docs/research/openjobdata.md`)
 - **BreezyHR** — only if a keyless route to a description appears. Four paths tried; today the
   list alone would land rows that can never be ranked (ADR-0021)

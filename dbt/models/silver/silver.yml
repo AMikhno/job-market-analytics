@@ -313,13 +313,15 @@ unit_tests:
         - {job_key: weak_clean, match_score: 0}
         - {job_key: mid_clean, match_score: 2}
 
-  - name: location_gate_keeps_null_bare_remote_and_canada
+  - name: location_gate_keeps_null_bare_remote_and_in_scope
     description: >
       Keep a posting whose location is unknown (null OR blank), is bare "Remote",
-      or word-matches a Canadian marker (Canada / Ontario / ON / Ottawa / Toronto
-      / Montreal). Drop everything else. Word-matched: "ON" hits "Ottawa, ON" but
-      not "London". Blank is pinned alongside null because an ATS that publishes
-      an empty location and one that omits the field mean the same thing.
+      or word-matches a marker from the seed. Drop everything else. The rows below
+      supply their own seed fixture, so they exercise the matching rule rather
+      than whatever the real list happens to hold: word-matched, so a two-letter
+      abbreviation matches "City, XX" and not a longer word containing it. Blank
+      is pinned alongside null because an ATS that publishes an empty location and
+      one that omits the field mean the same thing.
     model: silver_jobs
     given:
       - input: ref('int_jobs__unioned')
