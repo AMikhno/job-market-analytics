@@ -159,29 +159,33 @@ which is what the instruction argued.
 | 4 | 41 | 36 |
 | 5 | 28 | 29 |
 
-An earlier reading of the left-hand column called the trough at 2 unexplained and warned against
-tuning the rubric to it. Correct call: scoring the same postings against the full corpus moved the
-trough to 3. It was an artefact of thin evidence, not a property of the market — given the whole
-history the model stops parking postings at 3 and commits them to 2. What barely moved is the top:
-**69 postings scored 4-or-5 before, 65 after**. The corpus fix re-sorted the middle and confirmed
-the shortlist.
+The same postings, scored against a third of the corpus and against all of it. **A partial corpus
+distorts the middle of the distribution and leaves the top intact**: the trough moves from 2 to 3,
+while the count scoring 4-or-5 barely changes (69 against 65). So a thin corpus costs ordering
+among the also-rans, not the shortlist — and a score is only comparable to another score produced
+from the same corpus, which is why `landed_version()` digests the rendered prompt and re-scores
+when it changes.
 
-### The extraction prompt was worth 5× on eligibility
+### Telling the model to trust the board's location is worth 5×
 
-`geo_restriction` split by extraction date isolates the fix that told the model to treat the job
-board's own location field as authoritative:
+Instructing extraction to treat the job board's own location field as authoritative — rather than
+inferring eligibility from the description alone — is the single largest measured improvement to
+`geo_restriction`:
 
-| extracted | rows | `unclear` |
+| extraction prompt | rows | `unclear` |
 |---|---|---|
-| under the old prompt | 1,721 | **32.5%** |
-| under the fixed prompt | 555 | **6.8%** |
+| without the instruction | 1,721 | **32.5%** |
+| with it | 555 | **6.8%** |
 
-The same posting population, one prompt change, and unresolved eligibility drops by nearly five
-times. It also means **gold currently mixes two extraction vintages**: the incremental guard
-compares text, model and scoring-prompt version, none of which a changed *extraction* prompt moves,
-so 559 rows still carry an `unclear` that the current prompt would very likely resolve. That is the
-concrete case for the full refresh in `TODO.md` — it now has a number attached instead of a
-principle.
+Same posting population, one instruction, unresolved eligibility down nearly five times. Worth
+knowing for any future extraction field: the board's structured metadata beats inference from prose
+whenever both are available.
+
+It also exposes a property of the incremental guard. It compares text, model and *scoring*-prompt
+version — none of which move when the **extraction** prompt changes — so gold can hold rows
+extracted under two different prompts at once. **559 rows** currently carry the older, weaker
+answer. Resolving them means a full refresh, which re-bills the extraction backfill (ADR-0025), so
+it is a costed choice rather than an automatic one.
 
 ### Do the two rankings disagree enough to be worth keeping both?
 
