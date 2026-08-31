@@ -24,6 +24,11 @@ jobs:
   ingest:
     runs-on: ubuntu-latest
     environment: production  # scopes the secrets below
+    env:
+      # Mapped here, at job level, purely so a step `if:` can test it: a step's
+      # own `env:` block is not visible to that same step's `if:`, and `secrets`
+      # is not an allowed context there at all. Only presence is ever tested.
+      RESUME_YAML_CONTENT: ${{ secrets.RESUME_YAML_CONTENT }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -99,8 +104,13 @@ jobs:
       # scores every posting against placeholder text -- so the step is skipped
       # rather than run with a stand-in, leaving fit_score null and delivery on
       # its V1 ordering, which is the honest degraded state.
+      #
+      # Gated on `env`, not on `secrets` directly: the `secrets` context is not in
+      # the documented availability list for a step `if:` (that list is github,
+      # needs, strategy, matrix, job, runner, env, vars, steps, inputs), so the
+      # secret is mapped to an env var at job level above and tested from there.
       - name: Materialize the private resume and land the scoring prompt
-        if: ${{ secrets.RESUME_YAML_CONTENT != '' }}
+        if: ${{ env.RESUME_YAML_CONTENT != '' }}
         env:
           PIPELINE_TARGET: prod
           GCP_PROJECT: ${{ secrets.GCP_PROJECT }}

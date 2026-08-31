@@ -26,19 +26,7 @@ jobs:
       # --locked fails the build if uv.lock is stale w.r.t. pyproject.toml, so a
       # dependency change can't merge without its lockfile update. Contributors
       # then all resolve to the same pinned, hash-checked versions.
-      - run: uv sync --extra dev --locked 
-      - name: Debug Python dependencies
-        run: |
-          uv run python -c "import importlib.metadata as m; print('dbt-core:', m.version('dbt-core'))"
-          uv run python -c "import importlib.metadata as m; print('sqlfluff:', m.version('sqlfluff'))"
-          uv run python -c "import importlib.metadata as m; print('sqlfluff-templater-dbt:', m.version('sqlfluff-templater-dbt'))"
-          uv run python -c "import dbt; print('dbt:', dbt.__file__)"
-      
-      - name: Show dependency versions
-        run: |
-          uv run dbt --version
-          uv run sqlfluff --version
-          uv run python -c "import dbt; print('dbt:', dbt.__file__)"
+      - run: uv sync --extra dev --locked
 
       - name: Lint (ruff, mypy, sqlfluff)
         run: make lint

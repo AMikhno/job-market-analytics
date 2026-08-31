@@ -8,15 +8,24 @@ dependencies = [
     "pydantic-settings>=2.14.2",
     "requests>=2.32",
     "duckdb>=1.0",
-    "dbt-core>=1.11,<1.13",
-    "dbt-duckdb>=1.11,<1.13",
-    "dbt-bigquery>=1.11,<1.13",
+    "dbt-core>=1.12,<1.13",
+    # dbt-core >=1.12 requires this, and it has only ever published pre-releases
+    # (2.0.0a5, 2.0.0b2 — there is no stable version to resolve to). Declared as a
+    # direct dependency so `prerelease = "explicit"` below admits this one package
+    # rather than opening pre-releases across the whole graph, which is how a
+    # transitive bump reached the dbt-core 2.0.0b1 placeholder once already.
+    "dbt-core-experimental-parser>=2.0.0b1",
+    "dbt-duckdb>=1.10,<1.13",
+    "dbt-bigquery>=1.10,<1.13",
     "google-cloud-bigquery>=3.25",
     "mashumaro[msgpack]>=3.17",   # newer build is needed for Python 3.14
     "pyyaml>=6.0.3",
-] 
+]
 [tool.uv]
-prerelease = "disallow"
+# Not "disallow": that cannot resolve, because dbt-core's own dependency on
+# dbt-core-experimental-parser can only ever be satisfied by a pre-release.
+# "explicit" limits pre-releases to packages named directly above.
+prerelease = "explicit"
 
 [project.optional-dependencies]
 dev = [
