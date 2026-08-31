@@ -14,7 +14,20 @@ on:
   schedule:
     - cron: "30 13 * * *"   # 09:30 EDT / 08:30 EST
     - cron: "0 19 * * *"    # 15:00 EDT / 14:00 EST
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      # A full fetch is ~15 minutes and re-lands what is already there. When the
+      # failure was downstream of it -- a bad secret, a seed change, a digest
+      # that did not send -- re-fetching proves nothing and only delays the
+      # answer. Manual dispatch only: on a schedule event `inputs` is empty, so
+      # the guard below reads false and the fetch runs as usual.
+      #
+      # Skipping it cannot fake a healthy run: the freshness gate reads the raw
+      # tables' own timestamps, so a rebuild over stale raw still fails.
+      skip_ingest:
+        description: "Rebuild from already-landed raw — skip the fetch"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -70,6 +83,7 @@ jobs:
         run: make seeds
 
       - name: Ingest -> BigQuery raw
+        if: ${{ !inputs.skip_ingest }}
         env:
           PIPELINE_TARGET: prod
           GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
@@ -86,8 +100,10 @@ jobs:
       # Python, not jq: jq is a system binary from the runner image, absent from
       # uv.lock and from macOS, so the expressions it replaced could not be run
       # or tested anywhere but here.
+      # Reads the summary the ingest step writes, so it has nothing to say when
+      # that step was skipped.
       - name: Surface warnings (annotations + run summary)
-        if: success()
+        if: ${{ success() && !inputs.skip_ingest }}
         run: uv run python -m ingest.report_run
 
       - name: Fail fast on BigQuery dialect errors (compile, no mutations)

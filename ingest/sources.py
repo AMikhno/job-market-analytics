@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 from typing import Annotated, ClassVar, Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field
 
@@ -71,6 +72,22 @@ class SourceBase(BaseModel):
     def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
         """Construct this source's adapter. Overridden by every subclass."""
         raise NotImplementedError
+
+    def host_for(self, board_ref: str) -> str:
+        """The host this board's requests go to — the unit the limiter paces.
+
+        Two boards share a host, and therefore a rate limit, exactly when this
+        returns the same string: every board of an ATS that serves one API host
+        (`boards-api.<ats>.com/...`), but no two boards of an ATS that gives each
+        company a subdomain (`{board_ref}.<ats>.com`). That distinction is what
+        the fetch order needs, so it is derived from the URL template rather than
+        restated — a template edit cannot leave it stale.
+
+        Only `{board_ref}` is substituted: other placeholders (paging, ids) sit
+        in the path, never the host.
+        """
+        template = getattr(self, "url_template", "")
+        return urlsplit(template.replace("{board_ref}", board_ref)).netloc or self.name
 
     def validate_board_ref(self, board_ref: str) -> None:
         """Raise ValueError if board_ref is malformed for this source.
