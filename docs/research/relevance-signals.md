@@ -111,16 +111,12 @@ gold**, roughly half again as large as the set above. Only the claims that are p
 re-run here. Every precision claim in this file — 1/21 against 3/13, 5/5, 31/43 — needs human
 labels by construction, per the provenance note, and none exist yet.
 
-Two conditions on reading these numbers. The corpus is a **2026-08-16 snapshot**: ingestion had
-stalled and the figures do not describe the market on the date in the heading. And the fit scores
-were produced against **9 evidence units**, where the corpus on disk now renders 29 — measured,
-not assumed: the landed prompt is 6,478 characters against 22,401 today. Their distribution
-therefore measures a third of the evidence, and the trough at 2 may be an artefact of that alone.
-
-Also excluded: anything computed from the seeds. The warehouse was running an older, much smaller
-rule set than the one now in place, so `title_match`, `match_score` and `deal_breaker_hits` were
-not comparable to anything and are omitted. What follows is seed-independent — measured against
-posting text, titles and the V2 extraction fields directly.
+These figures are from a **2026-08-16 snapshot**, scored against **9 evidence units** where the
+corpus renders 29, and computed under a much smaller seed set than the one now deployed. All three
+were fixed later the same day; [the section below](#re-measured-on-the-first-healthy-corpus)
+supersedes anything here that the seeds or the corpus touch. What is kept here is the
+seed-independent half — measured against posting text, titles and the extraction fields directly —
+because it is what the two runs can be compared across.
 
 **The deal-breaker rate holds.** Measured against posting text: **164 of 1,742 postings (9.4%)**
 name one of the five terms the original pass counted, against 123 of 1,179 (~9%) before. Per term:
@@ -157,3 +153,83 @@ score 3, 41 score 4, 28 score 5. The trough at 2 and the pile at 1 and 3 is the 
 produces when it is really answering a three-way question, not a five-way one. Only 5% score 4 or
 5. Whether that is the market being genuinely thin or the scorer compressing its range is exactly
 what human labels decide — do not tune the rubric against this shape before they exist.
+
+## Re-measured on the first healthy corpus
+
+Same day, after a full fetch under the deployed seeds and the complete 29-unit resume: **2,137
+silver survivors, 1,361 gold, 2,276 scored**. This is the first measurement where the rules, the
+corpus and the postings are all current, so the seed-derived figures are finally meaningful.
+
+**The corpus changed the middle of the score distribution and left the top alone.**
+
+| fit_score | 9 units | 29 units |
+|---|---|---|
+| 1 | 722 | 628 |
+| 2 | 103 | **528** |
+| 3 | 399 | **140** |
+| 4 | 41 | 36 |
+| 5 | 28 | 29 |
+
+The trough moved from 2 to 3, which answers the question the previous section left open: the shape
+*was* an artefact of the thin corpus, not a property of the market. Given the full evidence the
+model stops parking postings at 3 and commits them to 2. What barely moves is the top — 69 postings
+scored 4-or-5 before, 65 after. The corpus fix re-sorted the middle and confirmed the shortlist.
+
+**The market rate for deal-breakers holds a third time.** The original five terms now appear in
+222 of 2,137 postings (**10.4%**), against 9.4% and ~9% before, across three different fetches. The
+deployed 35-term seed flags **475 (22.2%)** — so roughly one posting in five now carries a
+demotion, which is a much heavier thumb on `match_score` than the rule was carrying when ADR-0023
+was written. Worth watching, not yet worth changing.
+
+**Title match rose from 3.6% to 6.1%** (131 of 2,137) on the real 31-pattern seed against the old
+seven. Still a nudge, not a gate.
+
+**Titles misdescribe scope at a stable rate.** Of manager/lead/head-titled postings, 219 describe
+no people management against 141 that do — **60.5% are individual-contributor work**, against 58%
+measured on the previous corpus. The converse holds too: **127 of 982 (12.9%)** postings not titled
+that way do manage people, against 13%. Two independent fetches, the same answer twice; this is a
+property of how companies name roles, not a sampling artefact.
+
+### The extraction prompt was worth 5× on eligibility
+
+`geo_restriction` split by extraction date isolates the fix that told the model to treat the job
+board's own location field as authoritative:
+
+| extracted | rows | `unclear` |
+|---|---|---|
+| under the old prompt | 1,721 | **32.5%** |
+| under the fixed prompt | 555 | **6.8%** |
+
+The same posting population, one prompt change, and unresolved eligibility drops by nearly five
+times. It also means **gold currently mixes two extraction vintages**: the incremental guard
+compares text, model and scoring-prompt version, none of which a changed *extraction* prompt moves,
+so 559 rows still carry an `unclear` that the current prompt would very likely resolve. That is the
+concrete case for the full refresh in `TODO.md` — it now has a number attached instead of a
+principle.
+
+### Do the two rankings disagree enough to be worth keeping both?
+
+Label-free, and the most decision-relevant thing here. Postings split into quartiles by
+`match_score`, against the LLM's verdict:
+
+| keyword quartile | n | avg fit_score | fit ≥ 4 |
+|---|---|---|---|
+| 1 (lowest) | 341 | 1.43 | 2 |
+| 2 | 340 | 1.41 | 2 |
+| 3 | 340 | 1.73 | 5 |
+| 4 (highest) | 340 | 2.47 | **56** |
+
+Three things follow. **The keyword score already finds most of what the LLM rates highly** — 56 of
+65 high-fit postings, 86%, sit in its top quartile, so the cheap ranking is not being embarrassed.
+**Its bottom half has no resolution at all**: quartiles 1 and 2 are indistinguishable (1.43 against
+1.41), so ordering within them is noise. And **nine high-fit postings sit outside the top quartile**
+— that, plus reordering inside it, is the LLM's entire marginal contribution.
+
+Nineteen of the 56 top-quartile high-fit postings carry **no title match**, which is the earlier
+org-chart argument showing up in the ranking itself: the keyword score reached them through
+technology hits alone.
+
+Whether nine recovered postings and a re-sorted top quartile justify the scoring cost is exactly
+what human labels decide. The point of measuring it now is that the question has a size:
+**precision@k on the top quartile is where the two rankings actually differ**, so that is where the
+labelling effort should concentrate rather than being spread evenly across 1,361 rows.
