@@ -94,17 +94,36 @@ human labels, and cannot double as V2's evaluation set — see the provenance no
 ## List repair
 
 Rows discovery cannot place, kept as classes because each is worth recognizing again. Per-company
-detail is in the private list's `notes` column.
+detail is in the private list's `notes` column. Re-audited 2026-08-31 against the live list.
+
+**Worth doing first: nine inactive rows sit on adapters that already exist** — no engineering, which
+is priority #2's argument applied to rows already in the list. Two of the nine are the portal rows
+below and should be deleted rather than fixed, so the recoverable count is four to seven companies.
 
 - [ ] **Two ecosystem/portal rows** — a tech hub and a regional directory, each listing
-      *member-company* jobs, so discovery attributes someone else's board to them. Neither is an
-      employer; both are deletion candidates
+      *member-company* jobs, so discovery attributes someone else's board to them. Both reproduce
+      the *same* board_ref from different crawl origins, which is the mechanical signature. Neither
+      is an employer; both are deletion candidates
 - [ ] **Two with a confirmed ATS but no extractable token** — the platform is certain from the
       careers page, but no board name appears in the markup and the API probe missed every
       guessable form. Needs a human with the network tab open
 - [ ] **One crawl that landed on a different company** — its detected ATS is unverified
-- [ ] **One closed tenant** — the board URL redirects to the vendor's home page. Remove or re-point
-- [ ] **Junk refs from discovery** — several rows store a URL path fragment instead of a board name
+- [ ] **One closed tenant** — the board URL redirects to the vendor's home page. Remove or re-point.
+      Not yet isolated: three rows carry an unverified-404 note and the tenant is likely among them,
+      but nothing in the notes separates "vendor redirect" from "wrong ref"
+- [ ] **Vendor-level refs on inventory rows — a landmine, not a defect.** Fourteen
+      `(source, board_ref)` pairs repeat, concentrated in platforms with no adapter: six rows share
+      one ref on one ATS, five on another, and so on. Discovery captured an identifier for the
+      *platform* rather than the company. Harmless today — **no duplicate pair has more than one
+      active row**, so nothing is fetched twice. It bites the day an adapter is built and those rows
+      are flipped active: `job_key` is `(source, company, external_id)` (ADR-0008), so one board
+      would land the same postings once per company name and dedup would not catch it. Check for
+      repeats before activating a newly supported ATS
+- [ ] **Three rows have no `website`** — all inventory-only. It is the recovery key that re-derives
+      a `board_ref` after an ATS move (CLAUDE.md), so these cannot be repaired automatically
+- [x] ~~**Junk refs from discovery**~~ — resolved. No `board_ref` now contains a URL path fragment
+      (`/ : ? = &` or an `http` prefix); the remaining empty refs are all on platforms with no
+      adapter, where a ref that cannot be used does not need to be right
 
 ## Parked, with the gate that would unpark it
 
