@@ -135,11 +135,12 @@ in the private runbook.
       warehouse still holds that day's data. The expression is fixed and `actionlint` now blocks
       the class, but the recovery itself needs a person: dispatch a run, confirm it lands rows,
       and check the seed tables match the pushed variables
-- [ ] Arm the dead-man's switch: create the healthchecks.io check and add its ping URL as the
-      `HEALTHCHECK_URL` secret (period 1 day, grace ≥ 6h, for a twice-daily cron plus DST drift).
-      Until set, the step logs "disabled" and the switch is not armed. **This is the item that
-      would have caught the outage above on day one** — layers 1–3 of the health design all assume
-      the workflow runs at all
+- [x] Dead-man's switch armed: healthchecks.io check created and its ping URL set as the
+      `HEALTHCHECK_URL` secret (period 1 day, grace 6h — alert after ~30h of silence, matching the
+      freshness gate's threshold). No code change was needed; the step reads the secret and
+      self-enables. **This is the layer that would have caught the outage above on day one** —
+      layers 1–3 of the health design all assume the workflow runs at all. Still unproven until a
+      successful run pings it: the step is gated on `if: success()`
 - [ ] Re-push `COMPANIES_CSV_CONTENT` from `config/companies.active.csv` after any branch that
       changes what the list may contain — deployed code must understand the list before CI gets it
 - [x] `RESUME_YAML_CONTENT` set as an encrypted **secret** (not a variable — the repo is public and
