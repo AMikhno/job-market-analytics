@@ -24,11 +24,12 @@ against).
 
 ## V2 — built, unvalidated
 
-The code is done and has run in prod. **Nothing yet shows it beats the keyword score**, and that
-is the only question left worth answering: a scorer that is confidently wrong looks exactly like
-one that is right until human labels say otherwise. Note the warehouse currently holds a
-2026-08-16 snapshot — see the recovery item under [Human-owned](#human-owned) — so anything
-measured against it describes that day, not today.
+The code is done and running in prod against a current corpus. **Nothing yet shows it beats the
+keyword score**, and that is the only question left worth answering: a scorer that is confidently
+wrong looks exactly like one that is right until human labels say otherwise. What is now measured
+(`docs/research/relevance-signals.md`) is how far apart the two rankings are — 56 of the 65
+postings the LLM rates 4-or-5 already sit in the keyword score's top quartile, so the disagreement
+worth labelling is narrower than the corpus.
 
 Two rankings run side by side on purpose — `fit_score` (LLM, 1–5) and `similarity` (embeddings) —
 because choosing between them without measuring is how a project ends up carrying both forever.
