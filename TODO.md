@@ -53,11 +53,11 @@ Until it is a third ranking in that report, running embeddings produces a column
    `relevant` column with yes/no, blank to skip; then `make evaluate`. A few hundred is plenty.
    The LLM pass in `docs/research/relevance-signals.md` cannot substitute — grading an LLM scorer
    against LLM labels rewards reproducing its predecessor's mistakes.
-   - **Label the top `match_score` quartile first.** Measured: 56 of the 65 postings the LLM rates
-     4-or-5 already sit there, and the keyword score's bottom half has no resolution at all
-     (quartiles 1 and 2 average 1.43 and 1.41). The two rankings only differ where the keyword one
-     is confident, so labelling spread evenly across gold spends most of the effort where both
-     agree.
+   - Take the worksheet's spread sample as it is. It stratifies by score band on purpose —
+     labelling only the top measures precision and can never measure recall, and a ranking that
+     buries something relevant then looks perfect. The measured fact that the two rankings mostly
+     agree in the keyword score's top quartile (56 of 65 high-fit postings sit there) is a reason
+     to *read* the result carefully, not a reason to sample there.
 3. **Grade `similarity` in `make evaluate`** — a third `Ranking` in `evaluation/report.py` and an
    n-way verdict in place of the two-way one. Before embeddings go on, not after: the point of
    running both is the comparison, and an ungraded column is just cost.
@@ -144,6 +144,19 @@ below and should be deleted rather than fixed, so the recoverable count is four 
 - **Embeddings as a cost pre-filter or a dedup key** — deferred, and distinct from the embedding
   *ranking*, which is built (`int_jobs_matched`, above). As a pre-filter they save pennies at this
   scale, and cross-source dedup is moot while each company sits on one ATS (ADR-0020)
+- **Embed-only boards ship a dead link.** An ATS that lets a customer embed its widget on their own
+  careers site still emits a canonical `jobUrl` on the vendor's domain for every posting, whether
+  or not that hosted page is enabled. Where it is not, the URL returns **HTTP 200 with an empty
+  application shell** — so it passes every check a pipeline can cheaply make, and only a human
+  clicking it finds out. The postings themselves are real; only the link is unusable.
+  - Detectable per board, not per posting: a working hosted board server-renders `<title>{Company}
+    Jobs</title>` and an `og:title`; a disabled one serves a bare `Jobs` shell with neither. One
+    request per board.
+  - Currently **1 board of 56** on the affected ATS, carrying ~13 postings. Left alone at that
+    scale. The gate is a second occurrence, or adding a board whose postings matter enough that a
+    dead link costs a real application — then wire the probe into `make validate-companies` and
+    record the state in the list's `notes`, so the digest can say "hosted board disabled" instead
+    of offering a link that goes nowhere.
 - **Auth-gated ATS** (iCIMS, Teamtailor, SuccessFactors, Dayforce, ADP, UKG, JazzHR, Phenom) —
   no keyless feed exists; they stay inventory-only (ADR-0013)
 - ~~**Storage levers**~~ — **retired, not deferred.** The bytes are now converted to dollars: at
