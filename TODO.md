@@ -142,6 +142,17 @@ below and should be deleted rather than fixed, so the recoverable count is four 
       (`/ : ? = &` or an `http` prefix); the remaining empty refs are all on platforms with no
       adapter, where a ref that cannot be used does not need to be right
 
+**Most of these are lookup failures, not crawl failures**, which is why re-rendering does not fix
+them: `ats_audit.py` asks "what does this website call?", and a stuck row is one where the site does
+not say. Searching an ATS host for the company name asks the inverse question, and the answer URL
+carries the ref (`.../<ref>/jobs/<id>`) — so the no-extractable-token rows and the missing-`website`
+rows become a query each rather than a human with the network tab open, the misattributed crawl
+gets an independent second opinion, and the closed tenant becomes one ATS-move check across every
+host at once. Measured at 100% ref extraction over 800 search results
+(`tools/probes/exa-discovery/README.md`). Two caveats: the portal rows are not repairable by any
+method — they are deletion candidates — and repair queries carry company names, unlike discovery
+queries, so they disclose part of the list to a third party.
+
 ## Parked, with the gate that would unpark it
 
 - **openjobdata** — decisive gate is a real local-coverage pull from the dataset; then licence,
