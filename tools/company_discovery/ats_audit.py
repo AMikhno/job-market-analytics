@@ -376,6 +376,37 @@ async def audit(ctx, name: str, website: str) -> dict:
                 status=("rendered, no ATS" if career_url else "no career page"))
 
 
+# ---------------------------------------------------------------- browser
+async def launch_browser(p):
+    """Playwright's own Chromium, falling back to the system Chrome.
+
+    Playwright's bundled Chromium carries a minimum macOS it raises over time, and
+    the host OS does not follow. When the bundled build will not install, driving an
+    already-installed Chrome through `channel=` runs the same automation against a
+    browser the vendor still ships for this platform -- a one-word change rather than
+    a rewrite, because only the binary differs.
+
+    Pinning an older Playwright is not the alternative it looks like: those versions
+    pin `greenlet` exactly, and the pinned release does not build on current Python.
+    So the two constraints close from both ends, and the system browser is the way out.
+    """
+    try:
+        return await p.chromium.launch(headless=True)
+    except Exception as bundled:
+        for channel in ("chrome", "msedge"):
+            try:
+                browser = await p.chromium.launch(headless=True, channel=channel)
+                print(f"  (bundled Chromium unavailable — driving system {channel})",
+                      flush=True)
+                return browser
+            except Exception:
+                continue
+        raise RuntimeError(
+            "No usable browser. Either `playwright install chromium` succeeds, or a "
+            "system Chrome/Edge is installed for `channel=` to drive."
+        ) from bundled
+
+
 # ---------------------------------------------------------------- I/O + runner
 def load_companies(xlsx_path: str, sheet: str):
     wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
@@ -428,7 +459,7 @@ async def run(companies, csv_path, concurrency, checkpoint_every):
 
     lock = threading.Lock()
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await launch_browser(p)
         ctx = await browser.new_context(user_agent=HEADERS["User-Agent"])
         sem = asyncio.Semaphore(concurrency)
 
