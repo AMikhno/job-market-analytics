@@ -423,6 +423,26 @@ def land_digest(*, sent_at: str, watermark: str, postings_sent: int, settings: S
     )
 
 
+def bq_param(value: object) -> tuple[str, str | int | float | bool]:
+    """A Python parameter as a (BigQuery scalar type, value) pair.
+
+    Binding everything as STRING works only while every parameter *is* one --
+    timestamps are passed as ISO text and cast in the SQL, so that held until a
+    caller passed an integer. BigQuery then compares INT64 to STRING, finds no
+    common supertype and rejects the query, while DuckDB accepts it: a
+    prod-only failure in a helper whose whole purpose is to hide the difference.
+
+    `bool` is checked before `int` because it is a subclass of it.
+    """
+    if isinstance(value, bool):
+        return "BOOL", value
+    if isinstance(value, int):
+        return "INT64", value
+    if isinstance(value, float):
+        return "FLOAT64", value
+    return "STRING", str(value)
+
+
 def query_rows(
     sql: str, *, params: Sequence[object] = (), settings: Settings
 ) -> list[dict[str, object]]:
@@ -437,7 +457,7 @@ def query_rows(
 
         client = bigquery.Client(project=settings.gcp_project, location=settings.bq_location)
         job_config = bigquery.QueryJobConfig(
-            query_parameters=[bigquery.ScalarQueryParameter(None, "STRING", str(p)) for p in params]
+            query_parameters=[bigquery.ScalarQueryParameter(None, *bq_param(p)) for p in params]
         )
         return [dict(row) for row in client.query(sql, job_config=job_config).result()]
     import duckdb
