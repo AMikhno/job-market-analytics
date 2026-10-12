@@ -186,6 +186,7 @@ references like "§5.6" are unverifiable by construction and were wrong within o
   `ats-feeds.md` — per-ATS probe results incl. an "as built" section;
   `workday-ref-discovery.md` — supersedes that file's Workday row;
   `careers-page-tail.md` — the 334 no-ATS companies, and why extraction is the wrong tool;
+  `exa-discovery.md` — search-led company discovery, and what 103 labelled roles say predicts one;
   `openjobdata.md` — the aggregated-source gate)
 - One-off probe scripts behind those numbers → `tools/probes/` (not pipeline code, no tests)
 - V2 implementation contract → `docs/v2-plan.md`

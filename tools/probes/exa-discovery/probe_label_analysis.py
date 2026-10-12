@@ -23,6 +23,7 @@ import argparse
 import collections
 import csv
 import pathlib
+import re
 import sys
 import urllib.parse
 
@@ -41,20 +42,55 @@ def norm(url: str) -> str:
 
 
 def bucket(verdict: str) -> str:
+    """yes / maybe / no / other.
+
+    `other` is not a dropped row. A verdict like "role disappeared, but some
+    others are good" rejects the *posting* while endorsing the *company*, and the
+    company is what gets merged — so these are counted separately rather than
+    folded into `no`, which would understate what discovery found.
+    """
     v = (verdict or "").strip().lower()
-    return {"y": "yes", "m": "maybe", "n": "no"}.get(v[:1], "?") if v else "?"
+    if not v:
+        return "?"
+    if v in ("yes", "y"):
+        return "yes"
+    if v in ("maybe", "m"):
+        return "maybe"
+    if v in ("no", "n"):
+        return "no"
+    return "other"
 
 
 def load_labels(path: pathlib.Path) -> dict[str, tuple[str, str]]:
+    """url -> (bucket, why). Accepts the hand-kept TSV or a spreadsheet CSV export.
+
+    Format is sniffed rather than configured: a labelling file arrives from
+    whatever tool did the labelling, and failing on the wrong delimiter is a worse
+    outcome than reading both.
+    """
     out: dict[str, tuple[str, str]] = {}
-    with open(path, newline="") as f:
-        for line in f:
-            parts = line.rstrip("\n").split("\t")
-            if not parts or not parts[0].strip() or parts[0].lstrip().startswith("#"):
-                continue
-            url = norm(parts[0])
-            out[url] = (bucket(parts[1] if len(parts) > 1 else ""),
-                        parts[2].strip() if len(parts) > 2 else "")
+    text = path.read_text()
+    if path.suffix.lower() == ".csv" or ("," in text.split("\n", 1)[0] and "\t" not in text):
+        with open(path, newline="") as f:
+            reader = csv.reader(f)
+            header = next(reader, [])
+            # Positional: the header words vary between exports, the order does not.
+            if header and header[0].strip().lower().startswith(("http", "link", "url")):
+                rows = ([header] if header[0].strip().lower().startswith("http") else []) + list(reader)
+            else:
+                rows = list(reader)
+            for parts in rows:
+                if not parts or not parts[0].strip():
+                    continue
+                out[norm(parts[0])] = (bucket(parts[1] if len(parts) > 1 else ""),
+                                       (parts[2] if len(parts) > 2 else "").strip())
+        return out
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if not parts or not parts[0].strip() or parts[0].lstrip().startswith("#"):
+            continue
+        out[norm(parts[0])] = (bucket(parts[1] if len(parts) > 1 else ""),
+                               parts[2].strip() if len(parts) > 2 else "")
     return out
 
 
@@ -65,7 +101,11 @@ def table(title: str, agg: dict[str, collections.Counter], min_n: int = 1) -> No
         n = sum(c.values())
         if n < min_n:
             continue
-        rate = (c["yes"] + c["maybe"]) / n
+        # Rate is over graded rows only: `other` and `?` say nothing about the
+        # posting, so counting them in the denominator would drag every group down
+        # by however many were unlabellable rather than by how many were bad.
+        graded = c["yes"] + c["maybe"] + c["no"]
+        rate = (c["yes"] + c["maybe"]) / graded if graded else 0.0
         print(f"  {key[:27]:<28}{n:>4}{c['yes']:>5}{c['maybe']:>7}{c['no']:>4}{rate:>10.0%}")
 
 
@@ -83,10 +123,33 @@ def main() -> int:
 
     labels = load_labels(lpath)
     with open(rpath, newline="") as f:
-        roles = {norm(r["url"]): r for r in csv.DictReader(f)}
+        role_rows = list(csv.DictReader(f))
+    roles = {norm(r["url"]): r for r in role_rows}
 
-    joined = [(v, why, roles[u]) for u, (v, why) in labels.items() if u in roles]
-    missing = [u for u in labels if u not in roles]
+    # Secondary index on the posting id. A labelled URL is whatever the browser
+    # settled on after redirects, which for several ATS is a company-hosted slug
+    # rather than the `absolute_url` the API returned -- same posting, different
+    # string. The id survives the rewrite, so match on it when the URL misses.
+    def ids(url: str) -> set[str]:
+        return {t for t in re.findall(r"[0-9a-f]{6,}|\d{5,}", norm(url))}
+
+    by_id: dict[str, dict] = {}
+    for r in role_rows:
+        for i in ids(r["url"]):
+            by_id.setdefault(i, r)
+
+    joined, missing = [], []
+    for u, (v, why) in labels.items():
+        hit = roles.get(u)
+        if hit is None:
+            for i in ids(u):
+                if i in by_id:
+                    hit = by_id[i]
+                    break
+        if hit is not None:
+            joined.append((v, why, hit))
+        else:
+            missing.append(u)
     print(f"labels {len(labels)} | roles {len(roles)} | joined {len(joined)}")
     if missing:
         print(f"WARNING: {len(missing)} labelled URL(s) not found in the roles file "

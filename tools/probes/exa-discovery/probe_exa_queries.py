@@ -175,37 +175,40 @@ def _location_text(obj: object, depth: int = 0) -> str:
     return " ".join(x for x in out if x)
 
 
-# Geographies that will not hire here regardless of the role -- salary bands and
-# timezone, not capability. Deliberately narrower than "not North America":
-# UK, Ireland, Israel and Australia are NOT listed, so they fall to `watch` with
-# their locations printed rather than being dropped on a guess. Under-filter and
-# show the evidence; a silent drop is not a reviewable decision.
-NON_VIABLE = re.compile(
-    r"\b(india|bengaluru|bangalore|hyderabad|mumbai|delhi|noida|gurgaon|gurugram|pune|"
-    r"chennai|kolkata|ahmedabad|china|beijing|shanghai|shenzhen|guangzhou|hangzhou|"
-    r"singapore|japan|tokyo|korea|seoul|philippines|manila|vietnam|hanoi|indonesia|jakarta|"
-    r"poland|warsaw|krakow|wroclaw|portugal|lisbon|porto|spain|madrid|barcelona|valencia|"
-    r"germany|berlin|munich|hamburg|cologne|france|paris|lyon|netherlands|amsterdam|utrecht|"
-    r"belgium|brussels|italy|milan|rome|greece|athens|ukraine|kyiv|lviv|romania|bucharest|"
-    r"bulgaria|sofia|serbia|belgrade|croatia|zagreb|czech|prague|slovakia|hungary|budapest|"
-    r"lithuania|vilnius|latvia|riga|estonia|tallinn|austria|vienna|switzerland|zurich|geneva|"
-    r"sweden|stockholm|norway|oslo|denmark|copenhagen|finland|helsinki|turkey|istanbul|"
-    r"brazil|sao paulo|mexico|argentina|colombia|egypt|nigeria|kenya|south africa)\b",
-    re.I,
-)
+def load_non_viable() -> re.Pattern[str] | None:
+    """Places a board can sit entirely in and still never be worth fetching.
+
+    A filter rule is a preference, so the values are private config (ADR-0028):
+    one term per line in a gitignored file, `#` comments allowed. Absent, the
+    `excluded` tier is simply never assigned and every live board lands in
+    `watch` — under-filtering, which is the safe direction.
+
+    Deliberately a narrow list rather than "not the allowed region": a term
+    omitted here costs one extra board to review, while a term wrongly included
+    silently deletes a company nothing will mention again.
+    """
+    path = DISCOVERY / "non_viable_locations.txt"
+    if not path.exists():
+        return None
+    terms = [ln.strip() for ln in path.read_text().splitlines()
+             if ln.strip() and not ln.lstrip().startswith("#")]
+    if not terms:
+        return None
+    return re.compile(r"\b(" + "|".join(re.escape(t) for t in terms) + r")\b", re.I)
 
 
 def verify(source: str, ref: str, allowed: list[re.Pattern[str]],
+           non_viable: re.Pattern[str] | None,
            pause: float = 0.3) -> tuple[int, int, str, str]:
     """(live postings, postings in range, tier, most common locations).
 
     Three tiers, because the company gate is broader than the posting gate:
-      in-range  at least one posting matches allowed_locations -- takeable today
-      watch     no match, but not clearly non-viable either (US, global, unknown).
-                Kept: a US company opens Canadian and remote reqs later, and the
-                silver location gate filters its postings anyway
-      excluded  effectively every located posting is somewhere that will not hire
-                from here -- adding it means fetching a board daily forever for zero
+      in-range  at least one posting matches allowed_locations -- fetchable today
+      watch     no match, but not clearly out of reach either. Kept: a board whose
+                postings sit outside the allowed set today can open one inside it
+                later, and silver filters the rest regardless
+      excluded  effectively every located posting is somewhere the rules exclude --
+                adding it means fetching a board daily forever for zero gold rows
 
     0 live postings means do not propose it at all: an empty board is
     indistinguishable from a wrong one (the SmartRecruiters stub-account lesson).
@@ -236,9 +239,10 @@ def verify(source: str, ref: str, allowed: list[re.Pattern[str]],
     in_range = sum(1 for x in located if any(p.search(x) for p in allowed))
     if in_range:
         return len(jobs), in_range, "in-range", top
-    bad = sum(1 for x in located if NON_VIABLE.search(x))
-    if located and bad / len(located) >= 0.8:
-        return len(jobs), 0, "excluded", top
+    if non_viable and located:
+        bad = sum(1 for x in located if non_viable.search(x))
+        if bad / len(located) >= 0.8:
+            return len(jobs), 0, "excluded", top
     return len(jobs), 0, "watch", top
 
 
@@ -353,9 +357,12 @@ def main() -> int:
 
     known = load_known()
     allowed = load_allowed()
+    non_viable = load_non_viable()
     print(f"{len(known)} (source, ref) pairs already known")
     if allowed:
-        print(f"location gate: {len(allowed)} allowed patterns\n")
+        print(f"location gate: {len(allowed)} allowed patterns, "
+              + (f"{len(non_viable.pattern.split('|'))} excluded terms\n" if non_viable
+                 else "no exclusion list -- nothing will be tiered `excluded`\n"))
     else:
         print("location gate: SKIPPED -- dbt/seeds/allowed_locations.csv not found\n")
 
@@ -389,7 +396,7 @@ def main() -> int:
             if pair in found:
                 found[pair]["seen_by"].add(variant)
                 continue
-            n, ok, tier, top = verify(source, ref, allowed)
+            n, ok, tier, top = verify(source, ref, allowed, non_viable)
             if n:
                 f["verified"] += 1
                 f[tier] += 1

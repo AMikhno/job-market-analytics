@@ -22,14 +22,18 @@ keyless V1 API returns records > 0 today (an empty board is indistinguishable fr
 ```bash
 export EXA_API_KEY=...                       # local env only, never a CI secret
 uv run python tools/probes/exa-discovery/probe_exa_queries.py --dry-run   # spends nothing
-uv run python tools/probes/exa-discovery/probe_exa_queries.py             # ~$0.13
+uv run python tools/probes/exa-discovery/probe_exa_queries.py
 ```
 
-Roughly $0.007 per search; the 30-query plan costs about **$0.21**, and a new account's signup
-credit covers it many times over. `--max-queries` is a hard spend cap — it slices in variant
-order, so lowering it drops whole trailing arms of the experiment rather than sampling across
-them; the script warns when that happens. The spend printed at the end is what Exa itself
-reported, not an estimate.
+**$0.022 per query at the default 25 results** — $7/1k requests covers the first ten results and
+each one beyond that adds $1/1k, so a query is not the headline rate. The dry run prints the plan
+and its estimate without spending; the figure printed at the end of a real run is what the API
+itself reported.
+
+`--max-queries` is a hard spend cap. It slices in variant order, so lowering it drops whole
+trailing arms of the experiment rather than sampling across them; the script warns when that
+happens. `--only-source` and `--bare-domains` diagnose a source that returned nothing, and write
+to their own output file so a three-query check cannot overwrite a full run's results.
 
 ## The query file
 
@@ -70,15 +74,18 @@ The company gate is deliberately **broader** than the posting gate:
 
 | Tier | Rule | Why |
 |---|---|---|
-| `in-range` | ≥1 posting matches `allowed_locations` | takeable today |
-| `watch` | no match, but not clearly non-viable (US, global, unknown) | **kept** — a US company opens Canadian and remote reqs later, and silver filters its postings anyway |
-| `excluded` | ≥80% of located postings are somewhere that will not hire from here | salary band and timezone, not capability |
+| `in-range` | ≥1 posting matches `allowed_locations` | fetchable today |
+| `watch` | no match, but no exclusion term either | **kept** — a board can open a posting inside the allowed set later, and silver filters the rest regardless |
+| `excluded` | ≥80% of located postings match an exclusion term | fetching it daily returns nothing for any rule |
 
-`excluded` covers India, China, the APAC offshore hubs and continental Europe. **UK, Ireland,
-Israel and Australia are deliberately not on that list** — they land in `watch` with their
-locations printed, rather than being dropped on a guess. Excluded rows stay in the output file
-too: the tier is a heuristic over location strings, and the `top_locations` column is the evidence
-for overruling it. Under-filter and show the evidence; a silent drop is not a reviewable decision.
+The exclusion terms live in `config/discovery/non_viable_locations.txt`, gitignored for the reason
+`dbt/seeds/*.csv` is: a filter rule is a preference (ADR-0028). With no such file the `excluded`
+tier is never assigned and every live board lands in `watch`.
+
+Keep that list **narrow**. An omitted term costs one extra board to review; an over-broad one
+silently deletes a company that nothing will mention again. Excluded rows stay in the output file
+for the same reason, with their `top_locations` as the evidence for overruling the tier —
+under-filter and show the evidence, because a silent drop is not a reviewable decision.
 
 ## Reading the output
 
@@ -102,8 +109,25 @@ cannot occur here by construction — discovery starts *from* a board rather tha
 that might embed someone else's — but a staffing agency's board is real, is a deliberate target
 (TODO.md priority 2), and still needs a human to say so.
 
+## Measured results
+
+The run, its cost model, and the decisions it produced are in
+[exa-discovery](../../../docs/research/exa-discovery.md). Read it before changing the query file.
+
+## Reviewing the output
+
+`probe_label_analysis.py` takes a TSV or spreadsheet CSV of `url, verdict, why` and joins it to the
+roles file, reporting rates per title rule, per query variant, per source and per board. Every
+grouping is derived from the data, so changing the queries or the title seed needs no change here.
+
+Two mechanics worth knowing:
+
+- **Match on the posting id, not the URL.** Several ATS redirect to a company-hosted slug rather
+  than the `absolute_url` the API returned, so URL-equality silently under-joins.
+- **A verdict that is neither yes/maybe/no is kept as `other`**, never folded into `no` — a review
+  can reject a posting while endorsing the board, and the board is the unit being merged.
+
 ## What it does not answer
 
-Whether those companies produce postings **worth applying to**. That needs the pipeline to run
-with them in the list, and then the labelling work in TODO.md's V2 validation. Novelty is a
-necessary condition, not a sufficient one.
+Whether those companies produce relevant postings **over time**. One review pass covers one day's
+openings; the company-level claim is tested by the digest over months.
