@@ -17,12 +17,23 @@ folded as (
         open_postings,
         boards
     from by_source
+),
+
+-- Filtered in a separate step rather than with HAVING: BigQuery resolves
+-- `boards` in a HAVING clause to this select's own sum(boards) alias, making
+-- it an aggregate of an aggregate, which it rejects (DuckDB does not).
+grouped as (
+    select
+        ats,
+        sum(open_postings) as open_postings,
+        sum(boards) as boards
+    from folded
+    group by ats
 )
 
 select
     ats,
-    sum(open_postings) as open_postings,
-    sum(boards) as boards
-from folded
-group by ats
-having sum(boards) >= {{ var('market_min_companies') }}
+    open_postings,
+    boards
+from grouped
+where boards >= {{ var('market_min_companies') }}
