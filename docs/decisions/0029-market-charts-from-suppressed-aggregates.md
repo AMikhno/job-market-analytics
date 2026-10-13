@@ -2,7 +2,8 @@
 
 **Status:** accepted (refines ADR-0028 for the market vocabularies)
 
-The project site shows charts of what the pipeline sees: open postings over time, how long
+The project site shows charts of what the pipeline sees on the boards it tracks — a curated
+list of companies, not the job market: open postings over time, how long
 a posting stays up, what data roles ask for, role families, and the ATS mix. Publishing
 warehouse data on a public page raises three questions the rest of the project had not had to
 answer: *what* may leave the warehouse, *which* workflow may carry it, and *how* it is drawn.

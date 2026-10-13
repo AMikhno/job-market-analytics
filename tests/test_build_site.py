@@ -400,18 +400,21 @@ def _snapshot(**overrides: Any) -> MarketSnapshot:
         "daily": [
             {
                 "observed_on": date(2026, 10, 1),
+                "boards": 60,
                 "open_postings": 900,
                 "new_postings": 0,
                 "companies": 50,
             },
             {
                 "observed_on": date(2026, 10, 7),
+                "boards": 60,
                 "open_postings": 950,
                 "new_postings": 30,
                 "companies": 51,
             },
             {
                 "observed_on": date(2026, 10, 13),
+                "boards": 80,
                 "open_postings": 1000,
                 "new_postings": 20,
                 "companies": 52,

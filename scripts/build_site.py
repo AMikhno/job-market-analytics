@@ -540,7 +540,7 @@ def render_market(snapshot: MarketSnapshot | None) -> str:
     tiles = "".join(
         [
             _tile(charts.fmt_int(latest.open_postings), "open postings"),
-            _tile(charts.fmt_int(latest.companies), "companies hiring"),
+            _tile(charts.fmt_int(latest.companies), "tracked companies hiring"),
             _tile(charts.fmt_int(sum(d.new_postings for d in week)), "new in the last 7 days"),
             _tile(
                 f"{median} days" if median is not None else "—", "median time a posting stays up"
@@ -551,23 +551,31 @@ def render_market(snapshot: MarketSnapshot | None) -> str:
     daily = [
         charts.Point(
             x=d.observed_on.toordinal(),
-            y=d.open_postings,
+            # Per board, because the list grows: an absolute count steps up every
+            # time companies are added, which is the list's history, not hiring.
+            y=d.open_postings / d.boards,
             label=d.observed_on.strftime("%b %-d"),
-            tip=f"{d.observed_on:%Y-%m-%d}: {d.open_postings:,} open, {d.new_postings:,} new",
+            tip=(
+                f"{d.observed_on:%Y-%m-%d}: {d.open_postings / d.boards:.1f} per board "
+                f"({d.open_postings:,} open on {d.boards:,} boards, {d.new_postings:,} new)"
+            ),
         )
         for d in snapshot.daily
     ]
     figures = [
         _figure(
-            "Open postings",
-            "Live on their boards each day the pipeline ran.",
-            charts.line_chart(daily, title="Open postings per day"),
+            "Open postings per tracked board",
+            "Divided by the boards read that day, so adding companies to the list "
+            "does not read as a hiring surge.",
+            charts.line_chart(daily, title="Open postings per tracked board, per day"),
             charts.table(
-                ["Day", "Open", "New", "Companies"],
+                ["Day", "Boards", "Open", "Per board", "New", "Companies"],
                 [
                     [
                         f"{d.observed_on}",
+                        f"{d.boards:,}",
                         f"{d.open_postings:,}",
+                        f"{d.open_postings / d.boards:.1f}",
                         f"{d.new_postings:,}",
                         f"{d.companies:,}",
                     ]
@@ -621,7 +629,7 @@ def render_market(snapshot: MarketSnapshot | None) -> str:
     figures.append(
         _figure(
             "What data roles ask for",
-            "Share of open data-role postings naming each technology.",
+            "Share of tracked companies' open data-role postings naming each technology.",
             charts.bar_chart(
                 [
                     charts.Bar(
@@ -655,7 +663,7 @@ def render_market(snapshot: MarketSnapshot | None) -> str:
     figures.append(
         _figure(
             "Data roles by family",
-            "Open postings, grouped by title.",
+            "Open postings at the tracked companies, grouped by title.",
             charts.bar_chart(
                 [
                     charts.Bar(
@@ -694,7 +702,7 @@ def render_market(snapshot: MarketSnapshot | None) -> str:
     figures.append(
         _figure(
             "Where the postings come from",
-            "Open postings by applicant-tracking system.",
+            "Which applicant-tracking systems the tracked companies post on.",
             charts.bar_chart(
                 [
                     charts.Bar(
@@ -716,8 +724,9 @@ def render_market(snapshot: MarketSnapshot | None) -> str:
     )
 
     note = (
-        f"Every board the pipeline tracks, counted before any filter. A figure covering fewer "
-        f"than {snapshot.min_companies} companies is withheld. Snapshot taken "
+        f"A curated list of company boards, not a sample of the job market; counted before any "
+        f"filter. A figure covering fewer than {snapshot.min_companies} companies is withheld. "
+        f"Snapshot taken "
         f"{snapshot.generated_at:%Y-%m-%d %H:%M} UTC."
     )
     return (

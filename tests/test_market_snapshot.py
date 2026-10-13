@@ -26,9 +26,9 @@ TABLES = {
     # Each table carries a `company` column the models do not declare: it must
     # never be selected, however the dbt model evolves.
     "agg_market_daily": (
-        "observed_on DATE, open_postings BIGINT, new_postings BIGINT, companies BIGINT,"
-        " company VARCHAR",
-        [("2026-10-12", 900, 40, 120, "leak"), ("2026-10-13", 910, 35, 121, "leak")],
+        "observed_on DATE, boards BIGINT, open_postings BIGINT, new_postings BIGINT,"
+        " companies BIGINT, company VARCHAR",
+        [("2026-10-12", 130, 900, 40, 120, "leak"), ("2026-10-13", 131, 910, 35, 121, "leak")],
     ),
     "agg_market_tenure": (
         "days_on_board BIGINT, at_risk BIGINT, at_risk_companies BIGINT, closed BIGINT,"

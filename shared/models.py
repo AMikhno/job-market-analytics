@@ -162,6 +162,7 @@ class _MarketRow(BaseModel):
 
 class MarketDay(_MarketRow):
     observed_on: date
+    boards: int = Field(ge=MARKET_MIN_COMPANIES)
     open_postings: int = Field(ge=0)
     new_postings: int = Field(ge=0)
     companies: int = Field(ge=MARKET_MIN_COMPANIES)

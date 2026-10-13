@@ -10,6 +10,11 @@ models:
     columns:
       - name: observed_on
         data_tests: [not_null, unique]
+      - name: boards
+        description: >
+          Boards read that day. The list grows; dividing by this keeps a newly
+          added company from reading as a hiring surge.
+        data_tests: [not_null]
       - name: open_postings
         data_tests: [not_null]
       - name: new_postings
@@ -122,15 +127,17 @@ unit_tests:
           - {job_key: fresh, company: b, first_seen_at: 2026-07-02 12:00:00,
              last_seen_at: 2026-07-03 12:00:00, is_left_censored: false}
       - input: ref('int_jobs__unioned')
-        rows:
-          - {ingested_at: 2026-07-01 12:00:00}
-          - {ingested_at: 2026-07-02 12:00:00}
-          - {ingested_at: 2026-07-03 12:00:00}
+        rows:  # board b is added to the list on day 2
+          - {source: lever, company: a, ingested_at: 2026-07-01 12:00:00}
+          - {source: lever, company: a, ingested_at: 2026-07-02 12:00:00}
+          - {source: lever, company: b, ingested_at: 2026-07-02 12:00:00}
+          - {source: lever, company: a, ingested_at: 2026-07-03 12:00:00}
+          - {source: lever, company: b, ingested_at: 2026-07-03 12:00:00}
     expect:
       rows:
-        - {observed_on: 2026-07-01, open_postings: 1, new_postings: 0, companies: 1}
-        - {observed_on: 2026-07-02, open_postings: 2, new_postings: 1, companies: 2}
-        - {observed_on: 2026-07-03, open_postings: 2, new_postings: 0, companies: 2}
+        - {observed_on: 2026-07-01, boards: 1, open_postings: 1, new_postings: 0, companies: 1}
+        - {observed_on: 2026-07-02, boards: 2, open_postings: 2, new_postings: 1, companies: 2}
+        - {observed_on: 2026-07-03, boards: 2, open_postings: 2, new_postings: 0, companies: 2}
 
   - name: market_daily_drops_days_below_the_company_floor
     model: agg_market_daily
@@ -145,11 +152,12 @@ unit_tests:
              last_seen_at: 2026-07-02 12:00:00, is_left_censored: false}
       - input: ref('int_jobs__unioned')
         rows:
-          - {ingested_at: 2026-07-01 12:00:00}
-          - {ingested_at: 2026-07-02 12:00:00}
+          - {source: lever, company: a, ingested_at: 2026-07-01 12:00:00}
+          - {source: lever, company: a, ingested_at: 2026-07-02 12:00:00}
+          - {source: lever, company: b, ingested_at: 2026-07-02 12:00:00}
     expect:
       rows:
-        - {observed_on: 2026-07-02, open_postings: 2, new_postings: 1, companies: 2}
+        - {observed_on: 2026-07-02, boards: 2, open_postings: 2, new_postings: 1, companies: 2}
 
   - name: market_tenure_is_kaplan_meier_with_censoring
     description: >

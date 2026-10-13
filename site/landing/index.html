@@ -14,7 +14,7 @@
   <header class="topbar">
     <a class="brand" href="./"><span class="prompt">~/</span>job-market-analytics</a>
     <nav>
-      <a href="#market">market</a>
+      <a href="#market">hiring</a>
       <a href="docs/">docs</a>
       <a href="lineage/">lineage</a>
       <a href="docs/decisions/">decisions</a>
@@ -47,11 +47,11 @@
     </section>
 
     <section class="block" id="market">
-      <h2><span class="sec-n">01</span>Market pulse <span class="sec-sub">rebuilt after every scheduled run</span></h2>
+      <h2><span class="sec-n">01</span>Hiring at the tracked companies <span class="sec-sub">rebuilt after every scheduled run</span></h2>
       <p class="sec-lede">
-        What the pipeline sees across every board it tracks. These charts are the gold-zone
-        <code>agg_market_*</code> models, exported by the production run and drawn when this page
-        was built.
+        Not the whole job market: these figures describe a curated list of company boards that
+        the pipeline reads, and only those. They are the gold-zone <code>agg_market_*</code>
+        models, exported by the production run and drawn when this page was built.
       </p>
       ${market}
     </section>
