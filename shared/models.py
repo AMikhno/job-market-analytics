@@ -35,7 +35,7 @@ class Company(BaseModel):
     @field_validator("*", mode="before")
     @classmethod
     def _strip_csv_whitespace(cls, value: object) -> object:
-        # Hand-maintained CSVs pick up stray spaces (", lever, shyftlabs", " true");
+        # Hand-maintained CSVs pick up stray spaces (", lever, acme", " true");
         # an unstripped source/board_ref silently never matches or builds a bad URL,
         # and " true"/" 1" would fail bool/int parsing. Strip every string cell first.
         return value.strip() if isinstance(value, str) else value

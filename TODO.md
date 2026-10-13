@@ -11,7 +11,7 @@ function — the shape that measurably converts (`docs/research/relevance-signal
 | # | Work | Why it is here | Cost |
 |---|---|---|---|
 | 1 | **V2 validation** | The scorer is built and running in prod; nothing yet shows it beats the keyword baseline. Relevance is still the measured constraint, and the funnel has not moved in three months of fetches: 10,123 postings → 1,406 gold → 44 title-matched, and the pass that read a set this shape found title match wrong in both directions. Validation is also what makes every later expansion self-evaluating instead of costing a manual evening | Human labels, then `make evaluate` — see [below](#v2--built-unvalidated) |
-| 2 | **More companies on already-built ATS** | No engineering at all. The best measured conversion came from a mid-size company on an existing adapter — 11 postings, 4 worth applying to. Staffing and recruiting agencies count as a deliberate company type | List work |
+| 2 | **More companies on already-built ATS** | No engineering at all. The best measured conversion came from a mid-size company on an existing adapter — 11 postings, 4 worth applying to. Staffing and recruiting agencies count as a deliberate company type. Search-led discovery now supplies candidates rather than requiring a hand-assembled list, and every board it surfaced was one the list did not already have (`docs/research/exa-discovery.md`) | List work |
 | 3 | **Aggregator source** | Fixes list representativeness at the root: stops requiring the curated list to be a fair sample of the market. After V2, because without scoring it is ten times the noise for the same manual triage | ADR-0017, gates unmet. Main cost is content-based dedup, since `job_key` is `(source, company, external_id)` — ADR-0008 |
 | 4 | **List repair** | Wrong data rather than missing adapters, so it is free at runtime | Small — see below |
 | 5 | **Careers-page change signal** | Hash each careers page monthly and surface *changed* companies; never synthesize postings. Low competition on that tier is real, but extraction is not how to reach it | ~50 lines — `docs/research/careers-page-tail.md` |
@@ -141,6 +141,17 @@ below and should be deleted rather than fixed, so the recoverable count is four 
 - [x] ~~**Junk refs from discovery**~~ — resolved. No `board_ref` now contains a URL path fragment
       (`/ : ? = &` or an `http` prefix); the remaining empty refs are all on platforms with no
       adapter, where a ref that cannot be used does not need to be right
+
+**Most of these are lookup failures, not crawl failures**, which is why re-rendering does not fix
+them: `ats_audit.py` asks "what does this website call?", and a stuck row is one where the site does
+not say. Searching an ATS host for the company name asks the inverse question, and the answer URL
+carries the ref (`.../<ref>/jobs/<id>`) — so the no-extractable-token rows and the missing-`website`
+rows become a query each rather than a human with the network tab open, the misattributed crawl
+gets an independent second opinion, and the closed tenant becomes one ATS-move check across every
+host at once. Measured at 100% ref extraction over 800 search results
+(`tools/probes/exa-discovery/README.md`). Two caveats: the portal rows are not repairable by any
+method — they are deletion candidates — and repair queries carry company names, unlike discovery
+queries, so they disclose part of the list to a third party.
 
 ## Parked, with the gate that would unpark it
 

@@ -13,6 +13,7 @@ loop them.
 |---|---|---|
 | `workday/` | Workday endpoint probes, ref recovery by website scrape, detail-payload check, Tier-2 sweep across the unbuilt sources | `docs/research/workday-ref-discovery.md` |
 | `careers-tail/` | Shape of the 334 custom careers pages; JS-rendered vs static; BambooHR board liveness | `docs/research/careers-page-tail.md` |
+| `exa-discovery/` | Whether search over ATS posting hosts surfaces boards the list lacks — novelty, liveness, and what 103 hand-labelled roles say predicts a good one | `docs/research/exa-discovery.md` |
 
 `careers-tail/probe_bamboohr.py` is the generic-shaped one: it probes every active board of a
 source's list endpoint and reports live / empty / failed. Worth reaching for whenever a source
