@@ -286,7 +286,7 @@ def _candidate_refs(line: str, *, markdown: bool) -> list[str]:
     # can also verify the line number rather than just the path
     refs += [f"ADR:{m}" for m in re.findall(r"\bADR-(\d{4})\b", line)]
     refs += [f"MAKE:{m}" for m in re.findall(r"`make ([a-zA-Z][\w-]*)", line)]
-    refs += [f"DBT:{m}" for m in re.findall(r"`((?:stg|int|silver|fct|dim)_[\w]+)`", line)]
+    refs += [f"DBT:{m}" for m in re.findall(r"`((?:stg|int|silver|fct|dim|agg)_[\w]+)`", line)]
     return refs
 
 

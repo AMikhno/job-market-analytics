@@ -46,3 +46,32 @@ seeds:
         data_tests: [not_null, unique]
       - name: note
         description: What it targets (documentation only; unused in SQL).
+
+  # The two market vocabularies are public, unlike the four seeds above (ADR-0029):
+  # they describe the market the charts summarize, not anyone's preferences.
+  - name: market_title_families
+    description: >
+      Title patterns that group postings into data role families for the site's
+      market charts. Word-matched, case-insensitive. A title matching several
+      patterns takes the family with the lowest priority, so "Analytics Engineer"
+      lands in analytics engineering, not the generic "analytics" catch-all.
+    columns:
+      - name: pattern
+        data_tests: [not_null, unique]
+      - name: family
+        data_tests: [not_null]
+      - name: priority
+        description: Lower wins when a title matches more than one family.
+        data_tests: [not_null]
+  - name: market_tech_vocabulary
+    description: >
+      Generic data-stack terms the market charts count mentions of. Several
+      patterns may share a label (PostgreSQL and Postgres), and a posting counts
+      once per label. Word-matched, case-insensitive, matched as literals.
+    columns:
+      - name: pattern
+        data_tests: [not_null, unique]
+      - name: label
+        data_tests: [not_null]
+      - name: category
+        data_tests: [not_null]

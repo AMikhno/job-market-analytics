@@ -23,6 +23,12 @@ vars:
   match_title_bonus: 2
   match_deal_breaker_penalty: 1
 
+  # The market aggregates publish to the public site, so every published row must
+  # summarize at least this many distinct companies (ADR-0029). Below it, a row
+  # describes one employer's hiring, which is not this project's to publish.
+  # deliver/market_snapshot.py re-checks it before writing anything.
+  market_min_companies: 5
+
   # The model V2 extraction and scoring call. Pinned to an explicit version, not
   # left to the managed default and not the `gemini-flash-lite-latest` alias:
   # probed 2026-08-16, the unpinned default answered as gemini-2.5-flash, a

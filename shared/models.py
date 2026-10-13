@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
@@ -141,3 +141,71 @@ class RunSummary(BaseModel):
     def skipped_refs(self) -> list[str]:
         """Every redacted skipped-board ref across sources, in run order."""
         return [ref for s in self.sources for ref in s.skipped_refs]
+
+
+# --- Market snapshot: the agg_market_* rows published to the project site ------
+#
+# These models are the allowlist (ADR-0029). The export selects exactly their
+# fields and forbids extras, so a column nobody declared here -- a company, a
+# location -- cannot reach the public page by being added to a dbt model. The
+# company floor is re-asserted on every row: dbt suppresses, and this refuses to
+# publish if suppression ever stops working.
+
+# Mirrors the dbt var `market_min_companies`; tests/test_market_snapshot.py
+# fails if the two drift apart.
+MARKET_MIN_COMPANIES = 5
+
+
+class _MarketRow(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class MarketDay(_MarketRow):
+    observed_on: date
+    open_postings: int = Field(ge=0)
+    new_postings: int = Field(ge=0)
+    companies: int = Field(ge=MARKET_MIN_COMPANIES)
+
+
+class MarketTenureStep(_MarketRow):
+    days_on_board: int = Field(ge=0)
+    at_risk: int = Field(ge=0)
+    at_risk_companies: int = Field(ge=MARKET_MIN_COMPANIES)
+    closed: int = Field(ge=0)
+    survival: float = Field(ge=0, le=1)
+
+
+class MarketRole(_MarketRow):
+    role_family: str
+    open_postings: int = Field(ge=0)
+    companies: int = Field(ge=MARKET_MIN_COMPANIES)
+    remote_postings: int = Field(ge=0)
+    hybrid_postings: int = Field(ge=0)
+    onsite_postings: int = Field(ge=0)
+    unstated_postings: int = Field(ge=0)
+
+
+class MarketTech(_MarketRow):
+    tech: str
+    category: str
+    postings: int = Field(ge=0)
+    companies: int = Field(ge=MARKET_MIN_COMPANIES)
+    share_of_postings: float = Field(ge=0, le=1)
+
+
+class MarketAts(_MarketRow):
+    ats: str
+    open_postings: int = Field(ge=0)
+    boards: int = Field(ge=MARKET_MIN_COMPANIES)
+
+
+class MarketSnapshot(_MarketRow):
+    """market.json: what Ingest exports and the site build renders."""
+
+    generated_at: datetime
+    min_companies: int
+    daily: list[MarketDay]
+    tenure: list[MarketTenureStep]
+    roles: list[MarketRole]
+    tech: list[MarketTech]
+    ats: list[MarketAts]

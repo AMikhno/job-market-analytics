@@ -115,6 +115,15 @@ order. A clone with none of them builds on the examples and says so.
 What V1 cannot do without a model: tell a requirement from a nice-to-have, infer seniority, or
 judge real eligibility. That is exactly V2's scope.
 
+## Market aggregates
+
+A second branch of the DAG feeds the project site rather than the digest. It starts from
+`int_jobs__unioned`, **upstream of the location filter**, because an aggregate of the filtered
+table would publish where the private filter points. `int_market__postings` holds one row per
+posting on every tracked board; five small `agg_market_*` models in gold summarize it, and each
+withholds any figure resting on fewer than five companies. The export re-validates every row
+against a typed schema before anything leaves the warehouse (ADR-0029).
+
 ## Rebuilds, not migrations
 
 Everything dbt builds is recreated from raw on every run, which has three consequences worth
@@ -139,9 +148,9 @@ permission sets on the union of both triggers.
 
 | Workflow | Trigger | Holds | Does |
 |---|---|---|---|
-| Ingest | twice-daily cron + manual dispatch | `id-token: write`, prod environment | The pipeline: fetch → land → transform → deliver |
-| CI | every push and PR | nothing | Lint, tests, the DuckDB DAG, a prod-target parse, gitleaks |
-| Docs | push to `main` | `pages: write` | Publishes the Pages site: landing page, rendered docs, dbt lineage |
+| Ingest | twice-daily cron + manual dispatch | `id-token: write`, prod environment | The pipeline: fetch → land → transform → deliver → export the market snapshot |
+| CI | every push and PR | nothing | Lint, tests, the DuckDB DAG, a prod-target parse, the site build, gitleaks |
+| Docs | push to `main`, and a completed Ingest run | `pages: write`, `actions: read` | Publishes the Pages site: landing page with market charts, rendered docs, dbt lineage |
 | Tag release | push to `main` touching `pyproject.toml` | `contents: write` | Publishes `v<version>` if it does not exist yet |
 
 Only Ingest can reach the warehouse: `id-token: write` is what mints the OIDC token that Workload
@@ -165,7 +174,10 @@ runs locally:
    step is skipped and postings ship unscored on the V1 ordering — the honest degraded state.
 6. **Transform** bronze → silver → gold, then run the **freshness gate**.
 7. **Deliver** the digest of postings new since the last watermark, or a heartbeat if none.
-8. **Ping the dead-man's switch**, only on full success.
+8. **Export the market snapshot** — the `agg_market_*` aggregates — as an artifact. The Docs
+   workflow, triggered by this run completing, draws it into the site's charts, so the warehouse
+   credentials and the Pages permission never share a workflow (ADR-0029).
+9. **Ping the dead-man's switch**, only on full success.
 
 The workflows are themselves linted (`make workflow-lint`). An invalid workflow is not a failed
 run — GitHub records a zero-second startup failure, stops honouring the schedule, and sends no

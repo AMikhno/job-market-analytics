@@ -1,0 +1,242 @@
+version: 2
+
+# Aggregates published to the project site (ADR-0029). Every row summarizes at
+# least var('market_min_companies') distinct companies; the tests below assert
+# the floor on the output itself, so a refactor that breaks suppression fails
+# the build rather than publishing.
+models:
+  - name: agg_market_daily
+    description: Open and newly posted postings per day the pipeline ran.
+    columns:
+      - name: observed_on
+        data_tests: [not_null, unique]
+      - name: open_postings
+        data_tests: [not_null]
+      - name: new_postings
+        description: First seen that day, excluding postings already up at their board's first ingest.
+        data_tests: [not_null]
+      - name: companies
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: "{{ var('market_min_companies') }}"
+
+  - name: agg_market_tenure
+    description: Kaplan-Meier survival of postings over days on board, tail cut at the floor.
+    columns:
+      - name: days_on_board
+        data_tests: [not_null, unique]
+      - name: at_risk
+        data_tests: [not_null]
+      - name: at_risk_companies
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: "{{ var('market_min_companies') }}"
+      - name: closed
+        data_tests: [not_null]
+      - name: survival
+        description: Share of postings still up after `days_on_board` days.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+
+  - name: agg_market_roles
+    description: Open postings per role family, with how each states its work location.
+    columns:
+      - name: role_family
+        data_tests: [not_null, unique]
+      - name: open_postings
+        data_tests: [not_null]
+      - name: companies
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: "{{ var('market_min_companies') }}"
+      - name: remote_postings
+        data_tests: [not_null]
+      - name: hybrid_postings
+        data_tests: [not_null]
+      - name: onsite_postings
+        data_tests: [not_null]
+      - name: unstated_postings
+        data_tests: [not_null]
+
+  - name: agg_market_tech
+    description: Share of open data-role postings naming each technology.
+    columns:
+      - name: tech
+        data_tests: [not_null, unique]
+      - name: category
+        data_tests: [not_null]
+      - name: postings
+        data_tests: [not_null]
+      - name: companies
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: "{{ var('market_min_companies') }}"
+      - name: share_of_postings
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+
+  - name: agg_market_ats
+    description: Open postings by ATS; an ATS below the floor folds into 'other'.
+    columns:
+      - name: ats
+        data_tests: [not_null, unique]
+      - name: open_postings
+        data_tests: [not_null]
+      - name: boards
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: "{{ var('market_min_companies') }}"
+
+unit_tests:
+  - name: market_daily_counts_new_postings_without_the_first_ingest
+    description: >
+      Every posting on a board's first ingest is seen for the first time, but
+      only a posting that appeared later is new. A posting is open on every
+      day between its first and last sighting.
+    model: agg_market_daily
+    overrides:
+      vars: {market_min_companies: 1}
+    given:
+      - input: ref('int_market__postings')
+        rows:
+          - {job_key: old, company: a, first_seen_at: 2026-07-01 12:00:00,
+             last_seen_at: 2026-07-03 12:00:00, is_left_censored: true}
+          - {job_key: fresh, company: b, first_seen_at: 2026-07-02 12:00:00,
+             last_seen_at: 2026-07-03 12:00:00, is_left_censored: false}
+      - input: ref('int_jobs__unioned')
+        rows:
+          - {ingested_at: 2026-07-01 12:00:00}
+          - {ingested_at: 2026-07-02 12:00:00}
+          - {ingested_at: 2026-07-03 12:00:00}
+    expect:
+      rows:
+        - {observed_on: 2026-07-01, open_postings: 1, new_postings: 0, companies: 1}
+        - {observed_on: 2026-07-02, open_postings: 2, new_postings: 1, companies: 2}
+        - {observed_on: 2026-07-03, open_postings: 2, new_postings: 0, companies: 2}
+
+  - name: market_daily_drops_days_below_the_company_floor
+    model: agg_market_daily
+    overrides:
+      vars: {market_min_companies: 2}
+    given:
+      - input: ref('int_market__postings')
+        rows:
+          - {job_key: x, company: a, first_seen_at: 2026-07-01 12:00:00,
+             last_seen_at: 2026-07-02 12:00:00, is_left_censored: true}
+          - {job_key: y, company: b, first_seen_at: 2026-07-02 12:00:00,
+             last_seen_at: 2026-07-02 12:00:00, is_left_censored: false}
+      - input: ref('int_jobs__unioned')
+        rows:
+          - {ingested_at: 2026-07-01 12:00:00}
+          - {ingested_at: 2026-07-02 12:00:00}
+    expect:
+      rows:
+        - {observed_on: 2026-07-02, open_postings: 2, new_postings: 1, companies: 2}
+
+  - name: market_tenure_is_kaplan_meier_with_censoring
+    description: >
+      Durations 1 (closed), 2 (still open), 2 (closed), 3 (closed); the
+      left-censored posting is excluded. S(1) = 3/4, S(2) = 3/4 x 2/3 = 1/2,
+      S(3) = 0. The open posting counts as at risk on day 2 without closing --
+      dropping it instead would give S(2) = 1/3, biased short.
+    model: agg_market_tenure
+    overrides:
+      vars: {market_min_companies: 1}
+    given:
+      - input: ref('int_market__postings')
+        rows:
+          - {company: a, first_seen_at: 2026-07-01 00:00:00, last_seen_at: 2026-07-02 00:00:00,
+             is_closed: true, is_left_censored: false}
+          - {company: b, first_seen_at: 2026-07-01 00:00:00, last_seen_at: 2026-07-03 00:00:00,
+             is_closed: false, is_left_censored: false}
+          - {company: c, first_seen_at: 2026-07-01 00:00:00, last_seen_at: 2026-07-03 00:00:00,
+             is_closed: true, is_left_censored: false}
+          - {company: d, first_seen_at: 2026-07-01 00:00:00, last_seen_at: 2026-07-04 00:00:00,
+             is_closed: true, is_left_censored: false}
+          - {company: e, first_seen_at: 2026-06-01 00:00:00, last_seen_at: 2026-07-01 00:00:00,
+             is_closed: true, is_left_censored: true}
+    expect:
+      rows:
+        - {days_on_board: 1, at_risk: 4, at_risk_companies: 4, closed: 1, survival: 0.75}
+        - {days_on_board: 2, at_risk: 3, at_risk_companies: 3, closed: 1, survival: 0.5}
+        - {days_on_board: 3, at_risk: 1, at_risk_companies: 1, closed: 1, survival: 0.0}
+
+  - name: market_tenure_cuts_the_tail_below_the_company_floor
+    model: agg_market_tenure
+    overrides:
+      vars: {market_min_companies: 2}
+    given:
+      - input: ref('int_market__postings')
+        rows:
+          - {company: a, first_seen_at: 2026-07-01 00:00:00, last_seen_at: 2026-07-02 00:00:00,
+             is_closed: true, is_left_censored: false}
+          - {company: b, first_seen_at: 2026-07-01 00:00:00, last_seen_at: 2026-07-04 00:00:00,
+             is_closed: true, is_left_censored: false}
+    expect:
+      rows:
+        - {days_on_board: 1, at_risk: 2, at_risk_companies: 2, closed: 1, survival: 0.5}
+
+  - name: market_ats_folds_small_systems_into_other
+    description: >
+      An ATS below the floor is folded, not dropped, so the total holds; the
+      folded group is itself published only if it clears the floor.
+    model: agg_market_ats
+    overrides:
+      vars: {market_min_companies: 2}
+    given:
+      - input: ref('int_market__postings')
+        rows:
+          - {source: greenhouse, company: a, is_open: true}
+          - {source: greenhouse, company: b, is_open: true}
+          - {source: greenhouse, company: b, is_open: false}
+          - {source: lever, company: c, is_open: true}
+          - {source: ashby, company: d, is_open: true}
+          - {source: ashby, company: d, is_open: true}
+    expect:
+      rows:
+        - {ats: greenhouse, open_postings: 2, boards: 2}
+        - {ats: other, open_postings: 3, boards: 2}
+
+  - name: market_tech_floor_counts_companies_not_postings
+    description: >
+      A technology named only by one employer is withheld however many of its
+      postings name it -- the count would identify that employer's stack.
+    model: agg_market_tech
+    overrides:
+      vars: {market_min_companies: 2}
+    given:
+      - input: ref('int_market__postings')
+        rows:
+          - {job_key: j1, company: a, is_open: true, role_family: Analytics}
+          - {job_key: j2, company: b, is_open: true, role_family: Analytics}
+          - {job_key: j3, company: c, is_open: true, role_family: Data engineering}
+          - {job_key: j4, company: c, is_open: true, role_family: Data engineering}
+          - {job_key: j5, company: d, is_open: true, role_family: Other}
+      - input: ref('int_market__tech_mentions')
+        rows:
+          - {job_key: j1, tech: dbt, category: Transformation}
+          - {job_key: j2, tech: dbt, category: Transformation}
+          - {job_key: j3, tech: Kafka, category: Streaming}
+          - {job_key: j4, tech: Kafka, category: Streaming}
+    expect:
+      rows:
+        - {tech: dbt, category: Transformation, postings: 2, companies: 2,
+           share_of_postings: 0.5}

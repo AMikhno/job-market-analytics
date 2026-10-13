@@ -248,6 +248,13 @@ def gold_table(settings: Settings) -> str:
     return "main_gold.fct_job_postings"
 
 
+def gold_relation(name: str, settings: Settings) -> str:
+    """Fully-qualified name of any model in the gold zone (see gold_table)."""
+    if settings.is_prod:
+        return f"{settings.gcp_project}.{settings.bq_dataset}_gold.{name}"
+    return f"main_gold.{name}"
+
+
 def ensure_digest_table(settings: Settings) -> None:
     """Idempotently provision ops digest state, so the first digest run can
     read an (empty) watermark instead of erroring on a missing table."""

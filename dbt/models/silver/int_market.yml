@@ -1,0 +1,99 @@
+version: 2
+
+# Market models (ADR-0029): read upstream of the location filter, so the public
+# charts summarize the boards rather than the private search.
+models:
+  - name: int_market__postings
+    description: >
+      One row per posting across every tracked board, before any filter, with
+      its lifecycle, role family and normalized remote policy. Feeds the
+      agg_market_* models behind the site's charts.
+    columns:
+      - name: job_key
+        data_tests: [not_null, unique]
+      - name: source
+        data_tests: [not_null]
+      - name: company
+        data_tests: [not_null]
+      - name: role_family
+        description: Family from market_title_families (lowest priority wins), else 'Other'.
+        data_tests: [not_null]
+      - name: remote_policy
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [remote, hybrid, onsite, unstated]
+      - name: first_seen_at
+        data_tests: [not_null]
+      - name: last_seen_at
+        data_tests: [not_null]
+      - name: is_closed
+        description: Gone from its board while that board was still being ingested.
+        data_tests: [not_null]
+      - name: is_open
+        description: On its board's latest ingest, and the board is itself still ingested.
+        data_tests: [not_null]
+      - name: is_left_censored
+        description: >
+          Already up at its board's first ingest, so its true start is unknown.
+          Excluded from durations and from "new".
+        data_tests: [not_null]
+
+  - name: int_market__tech_mentions
+    description: >
+      One row per (open data-role posting, technology) the posting's latest
+      text names, matched against market_tech_vocabulary.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [job_key, tech]
+    columns:
+      - name: job_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int_market__postings')
+                field: job_key
+      - name: tech
+        data_tests: [not_null]
+      - name: category
+        data_tests: [not_null]
+
+unit_tests:
+  - name: market_postings_lifecycle_family_and_remote_policy
+    description: >
+      Left-censoring is "present at the board's first ingest"; a close is
+      "absent while the board was still read"; a board that stopped being read
+      leaves its postings neither open nor closed. The most specific family
+      wins, and every spelling of a remote policy lands in one bucket.
+    model: int_market__postings
+    given:
+      - input: ref('int_jobs__unioned')
+        rows:
+          - {job_key: p1, source: greenhouse, company: a, title: Senior Analytics Engineer,
+             remote_policy: Fully remote, ingested_at: 2026-07-01 12:00:00}
+          - {job_key: p1, source: greenhouse, company: a, title: Senior Analytics Engineer,
+             remote_policy: Fully remote, ingested_at: 2026-07-02 12:00:00}
+          - {job_key: p2, source: greenhouse, company: a, title: Data Analyst,
+             remote_policy: On-site, ingested_at: 2026-07-01 12:00:00}
+          - {job_key: p3, source: greenhouse, company: a, title: Account Executive,
+             remote_policy: , ingested_at: 2026-07-02 12:00:00}
+          - {job_key: p4, source: lever, company: b, title: Data Engineer,
+             remote_policy: Hybrid, ingested_at: 2026-06-28 12:00:00}
+      - input: ref('market_title_families')
+        rows:
+          - {pattern: analytics engineer, family: Analytics engineering, priority: 1}
+          - {pattern: data engineer, family: Data engineering, priority: 2}
+          - {pattern: data analyst, family: Analytics, priority: 6}
+          - {pattern: analytics, family: Analytics, priority: 7}
+    expect:
+      rows:
+        - {job_key: p1, role_family: Analytics engineering, remote_policy: remote,
+           is_closed: false, is_open: true, is_left_censored: true}
+        - {job_key: p2, role_family: Analytics, remote_policy: onsite,
+           is_closed: true, is_open: false, is_left_censored: true}
+        - {job_key: p3, role_family: Other, remote_policy: unstated,
+           is_closed: false, is_open: true, is_left_censored: false}
+        - {job_key: p4, role_family: Data engineering, remote_policy: hybrid,
+           is_closed: false, is_open: false, is_left_censored: true}

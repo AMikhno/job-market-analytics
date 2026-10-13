@@ -32,15 +32,24 @@ import sys
 from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from string import Template
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+# Run as `python scripts/build_site.py`, the repo root is not on sys.path, and
+# the market snapshot's schema lives in shared/ -- it is the same model the
+# export validates against, so the two cannot disagree about the file's shape.
+sys.path.insert(0, str(ROOT))
+
+from scripts import site_charts as charts  # noqa: E402
+from shared.models import MarketSnapshot, MarketTenureStep  # noqa: E402
+
 SITE_SRC = ROOT / "site"
 BUILD = ROOT / "build" / "site"
 OUT = ROOT / "_site"
+MARKET_JSON = ROOT / "market.json"
 REPO_URL = "https://github.com/AMikhno/job-market-analytics"
 
 # Repo path (file or directory prefix) -> where it is staged under the docs root.
@@ -484,14 +493,254 @@ def render_decision_log(adrs: list[Adr]) -> str:
     return "\n".join(rows)
 
 
+# ------------------------------------------------------------------- market
+
+
+def load_market(path: Path) -> MarketSnapshot | None:
+    """The snapshot Ingest exported, or None when this build has none.
+
+    A missing snapshot is a degraded build, not a failed one: the docs and the
+    lineage are still worth publishing. It is reported on stderr (and as an
+    Actions warning by the Docs workflow), so the gap is visible.
+    """
+    if not path.exists():
+        print(f"warning: no market snapshot at {path}; charts omitted", file=sys.stderr)
+        return None
+    return MarketSnapshot.model_validate_json(path.read_text())
+
+
+def median_days_up(tenure: list[MarketTenureStep]) -> int | None:
+    """First day the Kaplan-Meier curve reaches one half; None if it never does."""
+    return next((s.days_on_board for s in tenure if s.survival <= 0.5), None)
+
+
+def _figure(title: str, subtitle: str, body: str, table: str) -> str:
+    return (
+        f'<figure class="viz"><figcaption><h3>{html.escape(title)}</h3>'
+        f"<p>{html.escape(subtitle)}</p></figcaption>{body}{table}</figure>"
+    )
+
+
+def _tile(value: str, label: str) -> str:
+    return (
+        f'<div class="tile"><span class="tile-n">{html.escape(value)}</span>'
+        f'<span class="tile-label">{html.escape(label)}</span></div>'
+    )
+
+
+def render_market(snapshot: MarketSnapshot | None) -> str:
+    if snapshot is None or not snapshot.daily:
+        return (
+            '<p class="viz-empty">The market snapshot comes from the scheduled pipeline '
+            "run, and this build did not have one, so the charts are omitted.</p>"
+        )
+    latest = snapshot.daily[-1]
+    week = [d for d in snapshot.daily if d.observed_on > latest.observed_on - timedelta(days=7)]
+    median = median_days_up(snapshot.tenure)
+    tiles = "".join(
+        [
+            _tile(charts.fmt_int(latest.open_postings), "open postings"),
+            _tile(charts.fmt_int(latest.companies), "companies hiring"),
+            _tile(charts.fmt_int(sum(d.new_postings for d in week)), "new in the last 7 days"),
+            _tile(
+                f"{median} days" if median is not None else "—", "median time a posting stays up"
+            ),
+        ]
+    )
+
+    daily = [
+        charts.Point(
+            x=d.observed_on.toordinal(),
+            y=d.open_postings,
+            label=d.observed_on.strftime("%b %-d"),
+            tip=f"{d.observed_on:%Y-%m-%d}: {d.open_postings:,} open, {d.new_postings:,} new",
+        )
+        for d in snapshot.daily
+    ]
+    figures = [
+        _figure(
+            "Open postings",
+            "Live on their boards each day the pipeline ran.",
+            charts.line_chart(daily, title="Open postings per day"),
+            charts.table(
+                ["Day", "Open", "New", "Companies"],
+                [
+                    [
+                        f"{d.observed_on}",
+                        f"{d.open_postings:,}",
+                        f"{d.new_postings:,}",
+                        f"{d.companies:,}",
+                    ]
+                    for d in snapshot.daily
+                ],
+            ),
+        )
+    ]
+
+    if snapshot.tenure:
+        steps = [charts.Point(x=0, y=1.0, label="day 0", tip="day 0: 100% still up")] + [
+            charts.Point(
+                x=s.days_on_board,
+                y=s.survival,
+                label=f"day {s.days_on_board}",
+                tip=f"day {s.days_on_board}: {s.survival:.0%} still up ({s.at_risk:,} at risk)",
+            )
+            for s in snapshot.tenure
+        ]
+        marker = next((p for p in steps if median is not None and p.x == median), None)
+        tenure_svg = charts.line_chart(
+            steps,
+            title="Share of postings still up, by days on board",
+            y_format="pct",
+            step=True,
+            marker=marker,
+            marker_label=f"median {median} days" if median is not None else "",
+            width=charts.HALF,
+            height=240,
+        )
+        tenure_table = charts.table(
+            ["Days up", "Still up", "At risk", "Closed that day"],
+            [
+                [str(s.days_on_board), f"{s.survival:.1%}", f"{s.at_risk:,}", f"{s.closed:,}"]
+                for s in snapshot.tenure
+            ],
+        )
+    else:
+        tenure_svg = '<p class="viz-empty">Not enough closed postings yet.</p>'
+        tenure_table = ""
+    figures.append(
+        _figure(
+            "How long a posting stays up",
+            "Kaplan-Meier: still-open postings count as censored, not as closed.",
+            tenure_svg,
+            tenure_table,
+        )
+    )
+
+    top_tech = snapshot.tech[:15]
+    figures.append(
+        _figure(
+            "What data roles ask for",
+            "Share of open data-role postings naming each technology.",
+            charts.bar_chart(
+                [
+                    charts.Bar(
+                        label=t.tech,
+                        value=t.share_of_postings,
+                        shown=charts.fmt_pct(t.share_of_postings),
+                        tip=f"{t.tech}: {t.postings:,} postings at {t.companies:,} companies",
+                    )
+                    for t in top_tech
+                ],
+                title="Technology mentions in open data-role postings",
+                label_width=130,
+            ),
+            charts.table(
+                ["Technology", "Category", "Share", "Postings", "Companies"],
+                [
+                    [
+                        t.tech,
+                        t.category,
+                        f"{t.share_of_postings:.1%}",
+                        f"{t.postings:,}",
+                        f"{t.companies:,}",
+                    ]
+                    for t in snapshot.tech
+                ],
+            ),
+        )
+    )
+
+    data_roles = [r for r in snapshot.roles if r.role_family != "Other"]
+    figures.append(
+        _figure(
+            "Data roles by family",
+            "Open postings, grouped by title.",
+            charts.bar_chart(
+                [
+                    charts.Bar(
+                        label=r.role_family,
+                        value=r.open_postings,
+                        shown=charts.fmt_int(r.open_postings),
+                        tip=(
+                            f"{r.role_family}: {r.open_postings:,} at {r.companies:,} companies; "
+                            f"{r.remote_postings:,} remote, {r.hybrid_postings:,} hybrid, "
+                            f"{r.onsite_postings:,} on-site, {r.unstated_postings:,} unstated"
+                        ),
+                    )
+                    for r in data_roles
+                ],
+                title="Open data-role postings by family",
+                label_width=160,
+            ),
+            charts.table(
+                ["Family", "Open", "Companies", "Remote", "Hybrid", "On-site", "Unstated"],
+                [
+                    [
+                        r.role_family,
+                        f"{r.open_postings:,}",
+                        f"{r.companies:,}",
+                        f"{r.remote_postings:,}",
+                        f"{r.hybrid_postings:,}",
+                        f"{r.onsite_postings:,}",
+                        f"{r.unstated_postings:,}",
+                    ]
+                    for r in snapshot.roles
+                ],
+            ),
+        )
+    )
+
+    figures.append(
+        _figure(
+            "Where the postings come from",
+            "Open postings by applicant-tracking system.",
+            charts.bar_chart(
+                [
+                    charts.Bar(
+                        label=a.ats,
+                        value=a.open_postings,
+                        shown=charts.fmt_int(a.open_postings),
+                        tip=f"{a.ats}: {a.open_postings:,} open postings on {a.boards:,} boards",
+                    )
+                    for a in snapshot.ats
+                ],
+                title="Open postings by ATS",
+                label_width=130,
+            ),
+            charts.table(
+                ["ATS", "Open postings", "Boards"],
+                [[a.ats, f"{a.open_postings:,}", f"{a.boards:,}"] for a in snapshot.ats],
+            ),
+        )
+    )
+
+    note = (
+        f"Every board the pipeline tracks, counted before any filter. A figure covering fewer "
+        f"than {snapshot.min_companies} companies is withheld. Snapshot taken "
+        f"{snapshot.generated_at:%Y-%m-%d %H:%M} UTC."
+    )
+    return (
+        f'<div class="tiles">{tiles}</div><div class="viz-grid">{"".join(figures)}</div>'
+        f'<p class="viz-note">{html.escape(note)}</p>'
+    )
+
+
 def render_landing(
-    template: str, *, stats: Stats, nodes: list[Node], adrs: list[Adr], commit: str
+    template: str,
+    *,
+    stats: Stats,
+    nodes: list[Node],
+    adrs: list[Adr],
+    commit: str,
+    market: MarketSnapshot | None = None,
 ) -> str:
     built_on = datetime.now(UTC).strftime("%Y-%m-%d")
     return Template(template).substitute(
         stat_cards=render_stat_cards(stats),
         terminal=render_terminal(stats, commit, built_on),
         lineage=render_lineage(nodes),
+        market=render_market(market),
         decision_log=render_decision_log(adrs),
         adr_count=stats.adrs,
         commit=html.escape(commit),
@@ -572,6 +821,7 @@ def main() -> int:
         nodes=lineage_nodes(manifest),
         adrs=adrs,
         commit=head_commit(ROOT),
+        market=load_market(MARKET_JSON),
     )
     (OUT / "index.html").write_text(landing)
 

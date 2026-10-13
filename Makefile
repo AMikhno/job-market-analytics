@@ -1,4 +1,4 @@
-.PHONY: install ingest validate-companies discover update-company-list companies-variable seeds seeds-variable deliver dbt-deps ensure-raw land-resume labels-template evaluate dbt-dev dbt-prod dbt-test dbt-docs site freshness test lint sql-lint workflow-lint format check
+.PHONY: install ingest validate-companies discover update-company-list companies-variable seeds seeds-variable deliver dbt-deps ensure-raw land-resume labels-template evaluate dbt-dev dbt-prod dbt-test dbt-docs site market-snapshot freshness test lint sql-lint workflow-lint format check
 
 install:          ## Set up the uv venv, dbt packages, and pre-commit hooks
 	uv sync --extra dev
@@ -77,6 +77,9 @@ dbt-docs: dbt-deps seeds ## Generate self-contained dbt docs (lineage + columns)
 
 site: dbt-docs    ## Build the Pages site into _site/ (landing page + rendered docs + dbt lineage)
 	uv run python scripts/build_site.py
+
+market-snapshot:  ## Export the gold agg_market_* models to market.json for the site's charts
+	uv run python -m deliver.market_snapshot market.json
 
 freshness: seeds  ## Assert raw sources are fresh (fails the run if stale/empty)
 	cd dbt && uv run dbt source freshness --target prod

@@ -60,8 +60,9 @@ AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
   - **The seed values are private config** (ADR-0028), because a filter rule is a preference:
     `dbt/seeds/*.csv` is gitignored, `config/seeds/*.example.csv` is committed, and
     `make seeds` puts one in place from an Actions **variable** (not a secret) before dbt
-    parses. `seeds.yml` stays tracked — the schema contract is the mechanism, and the
-    mechanism is public. Never commit the real rules.
+    parses. The exception is `dbt/seeds/market_*.csv` — generic market vocabularies for the
+    site's charts, tracked on purpose (ADR-0029). `seeds.yml` stays tracked — the schema
+    contract is the mechanism, and the mechanism is public. Never commit the real rules.
   - Examples live in `config/seeds/`, **not** beside the real files: dbt loads every CSV under
     `seed-paths`, so an example there would materialize a junk seed table.
 - **Cross-warehouse SQL**: models must run on both DuckDB (dev) and BigQuery (prod);
@@ -162,7 +163,7 @@ docs drift, and it is how a superseded claim survived four days in `docs/researc
 
 ## Commands
 
-`make install · ingest · validate-companies · discover · update-company-list · companies-variable · seeds · seeds-variable · land-resume · labels-template · evaluate · deliver · dbt-dev · dbt-prod · dbt-test · site · freshness · test · lint · format · check · whois`
+`make install · ingest · validate-companies · discover · update-company-list · companies-variable · seeds · seeds-variable · land-resume · labels-template · evaluate · deliver · dbt-dev · dbt-prod · dbt-test · site · market-snapshot · freshness · test · lint · format · check · whois`
 
 ## Pointers
 
@@ -176,9 +177,9 @@ references like "§5.6" are unverifiable by construction and were wrong within o
 - Current state, priorities, open decisions → `TODO.md`
 - How the system works today → `ARCHITECTURE.md` (no roadmap and no history: those are `TODO.md`
   and git respectively)
-- Decision records (why, not what) → `docs/decisions/` — newest first: 0028 the filter-rule seeds
-  are private config, 0027 score against a resume corpus, 0026 warehouse in us-central1,
-  0025 V2 model + its global-only endpoint (supersedes 0009), 0024 one match_score orders the
+- Decision records (why, not what) → `docs/decisions/` — newest first: 0029 the site's market
+  charts publish suppressed aggregates, 0028 the filter-rule seeds are private config, 0027 score
+  against a resume corpus, 0026 warehouse in us-central1, 0025 V2 model + its global-only endpoint (supersedes 0009), 0024 one match_score orders the
   digest, 0023 deal-breakers demote rather than delete, 0020 V2 scope
 - Measured evidence & proposals not yet decided → `docs/research/`
   (`relevance-signals.md` — what actually predicts relevance, and the four instructions V2's
