@@ -191,6 +191,28 @@ Four layers, because each catches something the one before it cannot.
 Every run writes one `ops.ingest_runs` row per source and a machine-readable summary, so health is
 judged from recorded outcomes rather than from whether the cron fired.
 
+### Failures that look like health
+
+The layering exists because a scheduled pipeline has failure modes that produce **no signal at
+all**, and each needed its own gate. These are the ones this design accounts for:
+
+| Failure | Why it is silent | What catches it |
+|---|---|---|
+| The workflow file is invalid | GitHub records a zero-second startup failure, stops honouring the schedule, and sends no failed-run email — no run ever started | `make workflow-lint` (actionlint), before the file can land |
+| The schedule is suspended | Same: a suspended workflow emails nothing | The dead-man's switch — the alert is the *absence* of pings |
+| A run succeeds but ingests almost nothing | Exit status is zero and the tables are non-empty | The volume warnings, then the freshness gate at 30h |
+| A source stops responding for days | Per-board failures are warnings by design, so the run stays green | `dbt source freshness`, and the staleness rule that ages its postings out of gold |
+| An AI function is denied to the CI identity | The functions authorize at *plan* time, so the model fails even when the incremental guard leaves nothing to process | Hard failure — but only once a run reaches it, so the CI principal needs `roles/aiplatform.user` from the start, not when volume arrives |
+
+Two configuration invariants follow from the same principle — a wrong value must fail loudly rather
+than quietly do the wrong thing:
+
+- **One scope per secret.** A job with `environment:` reads that environment's copy, which shadows
+  a repository secret of the same name completely. Two copies means updates can land on the one
+  nothing reads, with no error anywhere.
+- **A missing seed variable fails the prod run** rather than falling back to the committed
+  examples, which would filter gold to somewhere nobody lives and still exit 0 (ADR-0028).
+
 ## Boundaries
 
 V1 ingestion needs **no credentials** — every source API is public and keyless. The only secrets

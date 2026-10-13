@@ -12,9 +12,11 @@ disproved.
 Source: a full local gold build across all active boards — 10,170 postings fetched, 1,179
 surviving to gold.
 
-**Partially re-measured 2026-08-31** against the prod warehouse (1,742 silver survivors, 1,293
-gold) — see [Re-measured](#re-measured-2026-08-31) at the end. Only the counting claims could be
-re-run; every precision claim below still rests on the single LLM pass described next.
+**Re-measured 2026-10-13** against the prod warehouse — 10,123 postings fetched, 3,126 silver
+survivors, 1,406 gold, under the deployed rules and the landed resume corpus. See
+[Re-measured](#re-measured-2026-10-13) at the end: the counting claims were re-run and hold, each
+now on its third or fourth independent sample. Every precision claim below still rests on the
+single LLM pass described next.
 
 > **Provenance, and why it limits what this file can claim.** The pass was a single LLM run, not a
 > human review. It was given a resume and asked to return the ~75–80 best postings by *work* match
@@ -104,56 +106,130 @@ older postings warrant a different action rather than a lower score.
 
 That last point is the list-building rule, and it replaces "add large well-known companies".
 
-## Re-measured 2026-08-31
+## Re-measured 2026-10-13
 
-Against the prod warehouse rather than the original local build: **1,742 silver survivors, 1,293
-gold**, roughly half again as large as the set above. Only the claims that are pure counting are
-re-run here. Every precision claim in this file — 1/21 against 3/13, 5/5, 31/43 — needs human
-labels by construction, per the provenance note, and none exist yet.
+**3,126 silver survivors, 1,406 gold, all of them scored**, from a 10,123-posting fetch under the
+deployed rules and the landed corpus. Everything below is counting. Every precision claim above —
+1/21 against 3/13, 5/5, 31/43 — still needs human labels by construction, per the provenance note,
+and none exist yet.
 
-Two conditions on reading these numbers. The corpus is a **2026-08-16 snapshot**: ingestion had
-stalled and the figures do not describe the market on the date in the heading. And the fit scores
-were produced against **9 evidence units**, where the corpus on disk now renders 29 — measured,
-not assumed: the landed prompt is 6,478 characters against 22,401 today. Their distribution
-therefore measures a third of the evidence, and the trough at 2 may be an artefact of that alone.
+**The deal-breaker rate holds a fourth time.** The five terms the original pass counted appear in
+**300 of 3,126 postings (9.6%)** — Spark 203, Kafka 119, Scala 31, Flink 31, Hadoop 18 — against
+10.4%, 9.4% and ~9% on the three earlier fetches. Four samples inside a point and a half of each
+other makes "roughly 9-10% of the market" a property of the market, not of a snapshot; ADR-0023
+rests on it and does not need revisiting. The deployed 35-term seed flags **668 (21.4%)**, against 22.2% — one
+posting in five carries a demotion. That is a heavier thumb on `match_score` than the rule was
+carrying when it was written, and two samples agreeing means it is the rule's real weight rather
+than a drift to watch.
 
-Also excluded: anything computed from the seeds. The warehouse was running an older, much smaller
-rule set than the one now in place, so `title_match`, `match_score` and `deal_breaker_hits` were
-not comparable to anything and are omitted. What follows is seed-independent — measured against
-posting text, titles and the V2 extraction fields directly.
+**Scarcity holds.** Titles word-matching "Analytics Engineer": **11 of 3,126**, 0.35% of the
+corpus, against 0.3% on each of the three earlier fetches — the share has not moved. "Analyst"
+appears in 117, "Data Engineer" in 15, "Data Analyst" in 15. The supply argument stands: no amount
+of better scoring produces more of them.
 
-**The deal-breaker rate holds.** Measured against posting text: **164 of 1,742 postings (9.4%)**
-name one of the five terms the original pass counted, against 123 of 1,179 (~9%) before. Per term:
-Spark 108, Kafka 73, Scala 22, Flink 23, Hadoop 12. The corpus grew by half and the proportion
-moved by 0.4 points, so "roughly 9% of the market" is a property of the market, not of one
-snapshot. ADR-0023 rests on this and does not need revisiting.
+**Concentration holds as a band, not a number.** **78 of the 107 companies** with a live posting
+produced no title-matched role at all — 73%, against 62%, 73% and 65% before. Four samples spread
+over eleven points, so the claim is "roughly two-thirds to three-quarters of boards carry nothing
+title-shaped", and anything tighter is reading noise. The three largest boards contribute 421 of
+3,126 postings (13.5%, against 13%), so volume and relevance remain unrelated.
 
-**Scarcity holds.** Titles word-matching "Analytics Engineer": **6**, up from 5, out of 1,742 —
-0.3% of the corpus. Titles matching "Analyst": 60, up from 43. The supply argument stands: no
-amount of better scoring produces more of them.
-
-**Concentration holds.** **87 of 119 companies** with a live posting produced no title-matched
-role at all, against 73 of 113 before — the same roughly-three-quarters shape.
+**Title match is 3.8%** (118 of 3,126) on the deployed 26-pattern seed, against 6.1% on the
+31-pattern set it replaced and 3.6% on the seven-pattern set before that. The rate is not
+comparable across seed versions — it tracks the patterns, not the market — which is itself the
+argument for keeping it a soft signal: a number that moves when the rule moves cannot be a gate.
 
 ### What the original pass could not measure
 
-The V2 extraction fields did not exist when this file was written. Three of them now quantify
-claims that were previously arguments.
+The V2 extraction fields did not exist when this file was written. They turn two of its arguments
+into measurements.
 
-**Instruction 3 is now a measurement, and it is the strongest result here.** Of postings *titled*
-Manager, Lead or Head, **207 describe no people management against 135 that do**, with 20 unclear
-— so **58% of manager-titled postings are individual-contributor work**. The error runs the other
-way too: **124 of 931 postings (13%) not titled that way do manage people**. A title-based rule for
-seniority would therefore be wrong more often than right on the postings it fired on, which is the
-org-chart-naming claim at the top of this file, now with a number under it.
+**Instruction 3 is the strongest result here, and it reproduces.** Of gold postings *titled*
+Manager, Lead or Head, **210 describe no people management against 149 that do**, with 20 unclear —
+so **58.5% of manager-titled postings are individual-contributor work**, against 60.5% and 58% on
+the two earlier corpora. The error runs the other way too: **147 of 1,027 (14.3%)** postings not
+titled that way do manage people, against 12.9% and 13%. Three independent fetches inside three
+points of each other makes this a property of how companies name roles rather than a sampling
+artefact, and it is the org-chart claim at the top of this file with a number under it.
 
-**Instruction 2's predicted leak is real and sized.** Of 1,293 gold postings the location gate
-admitted, **160 (12%) are `us_only`** on the description, and **423 (33%) are `unclear`**. The
-rule-based gate cannot see either, which is what the instruction argued; a third of gold being
-`unclear` also says the field is doing honest work rather than guessing.
+**Instruction 2's predicted leak is real, sized and stable.** Of 1,406 gold postings the location
+gate admitted, **169 (12.0%) are `us_only`** on the description, against 12.2% and 12% before. The
+rule-based gate cannot see any of them, which is what the instruction argued; one posting in eight
+reaching gold un-appliable is the cost of a location rule that reads a board field instead of
+prose.
 
-**The fit-score distribution is bimodal, and unexplained.** 722 postings score 1, 103 score 2, 399
-score 3, 41 score 4, 28 score 5. The trough at 2 and the pile at 1 and 3 is the shape a rubric
-produces when it is really answering a three-way question, not a five-way one. Only 5% score 4 or
-5. Whether that is the market being genuinely thin or the scorer compressing its range is exactly
-what human labels decide — do not tune the rubric against this shape before they exist.
+**The fit-score distribution moved when the corpus did, and that settles a question.**
+
+| fit_score | 9 evidence units | 29 evidence units |
+|---|---|---|
+| 1 | 722 | 628 |
+| 2 | 103 | **528** |
+| 3 | 399 | **140** |
+| 4 | 41 | 36 |
+| 5 | 28 | 29 |
+
+The same postings, scored against a third of the corpus and against all of it. **A partial corpus
+distorts the middle of the distribution and leaves the top intact**: the trough moves from 2 to 3,
+while the count scoring 4-or-5 barely changes (69 against 65). So a thin corpus costs ordering
+among the also-rans, not the shortlist — and a score is only comparable to another score produced
+from the same corpus, which is why `landed_version()` digests the rendered prompt and re-scores
+when it changes.
+
+Six weeks of posting turnover under that same prompt moved the bands again — 899 / 291 / 172 / 18 /
+26 — leaving the top thinner still, **44 of 1,406 (3.1%)** against 65 of 1,361 (4.8%). So a band
+count describes one corpus-and-market pair rather than the scorer, and only the *shape* carries
+across: a long tail at 1 and a shortlist in the low tens.
+
+### Telling the model to trust the board's location is worth 3×
+
+Instructing extraction to treat the job board's own location field as authoritative — rather than
+inferring eligibility from the description alone — is the single largest measured improvement to
+`geo_restriction`:
+
+| extraction prompt | rows | `unclear` |
+|---|---|---|
+| without the instruction | 1,721 | **32.5%** |
+| with it | 2,683 | **10.5%** |
+
+Same posting population, one instruction, unresolved eligibility down threefold. The first 555 rows
+under the fixed prompt read 6.8%; 2,683 rows later it sits at 10.5%, so the effect is "about 3×"
+and the 5× was a small-sample reading — worth recording, because it is the direction a measured
+improvement usually moves as the sample grows. Worth knowing for any future extraction field
+regardless: the board's structured metadata beats inference from prose whenever both are available.
+
+It also exposes a property of the incremental guard. It compares text, model and *scoring*-prompt
+version — none of which move when the **extraction** prompt changes — so gold can hold rows
+extracted under two different prompts at once. **230 gold rows** still carry the older, weaker
+answer, down from 559 six weeks earlier — postings turn over, so the stale vintage drains on its
+own at roughly 55 rows a week. Resolving the remainder means a full refresh, which re-bills the
+extraction backfill (ADR-0025): a costed choice that gets cheaper to decline the longer it waits.
+
+### Do the two rankings disagree enough to be worth keeping both?
+
+Label-free, and the most decision-relevant thing here. Postings split into quartiles by
+`match_score`, against the LLM's verdict:
+
+| keyword quartile | n | avg fit_score | fit ≥ 4 |
+|---|---|---|---|
+| 1 (lowest) | 352 | 1.30 | 1 |
+| 2 | 352 | 1.20 | 0 |
+| 3 | 351 | 1.50 | 1 |
+| 4 (highest) | 351 | 2.26 | **42** |
+
+Three things follow, and all three survived the corpus turning over. **The keyword score already
+finds almost everything the LLM rates highly** — 42 of 44 high-fit postings, 95%, sit in its top
+quartile, against 56 of 65 (86%) six weeks earlier, so the cheap ranking is not being embarrassed.
+**Its bottom half has no resolution at all**: quartiles 1 and 2 are indistinguishable (1.30 against
+1.20) and every posting in them scores zero or below, so ordering within them is noise — the
+quartile split is a tie-break, not a ranking. And **two high-fit postings sit outside the top
+quartile** — that, plus reordering inside it, is the LLM's entire marginal contribution.
+
+Eighteen of the 42 top-quartile high-fit postings carry **no title match**, which is the earlier
+org-chart argument showing up in the ranking itself: the keyword score reached them through
+technology hits alone.
+
+Whether two recovered postings and a re-sorted top quartile justify the scoring cost is exactly
+what human labels decide — and the margin narrowed rather than widened between the two
+measurements, which is the direction that argues for deciding sooner. The point of measuring it is
+that the question has a size: **precision@k on the top quartile is where the two rankings actually
+differ**, so that is where the labelling effort should concentrate rather than being spread evenly
+across 1,406 rows.
