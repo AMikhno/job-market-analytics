@@ -163,7 +163,7 @@ docs drift, and it is how a superseded claim survived four days in `docs/researc
 
 ## Commands
 
-`make install · ingest · validate-companies · discover · update-company-list · companies-variable · seeds · seeds-variable · land-resume · labels-template · evaluate · deliver · dbt-dev · dbt-prod · dbt-test · site · market-snapshot · freshness · test · lint · format · check · whois`
+`make install · ingest · validate-companies · discover · update-company-list · companies-variable · seeds · seeds-variable · land-resume · labels-template · evaluate · deliver · dbt-dev · dbt-prod · dbt-test · site · og-image · market-snapshot · freshness · test · lint · format · check · whois`
 
 ## Pointers
 

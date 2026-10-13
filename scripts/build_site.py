@@ -322,6 +322,7 @@ def stage_docs(root: Path, dest: Path, adrs: list[Adr], repo_files: set[str]) ->
     index = link_adr_refs(adr_index(adrs), "docs/decisions/index.md", by_number)
     (docs / "decisions" / "index.md").write_text(index)
     shutil.copytree(root / "site" / "docs" / "assets", docs / "assets")
+    shutil.copy(root / "site" / "landing" / "assets" / "favicon.svg", docs / "assets")
     shutil.copy(root / "site" / "zensical.toml", dest / "zensical.toml")
     return len(pages) + 1
 

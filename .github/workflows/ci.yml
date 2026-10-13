@@ -45,6 +45,18 @@ jobs:
       - name: Build the Pages site (strict — broken links fail)
         run: make site
 
+      # A reviewable copy of the site from this PR: download it from the run's
+      # summary page, unzip, and serve it (`python3 -m http.server -d <dir>`) --
+      # opened from disk, the lineage page cannot fetch its manifest. CI holds no
+      # warehouse access, so the preview shows the charts-omitted note.
+      - name: Upload the site preview
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site-preview
+          path: _site
+          if-no-files-found: error
+          retention-days: 7
+
       # No secrets in this workflow, so the BigQuery target can only be *parsed*
       # (config/contracts/jinja per-target). Full dialect validation happens in
       # ingest.yml, which compiles the prod target before building it.
