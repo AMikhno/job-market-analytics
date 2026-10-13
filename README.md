@@ -17,35 +17,12 @@ flowchart LR
     G -.-> E
 ```
 
-## Design highlights 
+### **→ [Project site](https://amikhno.github.io/job-market-analytics/)**
 
-- **Medallion = dbt-native.** Three zones map 1:1 onto staging → intermediate → marts
-  (ADR-0010), each in its own BigQuery dataset (ADR-0014); raw is append-only with
-  partition expiry, and *all* transforms rebuild from it — so filter-rule changes apply
-  retroactively with zero migrations.
-- **One SQL codebase, two warehouses.** Every model runs on DuckDB (dev/CI, secretless)
-  and BigQuery (prod); dialect differences live in `adapter.dispatch` macros — including
-  regex-literal escaping and timestamp arithmetic where naive cross-db macros have
-  prod-only type traps.
-- **Lifecycle, not snapshots.** `first_seen_at` / `last_seen_at` / `is_active` are derived
-  from the append-only landing (the source APIs have no date filters), with a staleness
-  rule so boards removed from the list age out instead of leaving zombie postings.
-- **Rules are data.** Deal-breaker tech, allowed locations, desired tech/titles are dbt
-  seeds — word-boundary matched, regex-safe (`C++`, `.NET` work), unit-tested. Hard rules
-  drop; soft signals only annotate and order (ADR-0015) — recall stays high until the LLM
-  can judge fit.
-- **Security is structural.** No secret values in the repo; BigQuery auth via Workload
-  Identity Federation (keyless); GH Actions SHA-pinned (`id-token: write` hygiene);
-  gitleaks in CI; the company list and candidate profile are private config, never
-  committed.
-- **Tests gate every commit.** A pytest suite behind an enforced 85% coverage floor, dbt
-  schema and unit tests on every model, mypy `--strict`, sqlfluff, actionlint on the
-  workflows, plus a CI parse of the prod target — a fork-safe pipeline with no secrets in CI.
-- **Every non-obvious choice has an ADR** — 28 so far, in `docs/decisions/`. <!-- check:adrs -->
-
-**Browse the [dbt docs & lineage DAG](https://amikhno.github.io/job-market-analytics/)** —
-generated in CI on every push to main (raw sources → bronze → silver → gold → the email-digest
-exposure), or locally via `make dbt-docs`.
+The design decisions, the rendered docs and all 28 ADRs, and the live dbt lineage DAG. <!-- check:adrs -->
+Rebuilt in CI on every push to main, or locally with `make site` (output in `_site/`). Every number
+on the landing page is read from the dbt manifest, the ADRs and the test suite at build time, and
+the build fails on a broken link.
 
 ## Quickstart
 
@@ -73,7 +50,8 @@ shared/      config (Pydantic Settings), models, http, storage (one writer, both
 deliver/     email digest of new postings (watermark in ops.digest_runs)
 config/      private company list (gitignored; .example committed)
 dbt/         one dual-target project: models/{bronze,silver,gold}, seeds, macros, unit tests
-scripts/     repo gates that are not lint or tests (see below)
+scripts/     repo gates that are not lint or tests (see below), and the Pages site build
+site/        landing page template + docs theme for the Pages site
 tests/       pytest suite + sanitized fixtures
 docs/        decisions/, v2-plan.md, research/  (ARCHITECTURE.md at repo root)
 .github/     four workflows, split by permission scope — see ARCHITECTURE.md#automation

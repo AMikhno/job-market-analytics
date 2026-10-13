@@ -39,6 +39,12 @@ jobs:
           make ensure-raw                       # empty raw tables so models can build
           make dbt-dev                          # dbt deps + dbt build (seeds included)
 
+      # Docs only deploys after merge, so a dead link would otherwise be found on
+      # the live site. The build is strict: a broken link in the docs or on the
+      # landing page fails it here, on the PR.
+      - name: Build the Pages site (strict — broken links fail)
+        run: make site
+
       # No secrets in this workflow, so the BigQuery target can only be *parsed*
       # (config/contracts/jinja per-target). Full dialect validation happens in
       # ingest.yml, which compiles the prod target before building it.

@@ -141,7 +141,7 @@ permission sets on the union of both triggers.
 |---|---|---|---|
 | Ingest | twice-daily cron + manual dispatch | `id-token: write`, prod environment | The pipeline: fetch → land → transform → deliver |
 | CI | every push and PR | nothing | Lint, tests, the DuckDB DAG, a prod-target parse, gitleaks |
-| Docs | push to `main` | `pages: write` | Publishes the dbt lineage DAG to GitHub Pages |
+| Docs | push to `main` | `pages: write` | Publishes the Pages site: landing page, rendered docs, dbt lineage |
 | Tag release | push to `main` touching `pyproject.toml` | `contents: write` | Publishes `v<version>` if it does not exist yet |
 
 Only Ingest can reach the warehouse: `id-token: write` is what mints the OIDC token that Workload

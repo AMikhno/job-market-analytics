@@ -1,0 +1,47 @@
+# Zensical config for the /docs/ half of the Pages site. Copied into the staged
+# build directory by scripts/build_site.py, so the paths below are relative to
+# that directory, not to this file.
+[project]
+site_name = "job-market-analytics"
+site_description = "Architecture, decision records and research for a production dbt pipeline."
+site_url = "https://amikhno.github.io/job-market-analytics/docs/"
+repo_url = "https://github.com/AMikhno/job-market-analytics"
+repo_name = "AMikhno/job-market-analytics"
+edit_uri = "blob/main/"
+docs_dir = "docs"
+site_dir = "out"
+extra_css = ["assets/extra.css"]
+
+[project.extra]
+# The logo returns to the landing page rather than the docs home.
+homepage = "https://amikhno.github.io/job-market-analytics/"
+
+[project.theme]
+# System fonts: no third-party font request, and the same faces as the landing page.
+font = false
+features = [
+  "navigation.instant",
+  "navigation.sections",
+  "navigation.top",
+  "navigation.footer",
+  "search.highlight",
+  "content.code.copy",
+  "toc.follow",
+]
+
+[[project.theme.palette]]
+scheme = "slate"
+primary = "custom"
+accent = "custom"
+
+[project.markdown_extensions.toc]
+permalink = true
+
+[project.markdown_extensions.tables]
+
+[project.markdown_extensions.admonition]
+
+[project.markdown_extensions.pymdownx.superfences]
+custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
