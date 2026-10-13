@@ -10,7 +10,7 @@ function — the shape that measurably converts (`docs/research/relevance-signal
 
 | # | Work | Why it is here | Cost |
 |---|---|---|---|
-| 1 | **V2 validation** | The scorer is built and running in prod; nothing yet shows it beats the keyword baseline. Relevance is still the measured constraint: 10,170 postings fetched → 1,179 gold → 40 title-matched, and those 40 were largely the *wrong* 40. Validation is also what makes every later expansion self-evaluating instead of costing a manual evening | Human labels, then `make evaluate` — see [below](#v2--built-unvalidated) |
+| 1 | **V2 validation** | The scorer is built and running in prod; nothing yet shows it beats the keyword baseline. Relevance is still the measured constraint, and the funnel has not moved in three months of fetches: 10,123 postings → 1,406 gold → 44 title-matched, and the pass that read a set this shape found title match wrong in both directions. Validation is also what makes every later expansion self-evaluating instead of costing a manual evening | Human labels, then `make evaluate` — see [below](#v2--built-unvalidated) |
 | 2 | **More companies on already-built ATS** | No engineering at all. The best measured conversion came from a mid-size company on an existing adapter — 11 postings, 4 worth applying to. Staffing and recruiting agencies count as a deliberate company type | List work |
 | 3 | **Aggregator source** | Fixes list representativeness at the root: stops requiring the curated list to be a fair sample of the market. After V2, because without scoring it is ten times the noise for the same manual triage | ADR-0017, gates unmet. Main cost is content-based dedup, since `job_key` is `(source, company, external_id)` — ADR-0008 |
 | 4 | **List repair** | Wrong data rather than missing adapters, so it is free at runtime | Small — see below |
@@ -24,15 +24,18 @@ against).
 
 ## V2 — built, unvalidated
 
-The code is done and running in prod against a current corpus. **Nothing yet shows it beats the
+The code is done and running in prod against the full corpus. **Nothing yet shows it beats the
 keyword score**, and that is the only question left worth answering: a scorer that is confidently
 wrong looks exactly like one that is right until human labels say otherwise. What is now measured
-(`docs/research/relevance-signals.md`) is how far apart the two rankings are — 56 of the 65
-postings the LLM rates 4-or-5 already sit in the keyword score's top quartile, so the disagreement
-worth labelling is narrower than the corpus.
+(`docs/research/relevance-signals.md`) is how far apart the two rankings are — 42 of the 44
+postings the LLM rates 4-or-5 already sit in the keyword score's top quartile, and that agreement
+tightened over six weeks rather than loosening. The disagreement worth labelling is narrow, and
+getting narrower, which argues for settling the question now rather than carrying both rankings on
+the assumption that the gap will declare itself.
 
-Two rankings run side by side on purpose — `fit_score` (LLM, 1–5) and `similarity` (embeddings) —
-because choosing between them without measuring is how a project ends up carrying both forever.
+Two rankings are *designed* to run side by side — `fit_score` (LLM, 1–5) and `similarity`
+(embeddings) — because choosing between them without measuring is how a project ends up carrying
+both forever. Only the first is actually running; see the holding note below.
 
 **`make evaluate` does not yet grade `similarity`.** It compares `fit_score` against `match_score`
 and hardcodes a two-way verdict, so the embedding ranking currently ships to the digest ungraded.
@@ -40,47 +43,45 @@ Until it is a third ranking in that report, running embeddings produces a column
 
 ### Next, in order
 
-1. **Land the corpus that already exists.** `config/resume.yaml` (gitignored) renders **29
-   evidence units**; the prompt the warehouse scored against carries **9**. So the gap is not the
-   corpus — it is that the richer one has never reached prod. A posting missed because the landed
-   corpus omitted the relevant work is indistinguishable from one correctly scored low.
-   - The invalidation is already self-enforcing: `landed_version()` digests the rendered prompt
-     and writes `<PROMPT_VERSION>.<digest>`, so a changed corpus moves the version and
-     `int_jobs_scored` re-scores on it. What the warehouse holds is a bare `2` — it was landed
-     before that shipped, so the first run after landing will re-score the backfill once, by
-     design and at the cost recorded in ADR-0025.
-2. **Human labels** → `make labels-template` writes a worksheet from live gold; fill the
+1. **Human labels** → `make labels-template` writes a worksheet from live gold; fill the
    `relevant` column with yes/no, blank to skip; then `make evaluate`. A few hundred is plenty.
    The LLM pass in `docs/research/relevance-signals.md` cannot substitute — grading an LLM scorer
    against LLM labels rewards reproducing its predecessor's mistakes.
    - Take the worksheet's spread sample as it is. It stratifies by score band on purpose —
      labelling only the top measures precision and can never measure recall, and a ranking that
      buries something relevant then looks perfect. The measured fact that the two rankings mostly
-     agree in the keyword score's top quartile (56 of 65 high-fit postings sit there) is a reason
+     agree in the keyword score's top quartile (42 of 44 high-fit postings sit there) is a reason
      to *read* the result carefully, not a reason to sample there.
-3. **Grade `similarity` in `make evaluate`** — a third `Ranking` in `evaluation/report.py` and an
+2. **Grade `similarity` in `make evaluate`** — a third `Ranking` in `evaluation/report.py` and an
    n-way verdict in place of the two-way one. Before embeddings go on, not after: the point of
    running both is the comparison, and an ungraded column is just cost.
-4. **Turn embeddings on**: create the CLOUD_RESOURCE connection and the remote model
+3. **Turn embeddings on**: create the CLOUD_RESOURCE connection and the remote model
    (`docs/v2-plan.md`), then set `enable_embeddings: true`. Until then `int_jobs_matched` emits an
    empty stub, so `similarity` is null and delivery falls back to the LLM score and `match_score`.
    No `--full-refresh` is needed for this one: the stub already materialized the table with the
    right column shape and no rows, so the ordinary incremental run backfills every posting.
-5. **Full refresh to re-extract under the fixed prompt** —
+4. **Full refresh to re-extract under the fixed prompt — now the weakest item on this list.**
    `dbt build --full-refresh --select int_jobs_structured+`. The incremental guard compares text,
-   prompt version and model, none of which a changed *extraction prompt* moves, so gold currently
-   mixes two vintages. Now costed on both sides: rows extracted under the old prompt are **32.5%
-   `unclear` on eligibility against 6.8%** under the fixed one, and **559 rows** still carry the
-   old answer (`docs/research/relevance-signals.md`). Weigh that against re-billing the extraction
-   backfill (ADR-0025).
+   prompt version and model, none of which a changed *extraction prompt* moves, so gold mixes two
+   vintages: rows extracted under the old prompt are **32.5% `unclear` on eligibility against
+   10.5%** under the fixed one. But the stale vintage is draining on its own as postings turn over
+   — **230 gold rows** left, down from 559 six weeks earlier, roughly 55 a week
+   (`docs/research/relevance-signals.md`). Re-billing the extraction backfill (ADR-0025) to fix
+   what attrition clears in a month is the wrong trade; do this only if a changed extraction prompt
+   ever has to take effect *now*.
 
 **Deliberately held, not pending: keep both rankings for ~a month of live runs before deleting
 either.** A single precision@k pass on one labelling session decides the question on one day's
 data; a month shows whether the winner stays the winner as the list and the market move. The
-holding cost is one embedding call per new posting, which is the cheaper half of the pair. Revisit
-once the labels exist *and* the month has run — then remove the losing ranking, its column and its
-cost, and re-measure `docs/research/relevance-signals.md` against the real corpus, whose numbers
-predate both the corpus and any human label.
+holding cost is one embedding call per new posting, which is the cheaper half of the pair.
+
+**That clock has not started.** `enable_embeddings` is still `false`, so `similarity` is null on
+every one of the 1,406 gold rows — the two rankings have never run side by side at all, and the
+month cannot begin until *Turn embeddings on* above does. Which reorders the decision: the month is
+a reason to wait *after* both rankings exist, not a reason to defer turning the second one on.
+Revisit once the labels exist *and* the month has actually run — then remove the losing ranking,
+its column and its cost, and re-measure `docs/research/relevance-signals.md`, whose numbers are
+label-free by construction.
 
 **Read `docs/research/relevance-signals.md` before writing the prompt.** The LLM pass it records
 produced four instructions the current signals cannot express — most importantly that scoring the
@@ -91,6 +92,10 @@ human labels, and cannot double as V2's evaluation set — see the provenance no
 
 - [x] Resume corpus: `shared/resume.py`, `config/resume.example.yaml`, prompt rendering with
       `PROMPT_VERSION` provenance, and the gitignore guard for the real file
+- [x] The full corpus is **landed in prod**, and the invalidation worked unattended: the richer
+      prompt moved `landed_version()` from a bare `2` to `2.<digest>`, `int_jobs_scored` re-scored
+      its whole backfill once at the cost ADR-0025 predicted, and every scored row since carries
+      the same version. Nothing in the warehouse now mixes corpus vintages
 - [x] `int_jobs_structured` — typed extraction, `content_hash` incremental guard for cost control,
       delimiter defense against untrusted posting text, dev-target stub
 - [x] `int_jobs_scored` — 1–5 fit score, resume prompt as a static cacheable prefix,
@@ -104,7 +109,9 @@ human labels, and cannot double as V2's evaluation set — see the provenance no
 ## List repair
 
 Rows discovery cannot place, kept as classes because each is worth recognizing again. Per-company
-detail is in the private list's `notes` column. Re-audited 2026-08-31 against the live list.
+detail is in the private list's `notes` column. Re-audited 2026-10-13 against the live list: every
+count below reproduced exactly, which is the expected result — none of these are decaying, so
+nothing here gets fixed by waiting.
 
 **Worth doing first: nine inactive rows sit on adapters that already exist** — no engineering, which
 is priority #2's argument applied to rows already in the list. Two of the nine are the portal rows
@@ -152,11 +159,11 @@ below and should be deleted rather than fixed, so the recoverable count is four 
   - Detectable per board, not per posting: a working hosted board server-renders `<title>{Company}
     Jobs</title>` and an `og:title`; a disabled one serves a bare `Jobs` shell with neither. One
     request per board.
-  - Currently **1 board of 56** on the affected ATS, carrying ~13 postings. Left alone at that
-    scale. The gate is a second occurrence, or adding a board whose postings matter enough that a
-    dead link costs a real application — then wire the probe into `make validate-companies` and
-    record the state in the list's `notes`, so the digest can say "hosted board disabled" instead
-    of offering a link that goes nowhere.
+  - Still **1 board of 56** on the affected ATS when re-probed 2026-10-13, carrying 10 postings.
+    Left alone at that scale. The gate is a second occurrence, or adding a board whose postings
+    matter enough that a dead link costs a real application — then wire the probe into
+    `make validate-companies` and record the state in the list's `notes`, so the digest can say
+    "hosted board disabled" instead of offering a link that goes nowhere.
 - **Auth-gated ATS** (iCIMS, Teamtailor, SuccessFactors, Dayforce, ADP, UKG, JazzHR, Phenom) —
   no keyless feed exists; they stay inventory-only (ADR-0013)
 - ~~**Storage levers**~~ — **retired, not deferred.** The bytes are now converted to dollars: at
