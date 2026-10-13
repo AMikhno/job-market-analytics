@@ -71,6 +71,8 @@ SKIP = {
     "harness",
     "motive",
     "solace",
+    "later",
+    "owner",
 }
 MIN_LEN = 4
 

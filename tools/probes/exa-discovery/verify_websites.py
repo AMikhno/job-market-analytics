@@ -185,8 +185,8 @@ def check(domain: str, source: str, ref: str) -> tuple[str, str]:
 def name_domains(name: str) -> list[str]:
     """Domain candidates from a company name, best first.
 
-    A name that already carries a TLD is one ("AutoTrader.ca"); otherwise try the
-    name joined, then without a trailing corporate suffix, then initials for a
+    A name that already carries a TLD is itself one; otherwise try the name
+    joined, then without a trailing corporate suffix, then initials for a
     multi-word name that a company often shortens.
     """
     raw = (name or "").strip()
@@ -278,8 +278,8 @@ def main() -> int:
 
     # Pass 2: for anything still blank, derive candidates from the company *name*
     # rather than the ref. Where the name came from the board API it is the
-    # company's own, so "AutoTrader.ca" and "Fulfillment IQ" yield a domain that no
-    # amount of TLD-guessing at `autotradercanada` or `fiq` ever would.
+    # company's own, so a name already carrying a TLD, or one whose domain is its
+    # initials, yields a domain no amount of TLD-guessing at the ref ever would.
     # Anything the board page could not answer, regardless of what a TLD guess left
     # in the column: that guess is unverified, and a name-derived candidate has to
     # pass a round-trip before it is written, so it is the stronger of the two.

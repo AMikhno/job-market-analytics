@@ -95,7 +95,7 @@ def candidate_domains(ref: str) -> list[str]:
     hyphen = re.sub(r"[^a-z0-9-]", "", ref.lower()).strip("-")
     out = []
     for stem in dict.fromkeys([base, hyphen]):
-        # A ref that already carries a TLD ("super.com") is the domain.
+        # A ref that already carries a TLD is the domain, so take it as-is.
         if re.search(r"\.(com|io|ai|ca|co|app|dev|net|org)$", ref.lower()):
             out.append(ref.lower())
             break
