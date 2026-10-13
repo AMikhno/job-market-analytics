@@ -25,6 +25,15 @@ caught by verifying against the keyless API before anything is proposed.
 
 Thirty of the 61 carried exactly one matching posting.
 
+**Merged 2026-10-13: 60 boards, 58 of them active.** One candidate was dropped on review as an
+aggregator — a board whose posting count is an order of magnitude past any single employer's, which
+is the same portal signature `tools/company_discovery/README.md` documents arriving by a different
+route. Two more merged inactive: one internal-applicants-only board, and one that answered on
+discovery but not on the re-check a human ran before merging, which is the reason that re-check
+exists. `merge_companies.py` reported **0 conflicts and 0 fields filled**, confirming the funnel's
+de-duplication: every board was new to the list, and none of them overlapped a row it already held.
+The run grew the active list by roughly a third.
+
 **Cost: $0.704**, plus $0.096 on the source diagnostic below. Billing is $7/1k requests for the
 first ten results and $1/1k for each result beyond ten, so `numResults=25` costs $0.022/query —
 costing a query at the headline rate alone under-estimates a run by 3.2x.
