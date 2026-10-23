@@ -19,7 +19,7 @@ flowchart LR
 
 ### **→ [Project site](https://amikhno.github.io/job-market-analytics/)**
 
-The design decisions, the rendered docs and all 28 ADRs, and the live dbt lineage DAG. <!-- check:adrs -->
+Live market charts, design decisions, rendered docs and all 29 ADRs, and the dbt lineage DAG. <!-- check:adrs -->
 Rebuilt in CI on every push to main, or locally with `make site` (output in `_site/`). Every number
 on the landing page is read from the dbt manifest, the ADRs and the test suite at build time, and
 the build fails on a broken link.
@@ -57,7 +57,7 @@ docs/        decisions/, v2-plan.md, research/  (ARCHITECTURE.md at repo root)
 .github/     four workflows, split by permission scope — see ARCHITECTURE.md#automation
 ```
 
-Currently 9 ingestion sources, 15 dbt models and 28 ADRs. <!-- check:sources check:dbt_models check:adrs -->
+Currently 9 ingestion sources, 22 dbt models and 29 ADRs. <!-- check:sources check:dbt_models check:adrs -->
 
 ## Quality gates
 

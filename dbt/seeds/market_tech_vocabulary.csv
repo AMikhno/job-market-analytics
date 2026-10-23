@@ -1,0 +1,48 @@
+pattern,label,category
+SQL,SQL,Language
+Python,Python,Language
+Scala,Scala,Language
+Java,Java,Language
+dbt,dbt,Transformation
+Spark,Spark,Processing
+PySpark,Spark,Processing
+Kafka,Kafka,Streaming
+Flink,Flink,Streaming
+Snowflake,Snowflake,Warehouse
+BigQuery,BigQuery,Warehouse
+Redshift,Redshift,Warehouse
+Databricks,Databricks,Lakehouse
+ClickHouse,ClickHouse,Warehouse
+DuckDB,DuckDB,Warehouse
+Postgres,Postgres,Database
+PostgreSQL,Postgres,Database
+Airflow,Airflow,Orchestration
+Dagster,Dagster,Orchestration
+Prefect,Prefect,Orchestration
+Fivetran,Fivetran,Ingestion
+Airbyte,Airbyte,Ingestion
+Looker,Looker,BI
+LookML,Looker,BI
+Tableau,Tableau,BI
+Power BI,Power BI,BI
+PowerBI,Power BI,BI
+Metabase,Metabase,BI
+Excel,Excel,BI
+Terraform,Terraform,Infrastructure
+Docker,Docker,Infrastructure
+Kubernetes,Kubernetes,Infrastructure
+AWS,AWS,Cloud
+GCP,GCP,Cloud
+Google Cloud,GCP,Cloud
+Azure,Azure,Cloud
+Git,Git,Practice
+CI/CD,CI/CD,Practice
+data modeling,Data modeling,Practice
+data modelling,Data modeling,Practice
+dimensional modeling,Data modeling,Practice
+data contracts,Data contracts,Practice
+A/B testing,Experimentation,Practice
+experimentation,Experimentation,Practice
+LLM,LLMs,AI
+LLMs,LLMs,AI
+machine learning,Machine learning,AI

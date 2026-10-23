@@ -5,12 +5,14 @@ on the way to the site, and a link re-pointed wrongly does not fail anything -- 
 publishes a page that 404s. So each path a link can take is pinned here.
 """
 
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from scripts import build_site as bs
+from shared.models import MarketSnapshot
 
 REPO_FILES = {
     "ARCHITECTURE.md",
@@ -386,3 +388,117 @@ def test_broken_local_links(tmp_path: Path) -> None:
         '<a href="lineage/#!/model/m">missing</a><a href="gone.html">missing</a>'
     )
     assert bs.broken_local_links(tmp_path, "index.html") == ["lineage/#!/model/m", "gone.html"]
+
+
+# ------------------------------------------------------------------- market
+
+
+def _snapshot(**overrides: Any) -> MarketSnapshot:
+    fields: dict[str, Any] = {
+        "generated_at": datetime(2026, 10, 13, 12, 0, tzinfo=UTC),
+        "min_companies": 5,
+        "daily": [
+            {
+                "observed_on": date(2026, 10, 1),
+                "boards": 60,
+                "open_postings": 900,
+                "new_postings": 0,
+                "companies": 50,
+            },
+            {
+                "observed_on": date(2026, 10, 7),
+                "boards": 60,
+                "open_postings": 950,
+                "new_postings": 30,
+                "companies": 51,
+            },
+            {
+                "observed_on": date(2026, 10, 13),
+                "boards": 80,
+                "open_postings": 1000,
+                "new_postings": 20,
+                "companies": 52,
+            },
+        ],
+        "tenure": [
+            {
+                "days_on_board": 3,
+                "at_risk": 100,
+                "at_risk_companies": 40,
+                "closed": 30,
+                "survival": 0.7,
+            },
+            {
+                "days_on_board": 9,
+                "at_risk": 60,
+                "at_risk_companies": 30,
+                "closed": 20,
+                "survival": 0.47,
+            },
+        ],
+        "roles": [
+            {
+                "role_family": "Other",
+                "open_postings": 800,
+                "companies": 50,
+                "remote_postings": 1,
+                "hybrid_postings": 1,
+                "onsite_postings": 1,
+                "unstated_postings": 797,
+            },
+            {
+                "role_family": "Analytics <x>",
+                "open_postings": 40,
+                "companies": 9,
+                "remote_postings": 10,
+                "hybrid_postings": 2,
+                "onsite_postings": 0,
+                "unstated_postings": 28,
+            },
+        ],
+        "tech": [
+            {
+                "tech": "dbt",
+                "category": "Transformation",
+                "postings": 20,
+                "companies": 9,
+                "share_of_postings": 0.25,
+            }
+        ],
+        "ats": [{"ats": "greenhouse", "open_postings": 700, "boards": 30}],
+    } | overrides
+    return MarketSnapshot.model_validate(fields)
+
+
+def test_median_days_up_is_where_the_curve_reaches_one_half() -> None:
+    assert bs.median_days_up(_snapshot().tenure) == 9
+    assert bs.median_days_up(_snapshot(tenure=[]).tenure) is None
+
+
+def test_render_market_without_a_snapshot_says_so() -> None:
+    assert "omitted" in bs.render_market(None)
+
+
+def test_render_market_tiles_figures_and_escaping() -> None:
+    out = bs.render_market(_snapshot())
+    assert 'tile-n">1,000<' in out  # latest open postings
+    assert 'tile-n">50<' in out  # new in the 7 days Oct 7-13 inclusive; Oct 1 is outside
+    assert 'tile-n">9 days<' in out and "median 9 days" in out
+    assert out.count('<figure class="viz">') == 5
+    assert "Analytics &lt;x&gt;" in out and "<x>" not in out
+    # "Other" is in the table view but not drawn as a bar among the data families
+    assert out.count(">Other<") == 1
+    assert "fewer than 5 companies" in out
+
+
+def test_render_market_before_any_posting_has_closed() -> None:
+    out = bs.render_market(_snapshot(tenure=[]))
+    assert "Not enough closed postings yet" in out and 'tile-n">—<' in out
+
+
+def test_load_market_round_trips_and_tolerates_absence(tmp_path: Path) -> None:
+    path = tmp_path / "market.json"
+    assert bs.load_market(path) is None
+    path.write_text(_snapshot().model_dump_json())
+    snapshot = bs.load_market(path)
+    assert snapshot is not None and snapshot.daily[-1].open_postings == 1000

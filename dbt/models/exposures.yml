@@ -17,3 +17,22 @@ exposures:
       - ref('fct_job_postings')
     owner:
       name: Ana Mikhno
+
+  - name: project_site
+    label: Project site market charts
+    type: dashboard
+    maturity: medium
+    url: https://amikhno.github.io/job-market-analytics/
+    description: >
+      The public site's market section. deliver/market_snapshot.py exports these
+      aggregates after each prod run, re-checking the company floor, and the
+      Docs workflow renders them as charts (ADR-0029). Built upstream of the
+      location filter, so it describes the tracked boards, not the search.
+    depends_on:
+      - ref('agg_market_daily')
+      - ref('agg_market_tenure')
+      - ref('agg_market_roles')
+      - ref('agg_market_tech')
+      - ref('agg_market_ats')
+    owner:
+      name: Ana Mikhno

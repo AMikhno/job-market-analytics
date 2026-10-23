@@ -73,6 +73,10 @@ SKIP = {
     "solace",
     "later",
     "owner",
+    # Technologies in the public market vocabulary (dbt/seeds/market_tech_vocabulary.csv)
+    "databricks",
+    "clickhouse",
+    "docker",
 }
 MIN_LEN = 4
 

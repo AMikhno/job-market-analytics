@@ -28,6 +28,9 @@ NOTES.local.md
 # config/seeds/*.example.csv. seeds.yml stays tracked -- the schema tests are
 # the mechanism, and the mechanism is public.
 dbt/seeds/*.csv
+# ...except the market vocabularies (ADR-0029): a generic data-stack term list and
+# role-family patterns, describing the market rather than anyone's preferences.
+!dbt/seeds/market_*.csv
 *.key
 *.pem
 **/keyfile*.json
@@ -57,6 +60,7 @@ htmlcov/
 # Pages site: staged docs + assembled output (`make site`)
 /build/
 /_site/
+/market.json
 
 # dbt (dbt/profiles.yml is committed — it is env-var driven, no secret values)
 dbt/target/

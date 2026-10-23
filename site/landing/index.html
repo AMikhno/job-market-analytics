@@ -14,6 +14,7 @@
   <header class="topbar">
     <a class="brand" href="./"><span class="prompt">~/</span>job-market-analytics</a>
     <nav>
+      <a href="#market">hiring</a>
       <a href="docs/">docs</a>
       <a href="lineage/">lineage</a>
       <a href="docs/decisions/">decisions</a>
@@ -45,8 +46,18 @@
       ${stat_cards}
     </section>
 
+    <section class="block" id="market">
+      <h2><span class="sec-n">01</span>Hiring at the tracked companies <span class="sec-sub">rebuilt after every scheduled run</span></h2>
+      <p class="sec-lede">
+        Not the whole job market: these figures describe a curated list of company boards that
+        the pipeline reads, and only those. They are the gold-zone <code>agg_market_*</code>
+        models, exported by the production run and drawn when this page was built.
+      </p>
+      ${market}
+    </section>
+
     <section class="block" id="lineage">
-      <h2><span class="sec-n">01</span>From API to inbox</h2>
+      <h2><span class="sec-n">02</span>From API to inbox</h2>
       <p class="sec-lede">
         The dbt DAG, generated from <code>manifest.json</code> when this page was built. Click any
         node to open it in dbt docs. The AI models in silver are typed stubs on this DuckDB build,
@@ -58,7 +69,7 @@
     </section>
 
     <section class="block" id="decisions">
-      <h2><span class="sec-n">02</span>Decisions that shaped it</h2>
+      <h2><span class="sec-n">03</span>Decisions that shaped it</h2>
       <div class="cards">
         <article class="card">
           <h3>Medallion, dbt-native</h3>
@@ -108,7 +119,7 @@
 
     <section class="block split" id="loud">
       <div>
-        <h2><span class="sec-n">03</span>Built to fail loudly</h2>
+        <h2><span class="sec-n">04</span>Built to fail loudly</h2>
         <p>A scheduled pipeline's worst failures produce no signal at all. An invalid workflow file
           never starts, so nothing emails. A suspended schedule is silent. A run that lands almost
           nothing still exits zero. Each of these has its own gate here: workflow linting, a
@@ -116,7 +127,7 @@
         <a class="more" href="docs/architecture/#failures-that-look-like-health">The failures that look like health →</a>
       </div>
       <div>
-        <h2><span class="sec-n">04</span>Even the prose is tested</h2>
+        <h2><span class="sec-n">05</span>Even the prose is tested</h2>
         <p>Docs drift silently: a file is renamed and the sentence pointing at it still reads fine.
           A checker in CI verifies every path, make target, model name, heading anchor and ADR
           number the docs mention, and lets a sentence assert a count against the code&nbsp;— so a
@@ -126,7 +137,7 @@
     </section>
 
     <section class="block callout" id="unproven">
-      <h2><span class="sec-n">05</span>Honest about what is unproven</h2>
+      <h2><span class="sec-n">06</span>Honest about what is unproven</h2>
       <p>Two rankings run side by side&nbsp;— an LLM fit score and embedding similarity&nbsp;—
         because choosing between them without measuring is how a project ends up carrying both
         forever. Neither is trusted until precision@k over human labels says which one wins, and
@@ -136,7 +147,7 @@
     </section>
 
     <section class="block" id="log">
-      <h2><span class="sec-n">06</span>Decision log <span class="sec-sub">${adr_count} records, newest first</span></h2>
+      <h2><span class="sec-n">07</span>Decision log <span class="sec-sub">${adr_count} records, newest first</span></h2>
       <div class="adrs">
         ${decision_log}
       </div>

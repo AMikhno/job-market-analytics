@@ -53,6 +53,22 @@
     timestamp_sub({{ ts }}, interval {{ hours }} hour)
 {%- endmacro %}
 
+{# Whole calendar days from one timestamp to a later one. Not dbt.datediff: on
+   DuckDB it expands to a long arithmetic expression, and the two warehouses
+   order DATE_DIFF's arguments oppositely, which is exactly the kind of
+   difference that belongs in one dispatched place. #}
+{% macro days_between(start_ts, end_ts) -%}
+    {{ return(adapter.dispatch('days_between', 'job_pipeline')(start_ts, end_ts)) }}
+{%- endmacro %}
+
+{% macro default__days_between(start_ts, end_ts) -%}
+    date_diff('day', cast({{ start_ts }} as date), cast({{ end_ts }} as date))
+{%- endmacro %}
+
+{% macro bigquery__days_between(start_ts, end_ts) -%}
+    date_diff(cast({{ end_ts }} as date), cast({{ start_ts }} as date), day)
+{%- endmacro %}
+
 {# Strip HTML tags for keyword matching. DuckDB's regexp_replace replaces only the
    first match without the 'g' flag; BigQuery's is global by default. #}
 {% macro strip_html(column) -%}

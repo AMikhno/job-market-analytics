@@ -1,0 +1,21 @@
+pattern,family,priority
+analytics engineer,Analytics engineering,1
+analytics engineering,Analytics engineering,1
+data engineer,Data engineering,2
+data engineering,Data engineering,2
+data platform engineer,Data engineering,2
+machine learning engineer,ML engineering,3
+ML engineer,ML engineering,3
+MLOps,ML engineering,3
+data scientist,Data science,4
+data science,Data science,4
+business intelligence,Business intelligence,5
+BI analyst,Business intelligence,5
+BI developer,Business intelligence,5
+BI engineer,Business intelligence,5
+data analyst,Analytics,6
+product analyst,Analytics,6
+analytics,Analytics,7
+data architect,Data architecture,8
+data governance,Data governance,9
+data quality,Data governance,9

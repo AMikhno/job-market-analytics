@@ -20,7 +20,8 @@ Open the graph with the lineage button at the bottom right, or start from a mode
 | bronze | `stg_*__jobs` | Cast and standardize one source each (views) |
 | silver | `int_jobs__unioned`, `silver_jobs`, `int_jobs_*` | Union, identity and change hashes, dedup, lifecycle, the location filter and soft ranking signals; the V2 AI models |
 | gold | `fct_job_postings` | One row per *live* posting, with its link and ranking columns |
-| exposure | `email_digest` | Postings first seen since the last digest, ordered by score |
+| gold | `agg_market_*` | The site's market charts: every tracked board, upstream of the location filter, any figure under five companies withheld |
+| exposure | `email_digest`, `project_site` | The digest of new postings; the site's market section |
 
 ## What this build is
 

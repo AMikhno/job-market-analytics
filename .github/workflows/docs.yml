@@ -1,18 +1,28 @@
 name: Docs
 
-# Publish the Pages site on every push to main: the landing page, the rendered
+# Publish the Pages site: the landing page with its market charts, the rendered
 # docs and the dbt lineage (`make site`, see scripts/build_site.py). DuckDB
 # target, no secrets — same fork-safe posture as ci.yml. One-time setup: repo
 # Settings → Pages → Source: GitHub Actions. Actions SHA-pinned (see ingest.yml
 # for rationale).
+#
+# Two triggers: a push to main (the code or docs changed), and a completed Ingest
+# run (the market data changed). Ingest exports the aggregates as an artifact
+# and this workflow draws them, so the warehouse credentials and the Pages
+# permission never sit in the same workflow (ADR-0029).
 on:
   push:
+    branches: [main]
+  workflow_run:
+    workflows: [Ingest]
+    types: [completed]
     branches: [main]
 
 permissions:
   contents: read
   pages: write
   id-token: write   # deploy-pages OIDC; unrelated to the WIF use in ingest.yml
+  actions: read     # download the market-snapshot artifact from an Ingest run
 
 concurrency:
   group: pages
@@ -20,6 +30,8 @@ concurrency:
 
 jobs:
   build:
+    # A failed Ingest run exported nothing new; the last good site stays up.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
@@ -27,6 +39,28 @@ jobs:
           fetch-depth: 0        # the decision log dates each ADR from the commit that added it
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync --extra dev --locked
+
+      # After an Ingest run, its own snapshot -- which must exist, because the
+      # export is a step of the run that just succeeded; absence is a bug and
+      # fails this build. After a push, the latest successful run's snapshot; if
+      # none has been kept (artifacts expire), the site still publishes without
+      # charts and says so, because a docs fix should not wait on the data.
+      - name: Fetch the market snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          INGEST_RUN: ${{ github.event.workflow_run.id }}
+        run: |
+          if [ "$EVENT" = "workflow_run" ]; then
+            gh run download "$INGEST_RUN" --repo "$GITHUB_REPOSITORY" --name market-snapshot --dir .
+            exit 0
+          fi
+          RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ingest.yml --branch main \
+                --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -z "$RUN" ] || ! gh run download "$RUN" --repo "$GITHUB_REPOSITORY" \
+                --name market-snapshot --dir .; then
+            echo "::warning::no market snapshot available; the site publishes without charts"
+          fi
 
       - name: Build the site (landing + docs + dbt lineage, DuckDB target)
         run: |

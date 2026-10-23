@@ -162,6 +162,29 @@ jobs:
           DIGEST_TO: ${{ secrets.DIGEST_TO }}
         run: make deliver
 
+      # The market charts on the public site (ADR-0029). This workflow is the only
+      # one that can read the warehouse, and the Docs workflow is the only one that
+      # can publish, so the aggregates cross between them as an artifact: neither
+      # gains the other's permissions. Placed after the digest so a failure here
+      # cannot cost the run its email, and before the dead-man's ping so it still
+      # fails the run loudly. The export re-checks the company floor and refuses
+      # to write if any row is below it.
+      - name: Export the market snapshot for the project site
+        env:
+          PIPELINE_TARGET: prod
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+          BQ_DATASET: jobs
+          BQ_LOCATION: us-central1
+        run: make market-snapshot
+
+      - name: Upload the market snapshot
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: market-snapshot
+          path: market.json
+          if-no-files-found: error
+          retention-days: 14
+
       # Dead-man's switch. GitHub suspends scheduled workflows after ~60 days of
       # repo inactivity, and a suspended workflow sends no failed-run email — so
       # "silently stopped" and "healthy" look identical from here. This pings
