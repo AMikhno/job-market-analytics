@@ -19,6 +19,8 @@ homepage = "https://amikhno.github.io/job-market-analytics/"
 [project.theme]
 # System fonts: no third-party font request, and the same faces as the landing page.
 font = false
+# Copied in from site/landing/assets/ by the build, so the two halves share one file.
+favicon = "assets/favicon.svg"
 features = [
   "navigation.instant",
   "navigation.sections",

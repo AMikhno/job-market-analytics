@@ -5,6 +5,8 @@ on the way to the site, and a link re-pointed wrongly does not fail anything -- 
 publishes a page that 404s. So each path a link can take is pinned here.
 """
 
+import re
+import struct
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -248,6 +250,7 @@ def _repo(root: Path) -> None:
         "README.md": "# not staged\n",
         "site/docs/index.md": "# Home\n\n[arch](ARCHITECTURE.md)\n",
         "site/docs/assets/extra.css": "body {}\n",
+        "site/landing/assets/favicon.svg": "<svg/>\n",
         "site/zensical.toml": "[project]\n",
     }
     for rel, text in files.items():
@@ -268,6 +271,7 @@ def test_stage_docs_writes_a_complete_zensical_project(tmp_path: Path) -> None:
     assert pages == 5  # three staged files, the home page, the generated decision index
     assert not (dest / "stale").exists()
     assert (dest / "zensical.toml").exists() and (docs / "assets" / "extra.css").exists()
+    assert (docs / "assets" / "favicon.svg").exists()  # one favicon, shared with the landing
     assert not (docs / "README.md").exists()
     assert "[ADR-0001](decisions/0001-first.md)" in (docs / "architecture.md").read_text()
     assert "[arch](architecture.md)" in (docs / "v2-plan.md").read_text()
@@ -388,6 +392,20 @@ def test_broken_local_links(tmp_path: Path) -> None:
         '<a href="lineage/#!/model/m">missing</a><a href="gone.html">missing</a>'
     )
     assert bs.broken_local_links(tmp_path, "index.html") == ["lineage/#!/model/m", "gone.html"]
+
+
+def test_link_preview_tags_point_at_real_assets() -> None:
+    """Crawlers fetch og:image once and cache it, so a wrong size or a dead URL
+    shows as a blank card on every share until the cache expires."""
+    template = (bs.SITE_SRC / "landing" / "index.html").read_text()
+    image = re.search(r'property="og:image" content="([^"]+)"', template)
+    assert image and image.group(1).startswith("https://")
+    png = bs.SITE_SRC / "landing" / "assets" / image.group(1).rsplit("/", 1)[1]
+    header = png.read_bytes()[:24]
+    assert header[:8] == b"\x89PNG\r\n\x1a\n"
+    assert struct.unpack(">II", header[16:24]) == (1200, 630)
+    assert 'content="1200"' in template and 'content="630"' in template
+    assert (bs.SITE_SRC / "landing" / "assets" / "favicon.svg").exists()
 
 
 # ------------------------------------------------------------------- market

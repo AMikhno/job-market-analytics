@@ -1,0 +1,44 @@
+<!doctype html>
+<!-- Source of site/landing/assets/og.png, the link-preview image (`make og-image`).
+     No numbers on purpose: the PNG is committed, and a count in it would rot. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    background:
+      radial-gradient(700px 420px at 85% 0%, rgba(94, 234, 212, 0.14), transparent 70%),
+      radial-gradient(rgba(148, 163, 184, 0.08) 1.2px, transparent 1.2px) 0 0 / 26px 26px,
+      #0a0d12;
+    color: #d8dee6;
+    font-family: system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+    box-sizing: border-box;
+    padding: 72px 80px;
+    display: flex;
+    flex-direction: column;
+  }
+  .brand { font: 600 26px ui-monospace, "SF Mono", Menlo, monospace; color: #f1f5f9; }
+  .brand span { color: #5eead4; }
+  h1 { font-size: 72px; line-height: 1.05; letter-spacing: -0.03em; margin: 56px 0 0; color: #f1f5f9; }
+  h1 em { font-style: normal; color: #5eead4; }
+  .zones { display: flex; gap: 14px; margin-top: auto; align-items: center;
+           font: 600 22px ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0.06em; }
+  .zone { padding: 10px 18px; border-radius: 8px; background: #141b24; border: 1px solid #2a3542;
+          border-left: 5px solid var(--z); color: var(--z); text-transform: uppercase; }
+  .arrow { color: #2a3542; }
+  .stack { margin-left: auto; color: #8592a3; font: 400 24px system-ui, sans-serif; }
+</style>
+</head>
+<body>
+  <div class="brand"><span>~/</span>job-market-analytics</div>
+  <h1>Job postings in.<br><em>Tested, ranked data out.</em></h1>
+  <div class="zones">
+    <div class="zone" style="--z:#94a3b8">raw</div><span class="arrow">→</span>
+    <div class="zone" style="--z:#d6935a">bronze</div><span class="arrow">→</span>
+    <div class="zone" style="--z:#c9d2dc">silver</div><span class="arrow">→</span>
+    <div class="zone" style="--z:#eac45c">gold</div>
+    <div class="stack">dbt · BigQuery · DuckDB · Python</div>
+  </div>
+</body>
+</html>
