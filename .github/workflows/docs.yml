@@ -1,9 +1,10 @@
 name: Docs
 
-# Publish dbt docs (lineage DAG + column docs, exposures included) to GitHub
-# Pages on every push to main. DuckDB target, no secrets — same fork-safe
-# posture as ci.yml. One-time setup: repo Settings → Pages → Source: GitHub
-# Actions. Actions SHA-pinned (see ingest.yml for rationale).
+# Publish the Pages site on every push to main: the landing page, the rendered
+# docs and the dbt lineage (`make site`, see scripts/build_site.py). DuckDB
+# target, no secrets — same fork-safe posture as ci.yml. One-time setup: repo
+# Settings → Pages → Source: GitHub Actions. Actions SHA-pinned (see ingest.yml
+# for rationale).
 on:
   push:
     branches: [main]
@@ -22,21 +23,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          fetch-depth: 0        # the decision log dates each ADR from the commit that added it
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      - run: uv sync --extra dev
+      - run: uv sync --extra dev --locked
 
-      - name: Generate static dbt docs (DuckDB target)
+      - name: Build the site (landing + docs + dbt lineage, DuckDB target)
         run: |
           make ensure-raw          # empty raw tables so the project compiles
-          make dbt-docs            # dbt deps + docs generate --static
-
-      - name: Package site
-        run: |
-          mkdir -p _site
-          cp dbt/target/index.html _site/
-          cp dbt/target/catalog.json _site/
-          cp dbt/target/manifest.json _site/
-          
+          make site                # dbt docs generate, then scripts/build_site.py -> _site/
 
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

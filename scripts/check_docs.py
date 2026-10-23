@@ -41,6 +41,7 @@ TOP_LEVEL_DIRS = {
     "tools",
     "config",
     "scripts",
+    "site",
 }
 KNOWN_SUFFIXES = {
     ".py",

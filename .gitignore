@@ -54,6 +54,10 @@ __pycache__/
 htmlcov/
 .coverage
 
+# Pages site: staged docs + assembled output (`make site`)
+/build/
+/_site/
+
 # dbt (dbt/profiles.yml is committed — it is env-var driven, no secret values)
 dbt/target/
 dbt/dbt_packages/

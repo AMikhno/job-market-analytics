@@ -1,0 +1,151 @@
+<!doctype html>
+<!-- Template: scripts/build_site.py fills every placeholder (string.Template). Numbers
+     are never typed here -- each is read from the manifest, the ADRs or the test suite. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>job-market-analytics · an analytics engineering project</title>
+  <meta name="description" content="A production dbt pipeline over public job-board feeds: dual-warehouse, tested end to end, with every design decision on record.">
+  <meta name="color-scheme" content="dark">
+  <link rel="stylesheet" href="assets/landing.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./"><span class="prompt">~/</span>job-market-analytics</a>
+    <nav>
+      <a href="docs/">docs</a>
+      <a href="lineage/">lineage</a>
+      <a href="docs/decisions/">decisions</a>
+      <a class="gh" href="https://github.com/AMikhno/job-market-analytics">github ↗</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-text">
+        <p class="eyebrow">analytics engineering · portfolio project</p>
+        <h1>Job postings in.<br><span class="accent">Tested, ranked data out.</span></h1>
+        <p class="lede">
+          A scheduled pipeline that pulls every public, keyless ATS feed into BigQuery, models it
+          through a bronze&nbsp;→&nbsp;silver&nbsp;→&nbsp;gold dbt project that runs identically on
+          DuckDB, and delivers a ranked digest of what is new. Every invariant it relies on is
+          enforced by a check that fails&nbsp;— not by intent.
+        </p>
+        <div class="ctas">
+          <a class="btn btn-primary" href="lineage/">Explore the lineage</a>
+          <a class="btn" href="docs/architecture/">Read the architecture</a>
+          <a class="btn btn-ghost" href="https://github.com/AMikhno/job-market-analytics">View the code ↗</a>
+        </div>
+      </div>
+      <pre class="terminal" aria-label="Build facts"><span class="t-dots" aria-hidden="true"><i></i><i></i><i></i></span>${terminal}</pre>
+    </section>
+
+    <section class="stats" aria-label="Project in numbers">
+      ${stat_cards}
+    </section>
+
+    <section class="block" id="lineage">
+      <h2><span class="sec-n">01</span>From API to inbox</h2>
+      <p class="sec-lede">
+        The dbt DAG, generated from <code>manifest.json</code> when this page was built. Click any
+        node to open it in dbt docs. The AI models in silver are typed stubs on this DuckDB build,
+        because the functions they call exist only in BigQuery.
+      </p>
+      <div class="lineage">
+        ${lineage}
+      </div>
+    </section>
+
+    <section class="block" id="decisions">
+      <h2><span class="sec-n">02</span>Decisions that shaped it</h2>
+      <div class="cards">
+        <article class="card">
+          <h3>Medallion, dbt-native</h3>
+          <p>Three zones map one-to-one onto staging → intermediate → marts, each in its own
+            BigQuery dataset. Raw is append-only and every transform rebuilds from it, so a rule
+            change applies retroactively with zero migrations.</p>
+          <p class="chips"><a href="docs/decisions/0010-three-zones-not-five-layers/">ADR-0010</a><a href="docs/decisions/0014-per-zone-bigquery-datasets/">ADR-0014</a></p>
+        </article>
+        <article class="card">
+          <h3>One SQL codebase, two warehouses</h3>
+          <p>Every model runs on DuckDB for development and CI&nbsp;— with no secrets&nbsp;— and on
+            BigQuery in production. Dialect differences live in <code>adapter.dispatch</code>
+            macros, including the prod-only type traps that naive cross-database macros hide.</p>
+          <p class="chips"><a href="docs/decisions/0002-dual-target-duckdb-bigquery/">ADR-0002</a></p>
+        </article>
+        <article class="card">
+          <h3>Lifecycle, not snapshots</h3>
+          <p>The source APIs have no date filters, so novelty is derived, never requested:
+            <code>first_seen_at</code>, <code>last_seen_at</code> and <code>is_active</code> come
+            from the append-only landing, and a staleness rule ages out a dropped board instead of
+            leaving zombie postings.</p>
+          <p class="chips"><a href="docs/decisions/0016-inactive-postings-retention/">ADR-0016</a><a href="docs/decisions/0008-job-key-vs-content-hash/">ADR-0008</a></p>
+        </article>
+        <article class="card">
+          <h3>Rules are data</h3>
+          <p>Locations, technologies and titles are dbt seeds, word-boundary matched and
+            regex-safe (<code>C++</code> and <code>.NET</code> work). Only location removes a row;
+            everything else ranks, so recall stays high until a model can judge fit.</p>
+          <p class="chips"><a href="docs/decisions/0015-soft-desired-signals/">ADR-0015</a><a href="docs/decisions/0023-deal-breaker-as-soft-signal/">ADR-0023</a><a href="docs/decisions/0028-seeds-are-private-config/">ADR-0028</a></p>
+        </article>
+        <article class="card">
+          <h3>Security is structural</h3>
+          <p>No secret value exists anywhere in the repo. BigQuery auth is Workload Identity
+            Federation, so there is no key file to leak; workflows are split by permission scope,
+            actions are SHA-pinned, and <code>gitleaks</code> backstops every commit.</p>
+          <p class="chips"><a href="docs/decisions/0007-secrets-boundary/">ADR-0007</a><a href="docs/decisions/0011-private-company-list/">ADR-0011</a></p>
+        </article>
+        <article class="card">
+          <h3>AI that orders, never filters</h3>
+          <p>LLM extraction and scoring run as incremental dbt models against BigQuery's in-SQL AI
+            functions, keyed on a content hash so each text is billed once. The score sorts
+            delivery and can never drop a posting: if it fails, the V1 result still ships.</p>
+          <p class="chips"><a href="docs/decisions/0004-llm-in-dbt-pattern-c/">ADR-0004</a><a href="docs/decisions/0020-v2-scope-relevance-only/">ADR-0020</a><a href="docs/decisions/0024-single-match-score-orders-the-digest/">ADR-0024</a></p>
+        </article>
+      </div>
+    </section>
+
+    <section class="block split" id="loud">
+      <div>
+        <h2><span class="sec-n">03</span>Built to fail loudly</h2>
+        <p>A scheduled pipeline's worst failures produce no signal at all. An invalid workflow file
+          never starts, so nothing emails. A suspended schedule is silent. A run that lands almost
+          nothing still exits zero. Each of these has its own gate here: workflow linting, a
+          dead-man's switch, volume warnings and a source-freshness check.</p>
+        <a class="more" href="docs/architecture/#failures-that-look-like-health">The failures that look like health →</a>
+      </div>
+      <div>
+        <h2><span class="sec-n">04</span>Even the prose is tested</h2>
+        <p>Docs drift silently: a file is renamed and the sentence pointing at it still reads fine.
+          A checker in CI verifies every path, make target, model name, heading anchor and ADR
+          number the docs mention, and lets a sentence assert a count against the code&nbsp;— so a
+          number cannot rot under an edit.</p>
+        <a class="more" href="https://github.com/AMikhno/job-market-analytics#quality-gates">All quality gates ↗</a>
+      </div>
+    </section>
+
+    <section class="block callout" id="unproven">
+      <h2><span class="sec-n">05</span>Honest about what is unproven</h2>
+      <p>Two rankings run side by side&nbsp;— an LLM fit score and embedding similarity&nbsp;—
+        because choosing between them without measuring is how a project ends up carrying both
+        forever. Neither is trusted until precision@k over human labels says which one wins, and
+        labels from an LLM cannot settle it: grading a scorer against its predecessor rewards
+        repeating the predecessor's mistakes.</p>
+      <a class="more" href="docs/architecture/#v2">How V2 works →</a>
+    </section>
+
+    <section class="block" id="log">
+      <h2><span class="sec-n">06</span>Decision log <span class="sec-sub">${adr_count} records, newest first</span></h2>
+      <div class="adrs">
+        ${decision_log}
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>Built by Ana Mikhno · <a href="https://github.com/AMikhno/job-market-analytics">source on GitHub</a></span>
+    <span class="build">generated from <a href="${commit_url}">${commit}</a> on ${built_on} by <code>scripts/build_site.py</code></span>
+  </footer>
+</body>
+</html>
