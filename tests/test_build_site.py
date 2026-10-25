@@ -386,6 +386,13 @@ def test_the_real_landing_template_renders() -> None:
     assert "${" not in out
 
 
+def test_the_phone_menu_carries_the_same_links_as_the_top_bar() -> None:
+    """The menu repeats the nav's markup, so a link added to one can miss the other."""
+    template = (bs.SITE_SRC / "landing" / "index.html").read_text()
+    bar, menu = re.findall(r'<nav aria-label="Site">(.*?)</nav>', template, re.S)
+    assert re.findall(r'href="([^"]+)"', bar) == re.findall(r'href="([^"]+)"', menu)
+
+
 def test_broken_local_links(tmp_path: Path) -> None:
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "index.html").write_text('<h2 id="x">X</h2>')
@@ -519,6 +526,14 @@ def test_render_market_tiles_figures_and_escaping() -> None:
     # "Other" is in the table view but not drawn as a bar among the data families
     assert out.count(">Other<") == 1
     assert "fewer than 5 companies" in out
+
+
+def test_render_market_stacks_short_charts_over_long_ones() -> None:
+    out = bs.render_market(_snapshot())
+    first, left, right = out.split('<div class="viz-col">')
+    assert "Open postings per tracked board" in first
+    assert "How long a posting stays up" in left and "Data roles by family" in left
+    assert "What data roles ask for" in right and "Where the postings come from" in right
 
 
 def test_render_market_draws_every_chart_for_phones_too() -> None:

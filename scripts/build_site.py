@@ -784,8 +784,14 @@ def render_market(snapshot: MarketSnapshot | None) -> str:
         f"Snapshot taken "
         f"{snapshot.generated_at:%Y-%m-%d %H:%M} UTC."
     )
+    # Two stacks, not grid rows: a row is as tall as its tallest chart, so the
+    # short tenure curve beside the long tech list left a hole. Stacked, each
+    # short chart sits over a long one and the columns end near each other.
+    daily_fig, tenure_fig, tech_fig, roles_fig, ats_fig = figures
     return (
-        f'<div class="tiles">{tiles}</div><div class="viz-grid">{"".join(figures)}</div>'
+        f'<div class="tiles">{tiles}</div><div class="viz-grid">{daily_fig}'
+        f'<div class="viz-col">{tenure_fig}{roles_fig}</div>'
+        f'<div class="viz-col">{tech_fig}{ats_fig}</div></div>'
         f'<p class="viz-note">{html.escape(note)}</p>'
     )
 

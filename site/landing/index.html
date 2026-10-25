@@ -23,13 +23,24 @@
 <body>
   <header class="topbar">
     <a class="brand" href="./"><span class="prompt">~/</span>job-market-analytics</a>
-    <nav>
+    <nav aria-label="Site">
       <a href="#market">hiring</a>
       <a href="docs/">docs</a>
       <a href="lineage/">lineage</a>
       <a href="docs/decisions/">decisions</a>
-      <a class="gh" href="https://github.com/AMikhno/job-market-analytics">github ↗</a>
+      <a href="https://github.com/AMikhno/job-market-analytics">github ↗</a>
     </nav>
+    <!-- The same links folded into a dropdown on phones; <details> needs no script. -->
+    <details class="menu">
+      <summary>menu</summary>
+      <nav aria-label="Site">
+        <a href="#market">hiring</a>
+        <a href="docs/">docs</a>
+        <a href="lineage/">lineage</a>
+        <a href="docs/decisions/">decisions</a>
+        <a href="https://github.com/AMikhno/job-market-analytics">github ↗</a>
+      </nav>
+    </details>
   </header>
 
   <main>
