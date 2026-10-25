@@ -102,6 +102,13 @@ def test_dot_is_a_closed_two_arc_path_centred_on_the_point() -> None:
     assert dot.count(" a4,4 0 1,0 ") == 2 and dot.endswith('Z"/>')
 
 
+def test_responsive_draws_the_chart_at_panel_and_phone_width() -> None:
+    out = charts.responsive(lambda w: charts.line_chart(_points(), title="t", width=w), charts.FULL)
+    wide, narrow = out.split('<div class="chart-narrow">')
+    assert wide.startswith('<div class="chart-wide">') and 'viewBox="0 0 940 260"' in wide
+    assert f'viewBox="0 0 {charts.NARROW} 260"' in narrow
+
+
 def test_table_view_escapes_cells() -> None:
     out = charts.table(["A"], [["<x>"]])
     assert "<details" in out and "<td>&lt;x&gt;</td>" in out

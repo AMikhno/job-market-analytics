@@ -135,7 +135,8 @@ h1 {
   box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(94, 234, 212, 0.04);
   font: 0.84rem/1.85 var(--mono);
   color: var(--text);
-  white-space: pre-wrap;
+  /* A wrapped row would land its tail under the key column; scroll instead. */
+  white-space: pre;
   overflow-x: auto;
 }
 .t-dots { position: absolute; top: 0.9rem; left: 1rem; display: flex; gap: 6px; }
@@ -166,6 +167,8 @@ h1 {
 
 /* ---- sections ---- */
 .block { padding: 5rem 0 0; }
+/* Keeps a jumped-to heading clear of the sticky top bar. */
+section[id] { scroll-margin-top: 3.5rem; }
 h2 {
   display: flex;
   align-items: baseline;
@@ -342,6 +345,7 @@ h2 {
 .viz figcaption h3 { margin: 0; color: var(--bright); font-size: 1rem; }
 .viz figcaption p { margin: 0.15rem 0 0.9rem; color: var(--dim); font-size: 0.84rem; }
 .chart { display: block; width: 100%; height: auto; overflow: visible; }
+.chart-narrow { display: none; }
 .chart .grid { stroke: var(--line); stroke-width: 1; }
 .chart .guide { stroke: var(--line-2); stroke-width: 1; }
 .chart .tick { fill: var(--dim); font: 11px var(--mono); font-variant-numeric: tabular-nums; }
@@ -385,6 +389,8 @@ h2 {
   .hero { grid-template-columns: 1fr; padding-top: 3.5rem; }
   .stats { grid-template-columns: repeat(2, 1fr); }
   .stat { border-bottom: 1px solid var(--line); }
+  .stat:nth-child(even) { border-right: 0; }
+  .stat:nth-child(odd):last-child { grid-column: 1 / -1; border-bottom: 0; }
   .cards { grid-template-columns: 1fr 1fr; }
   .adrs { grid-template-columns: 1fr; }
   .split { grid-template-columns: 1fr; gap: 0; }
@@ -398,6 +404,8 @@ h2 {
   .topbar nav a:not(.gh) { display: none; }
   .callout { padding: 1.6rem; }
   .versus { grid-template-columns: 1fr; }
+  .chart-wide { display: none; }
+  .chart-narrow { display: block; }
   .adr { grid-template-columns: 2.6rem minmax(0, 1fr); }
   .adr-meta { grid-column: 2; }
 }

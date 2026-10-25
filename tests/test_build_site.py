@@ -366,6 +366,10 @@ def test_render_landing_fills_and_escapes() -> None:
     assert "<code>dbt</code> &amp; &lt;b&gt;" in out
     assert 'href="lineage/#!/model/model.proj.fct_y"' in out
     assert 'href="docs/decisions/0001-first/"' in out
+    # Lineage nodes and ADR titles are truncated with an ellipsis; hover shows them whole.
+    assert 'title="fct_y · table">fct_y</a>' in out
+    assert 'title="raw_a">raw_a</a>' in out
+    assert 'title="Use dbt &amp; &lt;b&gt;"' in out
 
 
 def test_render_landing_fails_on_an_unknown_placeholder() -> None:
@@ -384,14 +388,22 @@ def test_the_real_landing_template_renders() -> None:
 
 def test_broken_local_links(tmp_path: Path) -> None:
     (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "index.html").write_text("")
+    (tmp_path / "docs" / "index.html").write_text('<h2 id="x">X</h2>')
+    (tmp_path / "lineage").mkdir()
+    (tmp_path / "lineage" / "index.html").write_text("")
     (tmp_path / "a.css").write_text("")
     (tmp_path / "index.html").write_text(
         '<a href="docs/">ok</a><a href="a.css">ok</a><a href="docs/#x">ok</a>'
         '<a href="https://x.y/z">ext</a><a href="#top">anchor</a>'
-        '<a href="lineage/#!/model/m">missing</a><a href="gone.html">missing</a>'
+        '<a href="lineage/#!/model/m">client-side route</a>'
+        '<a href="docs/#renamed">missing id</a><a href="gone.html">missing</a>'
+        '<a href="gone/#!/model/m">missing</a>'
     )
-    assert bs.broken_local_links(tmp_path, "index.html") == ["lineage/#!/model/m", "gone.html"]
+    assert bs.broken_local_links(tmp_path, "index.html") == [
+        "docs/#renamed",
+        "gone.html",
+        "gone/#!/model/m",
+    ]
 
 
 def test_link_preview_tags_point_at_real_assets() -> None:
@@ -507,6 +519,25 @@ def test_render_market_tiles_figures_and_escaping() -> None:
     # "Other" is in the table view but not drawn as a bar among the data families
     assert out.count(">Other<") == 1
     assert "fewer than 5 companies" in out
+
+
+def test_render_market_draws_every_chart_for_phones_too() -> None:
+    out = bs.render_market(_snapshot())
+    assert out.count('class="chart-wide"') == out.count('class="chart-narrow"') == 5
+
+
+def test_render_market_names_each_ats_and_puts_other_last() -> None:
+    ats = [
+        {"ats": "greenhouse", "open_postings": 700, "boards": 30},
+        {"ats": "other", "open_postings": 400, "boards": 6},
+        {"ats": "bamboohr", "open_postings": 100, "boards": 5},
+        {"ats": "newats", "open_postings": 50, "boards": 5},
+    ]
+    out = bs.render_market(_snapshot(ats=ats))
+    table = out.split("<th>ATS</th>")[1]
+    order = [table.index(f"<td>{n}</td>") for n in ("Greenhouse", "BambooHR", "newats", "Other")]
+    assert order == sorted(order)
+    assert "fewer than 5 boards each, combined" in out
 
 
 def test_render_market_before_any_posting_has_closed() -> None:
