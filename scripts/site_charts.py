@@ -16,12 +16,13 @@ from __future__ import annotations
 
 import html
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 # viewBox widths match the rendered widths of a full and a half-width panel,
-# so 11px text in the SVG renders at about 11px on the page.
-FULL, HALF = 940, 440
+# so 11px text in the SVG renders at about 11px on the page. NARROW is a panel
+# on a phone, where landing.css swaps in the chart drawn at that width.
+FULL, HALF, NARROW = 940, 440, 320
 PAD_L, PAD_R, PAD_T, PAD_B = 44, 72, 16, 30
 
 
@@ -201,6 +202,17 @@ def _bar_path(x: float, y: float, length: float, h: float) -> str:
         f"Q{x + length:.1f},{y:.1f} {x + length:.1f},{y + r:.1f} "
         f"V{y + h - r:.1f} Q{x + length:.1f},{y + h:.1f} {x + length - r:.1f},{y + h:.1f} "
         f"H{x:.1f} Z"
+    )
+
+
+def responsive(draw: Callable[[int], str], width: int) -> str:
+    """The chart at its panel width and again at phone width; CSS shows one.
+
+    SVG text scales with the viewBox, so a FULL chart squeezed onto a phone
+    would draw its 11px labels at under 4px.
+    """
+    return (
+        f'<div class="chart-wide">{draw(width)}</div><div class="chart-narrow">{draw(NARROW)}</div>'
     )
 
 

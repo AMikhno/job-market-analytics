@@ -463,10 +463,11 @@ def render_lineage(nodes: list[Node]) -> str:
     columns = []
     for zone in ZONES:
         members = [n for n in nodes if n.zone == zone]
+        # The title repeats the name because a long one is cut off with an ellipsis.
         items = "\n".join(
-            f'<a class="node" href="{html.escape(_lineage_href(n))}"'
-            + (f' title="{html.escape(n.materialized)}"' if n.materialized else "")
-            + f">{html.escape(n.name)}</a>"
+            f'<a class="node" href="{html.escape(_lineage_href(n))}" title="'
+            + html.escape(f"{n.name} · {n.materialized}" if n.materialized else n.name)
+            + f'">{html.escape(n.name)}</a>'
             for n in members
         )
         columns.append(
@@ -485,7 +486,8 @@ def render_decision_log(adrs: list[Adr]) -> str:
         if adr.superseded_by:
             note = f'<span class="adr-note">→ {adr.superseded_by}</span>'
         rows.append(
-            f'<a class="adr adr-{adr.status}" href="{page_url(adr.repo_path)}">'
+            f'<a class="adr adr-{adr.status}" href="{page_url(adr.repo_path)}" '
+            f'title="{html.escape(adr.title.replace("`", ""))}">'
             f'<span class="adr-n">{adr.number}</span>'
             f'<span class="adr-title">{inline_code(adr.title)}</span>'
             f'<span class="adr-meta"><span class="pill pill-{adr.status}">{adr.status}</span>'
@@ -508,6 +510,26 @@ def load_market(path: Path) -> MarketSnapshot | None:
         print(f"warning: no market snapshot at {path}; charts omitted", file=sys.stderr)
         return None
     return MarketSnapshot.model_validate_json(path.read_text())
+
+
+# agg_market_ats carries the source id; the chart shows the product's own spelling.
+ATS_NAMES = {
+    "ashby": "Ashby",
+    "bamboohr": "BambooHR",
+    "greenhouse": "Greenhouse",
+    "lever": "Lever",
+    "pinpoint": "Pinpoint",
+    "recruitee": "Recruitee",
+    "rippling": "Rippling",
+    "smartrecruiters": "SmartRecruiters",
+    "workable": "Workable",
+    "other": "Other",
+}
+
+
+def ats_name(source: str) -> str:
+    """Display name for a source id; an unmapped id shows as itself, not as a gap."""
+    return ATS_NAMES.get(source, source)
 
 
 def median_days_up(tenure: list[MarketTenureStep]) -> int | None:
@@ -568,7 +590,12 @@ def render_market(snapshot: MarketSnapshot | None) -> str:
             "Open postings per tracked board",
             "Divided by the boards read that day, so adding companies to the list "
             "does not read as a hiring surge.",
-            charts.line_chart(daily, title="Open postings per tracked board, per day"),
+            charts.responsive(
+                lambda w: charts.line_chart(
+                    daily, title="Open postings per tracked board, per day", width=w
+                ),
+                charts.FULL,
+            ),
             charts.table(
                 ["Day", "Boards", "Open", "Per board", "New", "Companies"],
                 [
@@ -597,15 +624,18 @@ def render_market(snapshot: MarketSnapshot | None) -> str:
             for s in snapshot.tenure
         ]
         marker = next((p for p in steps if median is not None and p.x == median), None)
-        tenure_svg = charts.line_chart(
-            steps,
-            title="Share of postings still up, by days on board",
-            y_format="pct",
-            step=True,
-            marker=marker,
-            marker_label=f"median {median} days" if median is not None else "",
-            width=charts.HALF,
-            height=240,
+        tenure_svg = charts.responsive(
+            lambda w: charts.line_chart(
+                steps,
+                title="Share of postings still up, by days on board",
+                y_format="pct",
+                step=True,
+                marker=marker,
+                marker_label=f"median {median} days" if median is not None else "",
+                width=w,
+                height=240,
+            ),
+            charts.HALF,
         )
         tenure_table = charts.table(
             ["Days up", "Still up", "At risk", "Closed that day"],
@@ -631,18 +661,22 @@ def render_market(snapshot: MarketSnapshot | None) -> str:
         _figure(
             "What data roles ask for",
             "Share of tracked companies' open data-role postings naming each technology.",
-            charts.bar_chart(
-                [
-                    charts.Bar(
-                        label=t.tech,
-                        value=t.share_of_postings,
-                        shown=charts.fmt_pct(t.share_of_postings),
-                        tip=f"{t.tech}: {t.postings:,} postings at {t.companies:,} companies",
-                    )
-                    for t in top_tech
-                ],
-                title="Technology mentions in open data-role postings",
-                label_width=130,
+            charts.responsive(
+                lambda w: charts.bar_chart(
+                    [
+                        charts.Bar(
+                            label=t.tech,
+                            value=t.share_of_postings,
+                            shown=charts.fmt_pct(t.share_of_postings),
+                            tip=f"{t.tech}: {t.postings:,} postings at {t.companies:,} companies",
+                        )
+                        for t in top_tech
+                    ],
+                    title="Technology mentions in open data-role postings",
+                    label_width=130,
+                    width=w,
+                ),
+                charts.HALF,
             ),
             charts.table(
                 ["Technology", "Category", "Share", "Postings", "Companies"],
@@ -665,22 +699,27 @@ def render_market(snapshot: MarketSnapshot | None) -> str:
         _figure(
             "Data roles by family",
             "Open postings at the tracked companies, grouped by title.",
-            charts.bar_chart(
-                [
-                    charts.Bar(
-                        label=r.role_family,
-                        value=r.open_postings,
-                        shown=charts.fmt_int(r.open_postings),
-                        tip=(
-                            f"{r.role_family}: {r.open_postings:,} at {r.companies:,} companies; "
-                            f"{r.remote_postings:,} remote, {r.hybrid_postings:,} hybrid, "
-                            f"{r.onsite_postings:,} on-site, {r.unstated_postings:,} unstated"
-                        ),
-                    )
-                    for r in data_roles
-                ],
-                title="Open data-role postings by family",
-                label_width=160,
+            charts.responsive(
+                lambda w: charts.bar_chart(
+                    [
+                        charts.Bar(
+                            label=r.role_family,
+                            value=r.open_postings,
+                            shown=charts.fmt_int(r.open_postings),
+                            tip=(
+                                f"{r.role_family}: {r.open_postings:,} at {r.companies:,} "
+                                f"companies; {r.remote_postings:,} remote, "
+                                f"{r.hybrid_postings:,} hybrid, {r.onsite_postings:,} on-site, "
+                                f"{r.unstated_postings:,} unstated"
+                            ),
+                        )
+                        for r in data_roles
+                    ],
+                    title="Open data-role postings by family",
+                    label_width=160,
+                    width=w,
+                ),
+                charts.HALF,
             ),
             charts.table(
                 ["Family", "Open", "Companies", "Remote", "Hybrid", "On-site", "Unstated"],
@@ -700,26 +739,41 @@ def render_market(snapshot: MarketSnapshot | None) -> str:
         )
     )
 
+    # "other" is a remainder, not a platform: it goes last whatever its size.
+    ats_rows = sorted(snapshot.ats, key=lambda a: a.ats == "other")
     figures.append(
         _figure(
             "Where the postings come from",
             "Which applicant-tracking systems the tracked companies post on.",
-            charts.bar_chart(
-                [
-                    charts.Bar(
-                        label=a.ats,
-                        value=a.open_postings,
-                        shown=charts.fmt_int(a.open_postings),
-                        tip=f"{a.ats}: {a.open_postings:,} open postings on {a.boards:,} boards",
-                    )
-                    for a in snapshot.ats
-                ],
-                title="Open postings by ATS",
-                label_width=130,
+            charts.responsive(
+                lambda w: charts.bar_chart(
+                    [
+                        charts.Bar(
+                            label=ats_name(a.ats),
+                            value=a.open_postings,
+                            shown=charts.fmt_int(a.open_postings),
+                            tip=(
+                                f"{ats_name(a.ats)}: {a.open_postings:,} open postings on "
+                                f"{a.boards:,} boards"
+                                + (
+                                    f" (platforms with fewer than {snapshot.min_companies} "
+                                    "boards each, combined)"
+                                    if a.ats == "other"
+                                    else ""
+                                )
+                            ),
+                        )
+                        for a in ats_rows
+                    ],
+                    title="Open postings by ATS",
+                    label_width=130,
+                    width=w,
+                ),
+                charts.HALF,
             ),
             charts.table(
                 ["ATS", "Open postings", "Boards"],
-                [[a.ats, f"{a.open_postings:,}", f"{a.boards:,}"] for a in snapshot.ats],
+                [[ats_name(a.ats), f"{a.open_postings:,}", f"{a.boards:,}"] for a in ats_rows],
             ),
         )
     )
@@ -730,8 +784,14 @@ def render_market(snapshot: MarketSnapshot | None) -> str:
         f"Snapshot taken "
         f"{snapshot.generated_at:%Y-%m-%d %H:%M} UTC."
     )
+    # Two stacks, not grid rows: a row is as tall as its tallest chart, so the
+    # short tenure curve beside the long tech list left a hole. Stacked, each
+    # short chart sits over a long one and the columns end near each other.
+    daily_fig, tenure_fig, tech_fig, roles_fig, ats_fig = figures
     return (
-        f'<div class="tiles">{tiles}</div><div class="viz-grid">{"".join(figures)}</div>'
+        f'<div class="tiles">{tiles}</div><div class="viz-grid">{daily_fig}'
+        f'<div class="viz-col">{tenure_fig}{roles_fig}</div>'
+        f'<div class="viz-col">{tech_fig}{ats_fig}</div></div>'
         f'<p class="viz-note">{html.escape(note)}</p>'
     )
 
@@ -763,14 +823,22 @@ _HREF = re.compile(r'href="([^"]+)"')
 
 
 def broken_local_links(site: Path, page: str) -> list[str]:
-    """Relative hrefs on a built page that resolve to nothing in the site."""
+    """Relative hrefs on a built page that resolve to nothing in the site.
+
+    A fragment must name an id on the target page: renaming a docs heading
+    otherwise leaves the landing page linking to the top of the wrong section.
+    `#!/…` is dbt docs' client-side route, not an id, so it is not checked.
+    """
     broken = []
     for href in _HREF.findall((site / page).read_text()):
         if href.startswith(("http://", "https://", "mailto:", "#")):
             continue
-        path = href.split("#", 1)[0]
+        path, _, anchor = href.partition("#")
         target = site / posixpath.dirname(page) / path
-        if not (target.is_file() or (target / "index.html").is_file()):
+        target = target if target.is_file() else target / "index.html"
+        if not target.is_file() or (
+            anchor and not anchor.startswith("!") and f'id="{anchor}"' not in target.read_text()
+        ):
             broken.append(href)
     return broken
 
