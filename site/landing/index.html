@@ -146,13 +146,32 @@
       </div>
     </section>
 
-    <section class="block callout" id="unproven">
-      <h2><span class="sec-n">06</span>Honest about what is unproven</h2>
-      <p>Two rankings run side by side&nbsp;— an LLM fit score and embedding similarity&nbsp;—
-        because choosing between them without measuring is how a project ends up carrying both
-        forever. Neither is trusted until precision@k over human labels says which one wins, and
-        labels from an LLM cannot settle it: grading a scorer against its predecessor rewards
-        repeating the predecessor's mistakes.</p>
+    <section class="block callout" id="working-on">
+      <h2><span class="sec-n">06</span>Working on <span class="sec-sub">LLM scoring vs. embeddings</span></h2>
+      <p>Two ways to rank a posting against a resume corpus, built to answer the same question by
+        different means. Choosing between them without measuring is how a project ends up carrying
+        both forever, so neither replaces the keyword score until labels say it should.</p>
+      <div class="versus">
+        <div class="side">
+          <h3>LLM fit score <span class="status status-live">running</span></h3>
+          <p>Reads the posting's requirements against the corpus and returns a score from 1 to 5. It reads
+            polarity, so "we sponsor visas" and "we do not" score differently. The dearer half:
+            one generation per posting, billed once per text by the content-hash guard.</p>
+        </div>
+        <div class="side">
+          <h3>Embedding similarity <span class="status status-built">built, off</span></h3>
+          <p>Finds the single resume bullet closest to the requirements and names it, so a ranking
+            explains itself. The cheaper half, but blind to polarity: those two visa sentences are
+            nearly the same vector, so location limits and people management stay with the LLM.</p>
+        </div>
+      </div>
+      <ol class="next">
+        <li>Human labels. Labels from an LLM cannot settle it: grading a scorer against its
+          predecessor rewards repeating the predecessor's mistakes.</li>
+        <li>Precision@k over those labels for all three rankings, the keyword baseline included.</li>
+        <li>Embeddings on, both rankings live side by side for a month, then the loser
+          goes&nbsp;— with its column and its cost.</li>
+      </ol>
       <a class="more" href="docs/architecture/#v2">How V2 works →</a>
     </section>
 
