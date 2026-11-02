@@ -186,7 +186,8 @@ references like "§5.6" are unverifiable by construction and were wrong within o
   (`relevance-signals.md` — what actually predicts relevance, and the four instructions V2's
   prompt has to encode; `ingestion-cost.md` — cost model + proposal awaiting evaluation;
   `ats-feeds.md` — per-ATS probe results incl. an "as built" section;
-  `workday-ref-discovery.md` — supersedes that file's Workday row;
+  `workday-ref-discovery.md` — supersedes that file's Workday row, and is the ref-recovery pass a
+  Workday row needs before it is switched on;
   `careers-page-tail.md` — the 334 no-ATS companies, and why extraction is the wrong tool;
   `exa-discovery.md` — search-led company discovery, and what 103 labelled roles say predicts one;
   `openjobdata.md` — the aggregated-source gate)

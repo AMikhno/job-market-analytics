@@ -1,8 +1,10 @@
 # Workday — probe results and ref discovery
 
-**Status:** measured findings, 2026-07-29. **Supersedes the Workday row in `ats-feeds.md`**, which
-recorded a reading these probes disproved.
-**Nothing is built.** Workday remains inventory-only (`active=false`, 30 companies).
+**Status:** measured findings, 2026-07-29, with a second probe on 2026-11-02
+([below](#2026-11-02-facets-paging-and-the-detail-payload)). **Supersedes the Workday row in
+`ats-feeds.md`**, which recorded a reading these probes disproved.
+**The adapter is built (ADR-0030); the rows are not switched on.** Each still needs its full
+tenant/shard/site ref, which is what the website scrape below recovers.
 
 ## The correction: 422 does not mean "the endpoint is live"
 
@@ -59,7 +61,10 @@ Two mapping traps, both of which would silently corrupt data if missed:
    `startDate`, from the detail call.
 2. **`locationsText` can be a count**, e.g. `"12 Locations"`. Real location also comes from detail.
 
-## Why it is not built: the runtime cost
+## The runtime cost, before server-side filtering
+
+*This section is why Workday was deferred. The 2026-11-02 probe below found the facets that
+remove most of this cost; ADR-0030 is the design that uses them.*
 
 The list pages at **limit=20** and `total` caps at 2000.
 
@@ -91,10 +96,36 @@ work:
 - **Paylocity** refs *are* recoverable and turn out to be GUIDs
   (`2d4c79d4-b82f-466c-…`), but the v2 API path returns HTML, so the endpoint remains unknown.
 
+## 2026-11-02: facets, paging and the detail payload
+
+Re-probed on one large public board (the example board in `tools/probes/workday/`) before the
+adapter was written.
+
+- **Every list response carries the board's facets**, each value with an id and a count: job
+  category, job type, time type, location type (office/remote), country and site. Passing ids in
+  `appliedFacets` filters server-side: one category's id returned exactly that category's count
+  as `total`. Different facets AND together and values within one facet OR.
+- **The unfiltered list is capped at 2000.** The board reported `total = 2000` while its facet
+  counts summed to about 2,700, so "fetch everything" cannot reach a quarter of that board.
+- **`total` is only reported on page 1.** Page 2 of the same query returned `total = 0` with 20
+  postings, so a walk that re-reads it per page ends after two pages.
+- **Facets list only values that have postings**, which is why a missing country or location type
+  on a board means "none there" rather than an error.
+- **The detail carries every location**: `location` (the primary) plus `additionalLocations`.
+  All five sampled remote postings listed `locationsText` as "N Locations", and their primary
+  location was sometimes an office with the remote seats only among the additional ones.
+- **Category is not a usable relevance filter.** The 15 categories are the tenant's own taxonomy.
+  One held 85% of the board, and a full-text search for "analytics" matched postings in 13 of
+  them.
+- The pipeline's own User-Agent and a one-row list request (`limit: 1`, used to read the facets)
+  are both accepted.
+
 ## Standing recommendation
 
-Do not build Workday yet. If it is built later, do the website-scrape ref pass first and gate the
-adapter to a subset of tenants rather than all 30 — the large-enterprise boards are exactly the
-profile with the worst measured conversion (`relevance-signals.md`).
+Superseded by ADR-0030, which builds the adapter with server-side location filtering and detail
+calls for new postings only. What still holds: **do the website-scrape ref pass before switching a
+row on** — an active row with a tenant-only ref fails the whole run at load — and the
+large-enterprise boards are still the profile with the worst measured conversion
+(`relevance-signals.md`).
 
 Probe scripts: `tools/probes/workday/`.

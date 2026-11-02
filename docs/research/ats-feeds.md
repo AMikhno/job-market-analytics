@@ -83,7 +83,8 @@ per-adapter cost is the `RawPosting` mapping and its fixture, not the HTTP call.
 3. **Rippling, BreezyHR, Pinpoint, SmartRecruiters** — 9 more; do them together, they are nearly
    identical.
 4. **Workday** — decide separately. It needs a ref-schema pass across 28 rows *before* any code,
-   and it is a new adapter class rather than a copy of an existing one.
+   and it is a new adapter class rather than a copy of an existing one. *Built 2026-11-02
+   (ADR-0030); the ref pass is still what gates switching rows on.*
 
 ## Caveats
 
@@ -108,7 +109,8 @@ which is what caught the differences from the table above.
 | Workable | list (`details=true`) | list | list | account-level `description` is a company blurb — not the job's; unset fields are `""`, not null |
 | Pinpoint | list, split across labelled blocks | list | **none published** | only `deadline_at` exists; landed date stays null |
 | Rippling | detail (`description.role`) | list | detail | list emits **one row per job × location**, sharing a uuid |
-| SmartRecruiters | detail (`jobAd.sections`) | detail (`postingUrl`) | list | only paginated source (`limit`/`offset`, `totalFound`); `fullLocation` leaves an empty slot for a missing region |
+| SmartRecruiters | detail (`jobAd.sections`) | detail (`postingUrl`) | list | paginated GET (`limit`/`offset`, `totalFound`); `fullLocation` leaves an empty slot for a missing region |
+| Workday *(2026-11-02)* | detail (`jobDescription`) | detail (`externalUrl`) | detail (`startDate`) | paginated **POST**; `total` on page 1 only; list capped at 2000; filtered server-side by facet — `workday-ref-discovery.md`, ADR-0030 |
 
 **BreezyHR — no keyless description exists.** Four paths tried on a live board:
 `/{ref}.breezy.hr/json` (200, list without description), `/json/{id}` (**302 → `/`**),
