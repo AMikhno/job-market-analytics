@@ -59,22 +59,41 @@ def test_workday_ref_rejects_anything_else(bad: str) -> None:
         WorkdaySource(name="workday").validate_board_ref(bad)
 
 
-def test_a_run_hands_workday_its_location_rules() -> None:
+def test_a_run_hands_workday_its_rules_and_what_raw_already_describes(monkeypatch) -> None:
     rules = [WorkdayLocationRule(countries=["Somewhere"])]
     settings = Settings(_env_file=None, workday_locations=rules)
+    described = {"t/wd1/S": frozenset({"/job/1"})}
+    asked: list[str] = []
+
+    def lookup(source: str, *, settings: Settings) -> dict[str, frozenset[str]]:
+        asked.append(source)
+        return described
+
+    monkeypatch.setattr("ingest.sources.storage.described_postings", lookup)
 
     adapter = WorkdaySource(name="workday").build_for_run(None, settings)
 
     assert isinstance(adapter, WorkdayAdapter)
     assert adapter.locations == tuple(rules)
-    # built outside a run, it has none -- and so refuses to fetch
-    assert WorkdaySource(name="workday").build().locations == ()  # type: ignore[attr-defined]
+    assert adapter.described == described and asked == ["workday"]
+    # built outside a run, it has neither -- and so refuses to fetch
+    bare = WorkdaySource(name="workday").build()
+    assert isinstance(bare, WorkdayAdapter)
+    assert bare.locations == () and bare.described == {}
 
 
-def test_other_sources_build_the_same_adapter_for_a_run() -> None:
+def test_other_sources_build_the_same_adapter_for_a_run_without_the_warehouse(
+    monkeypatch,
+) -> None:
+    def no_warehouse(source: str, *, settings: Settings) -> dict[str, frozenset[str]]:
+        raise AssertionError(f"{source} should not read the warehouse to build")
+
+    monkeypatch.setattr("ingest.sources.storage.described_postings", no_warehouse)
     limiter = HostRateLimiter(0.5)
     settings = Settings(_env_file=None)
     for src in SOURCES:
+        if isinstance(src, WorkdaySource):
+            continue
         adapter = src.build_for_run(limiter, settings)
         assert type(adapter) is type(src.build(limiter))
         assert adapter.policy.limiter is limiter

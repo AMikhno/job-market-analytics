@@ -35,7 +35,8 @@ from ingest.adapters.recruitee import RecruiteeAdapter
 from ingest.adapters.rippling import RipplingAdapter
 from ingest.adapters.smartrecruiters import SmartRecruitersAdapter
 from ingest.adapters.workable import WorkableAdapter
-from ingest.adapters.workday import WorkdayAdapter, WorkdayRef
+from ingest.adapters.workday import Described, WorkdayAdapter, WorkdayRef
+from shared import storage
 from shared.config import Settings
 from shared.http import FetchPolicy, HostRateLimiter
 from shared.models import WorkdayLocationRule
@@ -244,12 +245,16 @@ class WorkdaySource(SourceBase):
         return self._adapter(limiter)
 
     def build_for_run(self, limiter: HostRateLimiter | None, settings: Settings) -> SourceAdapter:
-        return self._adapter(limiter, settings.workday_locations)
+        # Read once per run, on the main thread, before any board is fetched:
+        # postings already landed with a description skip their detail call.
+        described = storage.described_postings(self.adapter, settings=settings)
+        return self._adapter(limiter, settings.workday_locations, described)
 
     def _adapter(
         self,
         limiter: HostRateLimiter | None,
         locations: Sequence[WorkdayLocationRule] = (),
+        described: Described | None = None,
     ) -> WorkdayAdapter:
         return WorkdayAdapter(
             self.url_template,
@@ -257,6 +262,7 @@ class WorkdaySource(SourceBase):
             self.public_url_template,
             self.policy(limiter),
             locations=locations,
+            described=described,
             page_size=self.page_size,
         )
 

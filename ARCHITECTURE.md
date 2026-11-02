@@ -57,6 +57,12 @@ resolves the private location rules (`WORKDAY_LOCATIONS`) to that board's facet 
 postings in allowed places. That narrows nothing silver would keep, and it also keeps a large board
 under the list's 2000-posting cap. With no rules configured, the adapter refuses to fetch.
 
+It is also the one adapter that reads the warehouse. Before fetching, the run looks up which Workday
+postings raw already holds with a description; those land from their list row alone, and
+`stg_workday__jobs` copies the latest described landing's detail fields onto them. A new posting
+is detail-fetched in the run that first sees it, so after the first run the cost follows new
+postings rather than board size.
+
 Boards are fetched concurrently with the minimum interval enforced **per host** rather than
 globally, and rows landed on the main thread because DuckDB takes a single writer (ADR-0022). That
 is what keeps per-posting detail calls affordable: ATS that give each company its own subdomain

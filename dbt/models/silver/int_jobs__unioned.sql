@@ -22,6 +22,8 @@ with unioned as (
     select * from {{ ref('stg_rippling__jobs') }}
     union all
     select * from {{ ref('stg_smartrecruiters__jobs') }}
+    union all
+    select * from {{ ref('stg_workday__jobs') }}
 ),
 
 keyed as (

@@ -437,3 +437,70 @@ def test_a_nonsense_worker_count_still_runs_one_board_at_a_time(
 
     assert pipeline.run() == 0  # ThreadPoolExecutor(0) would raise
     assert fake.seen == ["lever"]
+
+
+WORKDAY_BOARD = "exampleco/wd3/External_Careers"
+WORKDAY_LIST = "https://exampleco.wd3.myworkdayjobs.com/wday/cxs/exampleco/External_Careers/jobs"
+
+
+def _register_workday_board(facets: dict, page1: dict, page2: dict, detail: dict) -> None:
+    def post(applied: dict, offset: int, limit: int, payload: dict) -> None:
+        body = {"appliedFacets": applied, "limit": limit, "offset": offset, "searchText": ""}
+        responses.add(
+            responses.POST,
+            WORKDAY_LIST,
+            json=payload,
+            match=[responses.matchers.json_params_matcher(body)],
+        )
+
+    canada = {"locationHierarchy1": ["ctry-ca"]}
+    post({}, 0, 1, facets)
+    post(canada, 0, 20, page1)
+    post(canada, 2, 20, page2)
+    for item in page1["jobPostings"] + page2["jobPostings"]:
+        responses.add(
+            responses.GET, WORKDAY_LIST.removesuffix("/jobs") + item["externalPath"], json=detail
+        )
+
+
+@responses.activate
+def test_a_second_workday_run_detail_fetches_nothing_it_already_described(
+    tmp_path,
+    monkeypatch,
+    workday_facets_payload,
+    workday_page1_payload,
+    workday_page2_payload,
+    workday_detail_payload,
+) -> None:
+    """The point of ADR-0030's incremental fetch, end to end: the run reads
+    what raw already describes, so an unchanged board costs list calls only."""
+    companies = tmp_path / "companies.csv"
+    companies.write_text(
+        f"company_name,source,board_ref,active,tier,notes\nCo,workday,{WORKDAY_BOARD},true,2,\n"
+    )
+    _env(monkeypatch, tmp_path)
+    monkeypatch.setenv("COMPANIES_CSV", str(companies))
+    monkeypatch.setenv("WORKDAY_LOCATIONS", '[{"countries": ["Canada"]}]')
+    _register_workday_board(
+        workday_facets_payload, workday_page1_payload, workday_page2_payload, workday_detail_payload
+    )
+
+    def detail_calls() -> int:
+        return sum(c.request.method == "GET" for c in responses.calls)
+
+    assert pipeline.run() == 0
+    assert detail_calls() == 3  # first run: every posting is new
+
+    assert pipeline.run() == 0
+    assert detail_calls() == 3  # second run: none are
+
+    import duckdb
+
+    con = duckdb.connect(str(tmp_path / "j.duckdb"))
+    try:
+        rows = con.execute(
+            "select count(*), count(*) filter (where description_html <> '') from raw_workday_jobs"
+        ).fetchone()
+    finally:
+        con.close()
+    assert rows == (6, 3)  # both runs landed the board; only the first carried details

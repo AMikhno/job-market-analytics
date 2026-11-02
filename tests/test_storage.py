@@ -90,6 +90,54 @@ def test_ensure_raw_tables_creates_all_empty(tmp_path) -> None:
         con.close()
 
 
+def _workday(board: str, path: str, description: str) -> RawPosting:
+    return RawPosting(
+        source="workday",
+        company=board,
+        external_id=path,
+        title="Analyst",
+        url=f"https://example.test{path}",
+        description_html=description,
+        raw={},
+    )
+
+
+def test_described_postings_are_grouped_by_board_and_ignore_list_only_rows(tmp_path) -> None:
+    """A list-only landing (empty description) must not count as described, or
+    a posting whose described row has expired would never be fetched again."""
+    settings = Settings(_env_file=None, duckdb_path=str(tmp_path / "j.duckdb"))
+    storage.ensure_raw_tables(settings, ["workday"])
+    storage.land(
+        [
+            _workday("a/wd1/S", "/job/1", "<p>x</p>"),
+            _workday("a/wd1/S", "/job/1", ""),  # the same posting, re-landed from the list
+            _workday("a/wd1/S", "/job/2", ""),  # only ever list-only
+            _workday("b/wd5/T", "/job/9", "<p>y</p>"),
+        ],
+        source="workday",
+        run_id="r1",
+        settings=settings,
+    )
+
+    assert storage.described_postings("workday", settings=settings) == {
+        "a/wd1/S": frozenset({"/job/1"}),
+        "b/wd5/T": frozenset({"/job/9"}),
+    }
+
+
+def test_described_postings_of_an_empty_table_is_empty(tmp_path) -> None:
+    settings = Settings(_env_file=None, duckdb_path=str(tmp_path / "j.duckdb"))
+    storage.ensure_raw_tables(settings, ["workday"])
+
+    assert storage.described_postings("workday", settings=settings) == {}
+
+
+def test_raw_relation_is_qualified_on_prod() -> None:
+    settings = Settings(_env_file=None, pipeline_target="prod", gcp_project="p", bq_dataset="jobs")
+    assert storage.raw_relation("workday", settings) == "p.jobs_raw.raw_workday_jobs"
+    assert storage.raw_relation("workday", Settings(_env_file=None)) == "raw_workday_jobs"
+
+
 def test_pipeline_provisions_a_table_for_every_registered_source(tmp_path, monkeypatch) -> None:
     """Adding a source must not need a second edit here: the table list comes
     from the registry, so a missing table can't be discovered at write time."""

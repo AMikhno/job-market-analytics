@@ -237,6 +237,32 @@ def recent_row_counts(source: str, *, limit: int, settings: Settings) -> list[in
     return [int(cast(int, r["rows_fetched"])) for r in rows]
 
 
+def raw_relation(source: str, settings: Settings) -> str:
+    """Fully-qualified name of a source's raw landing on the active target."""
+    if settings.is_prod:
+        return f"{settings.gcp_project}.{settings.bq_dataset}_raw.{raw_table(source)}"
+    return raw_table(source)
+
+
+def described_postings(source: str, *, settings: Settings) -> dict[str, frozenset[str]]:
+    """board_ref -> external_ids this source has already landed *with* a description.
+
+    The Workday adapter skips the detail call for these (ADR-0030). Read from
+    raw, not silver, so it is exactly what bronze can carry forward: a posting
+    whose described landing has expired out of raw drops out of this set too,
+    and is detail-fetched again on the next run.
+    """
+    sql = f"""
+        select distinct company, external_id
+        from {raw_relation(source, settings)}
+        where coalesce(description_html, '') <> ''
+    """
+    described: dict[str, set[str]] = {}
+    for row in query_rows(sql, settings=settings):
+        described.setdefault(str(row["company"]), set()).add(str(row["external_id"]))
+    return {board: frozenset(ids) for board, ids in described.items()}
+
+
 def gold_table(settings: Settings) -> str:
     """Fully-qualified name of the gold mart on the active target.
 

@@ -58,7 +58,7 @@ docs/        decisions/, v2-plan.md, research/  (ARCHITECTURE.md at repo root)
 .github/     four workflows, split by permission scope — see ARCHITECTURE.md#automation
 ```
 
-Currently 10 ingestion sources, 22 dbt models and 30 ADRs. <!-- check:sources check:dbt_models check:adrs -->
+Currently 10 ingestion sources, 23 dbt models and 30 ADRs. <!-- check:sources check:dbt_models check:adrs -->
 
 ## Quality gates
 

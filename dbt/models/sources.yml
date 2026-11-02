@@ -79,6 +79,13 @@ sources:
           freshness:
             warn_after: { count: 12, period: hour }
             error_after: { count: 30, period: hour }
+      # No freshness gate yet, for the same reason: every Workday row is
+      # inventory until its full tenant/shard/site ref is recovered, so the
+      # table starts empty. Add the gate once a real board is landing.
+      - name: raw_workday_jobs
+        description: >
+          Append-only Workday landings (all columns STRING; bronze casts). A
+          posting already described lands with empty detail fields (ADR-0030).
 
   - name: jobs_ops
     description: Operational tables the Python side writes and dbt reads.

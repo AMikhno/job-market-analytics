@@ -91,3 +91,70 @@ models:
       - name: url
         description: Public postingUrl (the list only carries an API ref).
         data_tests: [not_null]
+  - name: stg_workday__jobs
+    description: >
+      Typed staging over the Workday raw landing — one row per landing. A
+      posting already described lands from its list row alone (ADR-0030); this
+      model fills those rows' detail fields from the posting's latest described
+      landing, so every row silver can pick carries a description.
+    columns:
+      - name: external_id
+        description: The posting's externalPath; unique within the board.
+        data_tests: [not_null]
+      - name: url
+        description: The detail's externalUrl, or the same path on the public site.
+        data_tests: [not_null]
+      - name: description_html
+        description: >
+          From the detail call, carried forward onto list-only landings. Empty
+          only if a posting's described landing has expired out of raw and the
+          next run has not re-fetched it yet — a warning, not a failure.
+        data_tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "!= ''"
+              config:
+                severity: warn
+
+unit_tests:
+  - name: workday_list_only_rows_inherit_the_latest_description
+    description: >
+      A posting landed with its detail, then twice from the list alone: every
+      row reads the described values, while title and ingested_at stay each
+      row's own. A second posting that was only ever described keeps its own.
+    model: stg_workday__jobs
+    given:
+      - input: source('jobs_raw', 'raw_workday_jobs')
+        rows:
+          - {source: workday, company: t/wd1/S, external_id: /job/a, title: Analyst,
+             location: "Canada, Toronto; US, TX, Remote", remote_policy: Remote,
+             employment_type: Full time, url: "https://t.wd1.myworkdayjobs.com/S/job/a?d",
+             description_html: "<p>dbt</p>", posted_or_updated_at: "2026-10-30T00:00:00+00:00",
+             ingested_at: "2026-11-01T13:00:00+00:00"}
+          - {source: workday, company: t/wd1/S, external_id: /job/a, title: Senior Analyst,
+             location: "2 Locations", remote_policy: null, employment_type: null,
+             url: "https://t.wd1.myworkdayjobs.com/S/job/a", description_html: "",
+             posted_or_updated_at: null, ingested_at: "2026-11-01T19:00:00+00:00"}
+          - {source: workday, company: t/wd1/S, external_id: /job/a, title: Senior Analyst,
+             location: null, remote_policy: null, employment_type: null,
+             url: "https://t.wd1.myworkdayjobs.com/S/job/a", description_html: "",
+             posted_or_updated_at: null, ingested_at: "2026-11-02T13:00:00+00:00"}
+          - {source: workday, company: t/wd1/S, external_id: /job/b, title: Engineer,
+             location: "Canada, Remote", remote_policy: Remote, employment_type: Full time,
+             url: "https://t.wd1.myworkdayjobs.com/S/job/b", description_html: "<p>sql</p>",
+             posted_or_updated_at: "2026-10-01T00:00:00+00:00",
+             ingested_at: "2026-11-02T13:00:00+00:00"}
+    expect:
+      rows:
+        - {external_id: /job/a, title: Analyst, location: "Canada, Toronto; US, TX, Remote",
+           remote_policy: Remote, url: "https://t.wd1.myworkdayjobs.com/S/job/a?d",
+           description_html: "<p>dbt</p>", ingested_at: "2026-11-01 13:00:00"}
+        - {external_id: /job/a, title: Senior Analyst, location: "Canada, Toronto; US, TX, Remote",
+           remote_policy: Remote, url: "https://t.wd1.myworkdayjobs.com/S/job/a?d",
+           description_html: "<p>dbt</p>", ingested_at: "2026-11-01 19:00:00"}
+        - {external_id: /job/a, title: Senior Analyst, location: "Canada, Toronto; US, TX, Remote",
+           remote_policy: Remote, url: "https://t.wd1.myworkdayjobs.com/S/job/a?d",
+           description_html: "<p>dbt</p>", ingested_at: "2026-11-02 13:00:00"}
+        - {external_id: /job/b, title: Engineer, location: "Canada, Remote", remote_policy: Remote,
+           url: "https://t.wd1.myworkdayjobs.com/S/job/b", description_html: "<p>sql</p>",
+           ingested_at: "2026-11-02 13:00:00"}
