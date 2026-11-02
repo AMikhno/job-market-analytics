@@ -6,7 +6,14 @@ import pytest
 import requests
 import responses
 
-from shared.http import HostRateLimiter, SessionPool, build_session, get_json
+from shared.http import (
+    FetchPolicy,
+    HostRateLimiter,
+    SessionPool,
+    build_session,
+    get_json,
+    post_json,
+)
 
 
 def test_session_retry_policy_covers_connection_faults() -> None:
@@ -19,6 +26,41 @@ def test_session_retry_policy_covers_connection_faults() -> None:
     assert retry.backoff_jitter == 1.0
     assert {429, 500, 502, 503, 504} <= set(retry.status_forcelist)
     assert session.headers["User-Agent"] == "test-agent/1.0"
+
+
+@responses.activate
+def test_post_json_sends_the_body_and_is_retried_like_a_get() -> None:
+    """A read-only search POST (Workday) gets the same transient-error retry as
+    a GET; without POST in allowed_methods one 503 would fail the board."""
+    url = "https://api.example.test/search"
+    responses.add(responses.POST, url, status=503)
+    responses.add(
+        responses.POST,
+        url,
+        json={"total": 0},
+        match=[responses.matchers.json_params_matcher({"limit": 20, "offset": 0})],
+    )
+
+    session = build_session("test-agent/1.0")
+    assert post_json(session, url, {"limit": 20, "offset": 0}, min_interval_s=0) == {"total": 0}
+    assert len(responses.calls) == 2
+
+
+def test_post_json_shares_the_hosts_interval_with_get_json(clock: _FakeClock) -> None:
+    """One limiter paces a host whatever the method: a list POST and the detail
+    GETs that follow it queue on the same interval."""
+    session = _Session()
+    policy = FetchPolicy(min_interval_s=0.5, limiter=HostRateLimiter(0.5))
+
+    policy.post_json(session, "https://api.example.test/jobs", {"offset": 0})
+    policy.get_json(session, "https://api.example.test/job/1")
+
+    assert clock.slept == [0.5]
+    assert session.calls[0] == {
+        "url": "https://api.example.test/jobs",
+        "json": {"offset": 0},
+        "timeout": (10.0, 30.0),
+    }
 
 
 @responses.activate
@@ -59,6 +101,10 @@ class _Session:
 
     def get(self, url: str, timeout: object = None) -> _Resp:
         self.calls.append({"url": url, "timeout": timeout})
+        return _Resp()
+
+    def post(self, url: str, json: object = None, timeout: object = None) -> _Resp:
+        self.calls.append({"url": url, "json": json, "timeout": timeout})
         return _Resp()
 
 

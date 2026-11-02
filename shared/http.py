@@ -46,7 +46,10 @@ def build_session(user_agent: str) -> requests.Session:
         backoff_factor=1.0,
         backoff_jitter=1.0,
         status_forcelist=(429, 500, 502, 503, 504),
-        allowed_methods=("GET",),
+        # POST is here for one reason: Workday's job search is a read-only POST
+        # (the query travels in the body), so retrying it is as safe as a GET.
+        # No adapter POSTs anything that writes.
+        allowed_methods=("GET", "POST"),
     )
     session.mount("https://", HTTPAdapter(max_retries=retry))
     return session
@@ -125,6 +128,24 @@ class FetchPolicy:
             timeout=self.timeout,
         )
 
+    def post_json(self, session: requests.Session, url: str, body: dict[str, Any]) -> Any:
+        return post_json(
+            session,
+            url,
+            body,
+            min_interval_s=self.min_interval_s,
+            limiter=self.limiter,
+            timeout=self.timeout,
+        )
+
+
+def _pace(url: str, min_interval_s: float, limiter: HostRateLimiter | None) -> None:
+    """Wait for this request's turn: per host with a limiter, a flat sleep without."""
+    if limiter is not None:
+        limiter.acquire(url, min_interval_s=min_interval_s)
+    else:
+        time.sleep(min_interval_s)
+
 
 def get_json(
     session: requests.Session,
@@ -140,10 +161,28 @@ def get_json(
     one, it degrades to the original unconditional sleep so a single-threaded
     caller (a test, a one-off script) behaves exactly as before.
     """
-    if limiter is not None:
-        limiter.acquire(url, min_interval_s=min_interval_s)
-    else:
-        time.sleep(min_interval_s)
+    _pace(url, min_interval_s, limiter)
     resp = session.get(url, timeout=timeout)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def post_json(
+    session: requests.Session,
+    url: str,
+    body: dict[str, Any],
+    *,
+    min_interval_s: float = 0.5,
+    limiter: HostRateLimiter | None = None,
+    timeout: tuple[float, float] = DEFAULT_TIMEOUT,
+) -> Any:
+    """POST a JSON body and return parsed JSON, paced exactly like `get_json`.
+
+    For APIs whose *read* is a POST (Workday's job search carries its filters
+    and paging in the body). Same limiter, so a POST and a GET to one host share
+    that host's interval.
+    """
+    _pace(url, min_interval_s, limiter)
+    resp = session.post(url, json=body, timeout=timeout)
     resp.raise_for_status()
     return resp.json()
