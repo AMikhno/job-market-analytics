@@ -6,18 +6,20 @@ defines *how* to talk to each ATS, not *which* companies — and it is the singl
 source of truth for board URL templates (adapters are constructed from it).
 
 `{board_ref}` in a template is the ATS-specific path fragment from the company
-list. Greenhouse/Lever/Ashby take a bare token; a future multi-parameter ATS (e.g.
-Workday's tenant/instance/site) defines its own template and teaches its adapter
-to split the ref.
+list. Most sources take a bare token; Workday's ref is tenant/shard/site, so its
+templates name those segments and its adapter splits the ref.
 
 A source also *builds* its adapter (`build()`), so a new ATS is registered in one
 place instead of three: the URL template, the fetch policy (timeouts, per-host
-interval) and the constructor call all live on the source object.
+interval) and the constructor call all live on the source object. The pipeline
+calls `build_for_run()`, which is `build()` for every source that needs nothing
+from the run's settings.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from typing import Annotated, ClassVar, Literal
 from urllib.parse import urlsplit
 
@@ -33,7 +35,10 @@ from ingest.adapters.recruitee import RecruiteeAdapter
 from ingest.adapters.rippling import RipplingAdapter
 from ingest.adapters.smartrecruiters import SmartRecruitersAdapter
 from ingest.adapters.workable import WorkableAdapter
+from ingest.adapters.workday import WorkdayAdapter, WorkdayRef
+from shared.config import Settings
 from shared.http import FetchPolicy, HostRateLimiter
+from shared.models import WorkdayLocationRule
 
 # A bare board token: letters/digits then letters/digits/dot/underscore/hyphen.
 # No slashes, spaces, or URL punctuation. Fits Greenhouse and Lever.
@@ -44,6 +49,11 @@ _BARE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # the spaced name returns postings; every de-spaced variant 404s.
 # Still no slashes or URL punctuation, and no leading/trailing space.
 _ASHBY_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?: [A-Za-z0-9._-]+)*$")
+
+# Workday: tenant/shard/site. The tenant is a hostname label, the shard is
+# wd<N>, and the site is a free-form path segment (mixed case, underscores and
+# hyphens all occur). A tenant-only ref -- what discovery records -- fails here.
+_WORKDAY_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*/wd\d{1,3}/[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 class SourceBase(BaseModel):
@@ -72,6 +82,11 @@ class SourceBase(BaseModel):
     def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
         """Construct this source's adapter. Overridden by every subclass."""
         raise NotImplementedError
+
+    def build_for_run(self, limiter: HostRateLimiter | None, settings: Settings) -> SourceAdapter:
+        """The adapter one pipeline run uses. Overridden only by a source that
+        needs the run's settings or warehouse state to fetch."""
+        return self.build(limiter)
 
     def host_for(self, board_ref: str) -> str:
         """The host this board's requests go to — the unit the limiter paces.
@@ -204,6 +219,48 @@ class SmartRecruitersSource(SourceBase):
         )
 
 
+class WorkdaySource(SourceBase):
+    adapter: Literal["workday"] = "workday"
+    # The list is a POST whose body carries the location filter and paging.
+    url_template: str = "https://{tenant}.{shard}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
+    detail_url_template: str = (
+        "https://{tenant}.{shard}.myworkdayjobs.com/wday/cxs/{tenant}/{site}{external_path}"
+    )
+    # The human-facing page. The detail's externalUrl is preferred; this is its
+    # shape, for a posting that lands from the list alone.
+    public_url_template: str = "https://{tenant}.{shard}.myworkdayjobs.com/{site}{external_path}"
+    page_size: int = 20  # the list's own cap
+    board_ref_pattern: ClassVar[re.Pattern[str]] = _WORKDAY_REF
+    board_ref_hint: ClassVar[str] = "tenant/wdN/site, e.g. examplewd/wd5/External"
+
+    def host_for(self, board_ref: str) -> str:
+        # The template names segments, not {board_ref}, so the base class's
+        # substitution cannot find the host; every tenant has its own.
+        return WorkdayRef.parse(board_ref).host
+
+    def build(self, limiter: HostRateLimiter | None = None) -> SourceAdapter:
+        # No location rules: this adapter refuses to fetch. A run goes through
+        # build_for_run, which supplies them.
+        return self._adapter(limiter)
+
+    def build_for_run(self, limiter: HostRateLimiter | None, settings: Settings) -> SourceAdapter:
+        return self._adapter(limiter, settings.workday_locations)
+
+    def _adapter(
+        self,
+        limiter: HostRateLimiter | None,
+        locations: Sequence[WorkdayLocationRule] = (),
+    ) -> WorkdayAdapter:
+        return WorkdayAdapter(
+            self.url_template,
+            self.detail_url_template,
+            self.public_url_template,
+            self.policy(limiter),
+            locations=locations,
+            page_size=self.page_size,
+        )
+
+
 Source = Annotated[
     GreenhouseSource
     | LeverSource
@@ -213,7 +270,8 @@ Source = Annotated[
     | WorkableSource
     | PinpointSource
     | RipplingSource
-    | SmartRecruitersSource,
+    | SmartRecruitersSource
+    | WorkdaySource,
     Field(discriminator="adapter"),
 ]
 
@@ -227,4 +285,5 @@ SOURCES: list[Source] = [
     PinpointSource(name="pinpoint"),
     RipplingSource(name="rippling"),
     SmartRecruitersSource(name="smartrecruiters"),
+    WorkdaySource(name="workday"),
 ]

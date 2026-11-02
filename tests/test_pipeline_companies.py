@@ -26,7 +26,7 @@ def test_load_companies_returns_typed_active_rows(monkeypatch) -> None:
 def test_inactive_rows_and_other_sources_excluded(monkeypatch) -> None:
     _use(monkeypatch, "config/companies.example.csv")
     assert pipeline.load_companies("greenhouse") == []  # placeholder is active=false
-    assert pipeline.load_companies("workday") == []  # unsupported ATS stays inventory-only
+    assert pipeline.load_companies("workday") == []  # example inventory row is active=false
 
 
 def test_legacy_company_slug_header_still_parses(tmp_path: Path, monkeypatch) -> None:

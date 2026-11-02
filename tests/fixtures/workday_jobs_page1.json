@@ -1,0 +1,21 @@
+{
+  "total": 3,
+  "jobPostings": [
+    {
+      "title": "Analytics Engineer",
+      "externalPath": "/job/Toronto/Analytics-Engineer_R100",
+      "locationsText": "Canada, Toronto",
+      "postedOn": "Posted 3 Days Ago",
+      "bulletFields": ["R100"]
+    },
+    {
+      "title": "Data Analyst",
+      "externalPath": "/job/Toronto/Data-Analyst_R101",
+      "locationsText": "2 Locations",
+      "postedOn": "Posted Today",
+      "bulletFields": ["R101"]
+    }
+  ],
+  "facets": [],
+  "userAuthenticated": false
+}

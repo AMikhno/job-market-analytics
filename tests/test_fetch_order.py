@@ -39,6 +39,15 @@ def test_subdomain_sources_report_a_host_per_board() -> None:
     assert bamboo.host_for("alpha").startswith("alpha.")
 
 
+def test_workday_reports_each_tenants_own_host() -> None:
+    """Workday's template names tenant/shard segments rather than {board_ref},
+    so the host has to come from the parsed ref -- substituting the whole ref
+    would hand every tenant the same unparseable host and serialize them."""
+    workday = _BY_NAME["workday"]
+    assert workday.host_for("alpha/wd1/Careers") == "alpha.wd1.myworkdayjobs.com"
+    assert workday.host_for("alpha/wd1/Careers") != workday.host_for("beta/wd5/External")
+
+
 def test_host_for_ignores_non_host_placeholders() -> None:
     """Paging and id placeholders live in the path and must not leak into the host."""
     host = _BY_NAME["smartrecruiters"].host_for("alpha")

@@ -90,6 +90,9 @@ jobs:
           BQ_DATASET: jobs
           BQ_LOCATION: us-central1
           HTTP_USER_AGENT: ${{ vars.HTTP_USER_AGENT }}
+          # Private location rules for the Workday filter (ADR-0030): a
+          # variable, not a secret, like the seeds. Unset, active Workday boards fail.
+          WORKDAY_LOCATIONS: ${{ vars.WORKDAY_LOCATIONS }}
         run: make ingest
 
       # Low volume, skipped boards, and sources that got no boards at all: three

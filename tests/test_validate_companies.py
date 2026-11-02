@@ -40,15 +40,37 @@ def test_malformed_row_is_reported(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_unregistered_ats_row_skips_format_check(tmp_path: Path, monkeypatch) -> None:
-    # A Workday row (no adapter yet) parses but has no board_ref rule to apply,
-    # so its multi-segment ref must not be flagged.
+    # A row on an ATS with no adapter parses but has no board_ref rule to apply,
+    # so even a slashed ref must not be flagged.
     lst = tmp_path / "companies.csv"
     lst.write_text(
-        "company_name,source,board_ref,active,tier,notes\nWdCo,workday,wdco/wd5/External,false,2,\n"
+        "company_name,source,board_ref,active,tier,notes\nJvCo,jobvite,jvco/careers,true,2,\n"
     )
     _use(monkeypatch, str(lst))
 
     assert validate_companies.validate_company_list() == []
+
+
+def test_workday_rows_are_checked_against_the_three_segment_rule(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Discovery records the tenant alone. Once Workday has an adapter, such a
+    row is inventory (a notice) while inactive and a failure once switched on:
+    an active tenant-only ref would otherwise fail the whole run at load time."""
+    lst = tmp_path / "companies.csv"
+    lst.write_text(
+        "company_name,source,board_ref,active,tier,notes\n"
+        "Ready,workday,readyco/wd5/External_Careers,true,2,\n"
+        "Inventory,workday,inventoryco,false,2,\n"
+        "Premature,workday,prematureco,true,2,\n"
+    )
+    _use(monkeypatch, str(lst))
+
+    problems, notices = validate_companies._scan()
+
+    assert len(problems) == 1 and "Premature" in problems[0]
+    assert "tenant/wdN/site" in problems[0]
+    assert len(notices) == 1 and "Inventory" in notices[0]
 
 
 def test_inactive_row_with_a_blank_ref_is_a_notice_not_a_failure(

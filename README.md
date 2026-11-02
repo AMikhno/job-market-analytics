@@ -1,14 +1,14 @@
 # Job Market Analytics
 
 End-to-end **Analytics Engineering** project: typed Python ingestion from every ATS with a
-public keyless feed (nine today — Greenhouse, Lever, Ashby, BambooHR, Recruitee, Workable,
-Pinpoint, Rippling, SmartRecruiters) into a **dual-target dbt project** (DuckDB
+public keyless feed (ten today — Greenhouse, Lever, Ashby, BambooHR, Recruitee, Workable,
+Pinpoint, Rippling, SmartRecruiters, Workday) into a **dual-target dbt project** (DuckDB
 dev / BigQuery prod) that dedupes, lifecycle-tracks, and rule-filters postings — then emails
 a digest of what's new. LLM relevance scoring (in-warehouse, BigQuery AI) is the scoped V2.
 
 ```mermaid
 flowchart LR
-    A[ATS APIs<br/>9 public keyless feeds] -->|"Python adapters<br/>(typed, tested, parallel)"| B[(raw_*_jobs<br/>append-only)]
+    A[ATS APIs<br/>10 public keyless feeds] -->|"Python adapters<br/>(typed, tested, parallel)"| B[(raw_*_jobs<br/>append-only)]
     B --> C[bronze<br/>stg views]
     C --> D[silver<br/>union · dedup · lifecycle<br/>filters + soft signals]
     D --> E[gold<br/>fct_job_postings<br/>live postings only]
@@ -19,7 +19,7 @@ flowchart LR
 
 ### **→ [Project site](https://amikhno.github.io/job-market-analytics/)**
 
-Live market charts, design decisions, rendered docs and all 29 ADRs, and the dbt lineage DAG. <!-- check:adrs -->
+Live market charts, design decisions, rendered docs and all 30 ADRs, and the dbt lineage DAG. <!-- check:adrs -->
 Rebuilt in CI on every push to main, or locally with `make site` (output in `_site/`). Every number
 on the landing page is read from the dbt manifest, the ADRs and the test suite at build time, and
 the build fails on a broken link. Every PR's CI run also uploads a `site-preview` artifact, so a
@@ -58,7 +58,7 @@ docs/        decisions/, v2-plan.md, research/  (ARCHITECTURE.md at repo root)
 .github/     four workflows, split by permission scope — see ARCHITECTURE.md#automation
 ```
 
-Currently 9 ingestion sources, 22 dbt models and 29 ADRs. <!-- check:sources check:dbt_models check:adrs -->
+Currently 10 ingestion sources, 22 dbt models and 30 ADRs. <!-- check:sources check:dbt_models check:adrs -->
 
 ## Quality gates
 

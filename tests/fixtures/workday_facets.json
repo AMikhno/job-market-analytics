@@ -1,0 +1,53 @@
+{
+  "total": 57,
+  "jobPostings": [
+    {
+      "title": "Payroll Specialist",
+      "externalPath": "/job/Berlin/Payroll-Specialist_R900",
+      "locationsText": "Germany, Berlin",
+      "postedOn": "Posted Today",
+      "bulletFields": ["R900"]
+    }
+  ],
+  "facets": [
+    {
+      "facetParameter": "jobFamilyGroup",
+      "descriptor": "Job Category",
+      "values": [
+        {"descriptor": "Data", "id": "fam-data", "count": 12},
+        {"descriptor": "Finance", "id": "fam-fin", "count": 45}
+      ]
+    },
+    {
+      "facetParameter": "locationMainGroup",
+      "values": [
+        {
+          "facetParameter": "locationHierarchy2",
+          "descriptor": "Location Type",
+          "values": [
+            {"descriptor": "Office", "id": "type-office", "count": 40},
+            {"descriptor": "Remote", "id": "type-remote", "count": 17}
+          ]
+        },
+        {
+          "facetParameter": "locationHierarchy1",
+          "descriptor": "Locations",
+          "values": [
+            {"descriptor": "Canada", "id": "ctry-ca", "count": 3},
+            {"descriptor": "Germany", "id": "ctry-de", "count": 24},
+            {"descriptor": "United States of America", "id": "ctry-us", "count": 30}
+          ]
+        },
+        {
+          "facetParameter": "locations",
+          "descriptor": "Sites",
+          "values": [
+            {"descriptor": "Canada, Toronto", "id": "site-tor", "count": 2},
+            {"descriptor": "Canada, Remote", "id": "site-ca-remote", "count": 1}
+          ]
+        }
+      ]
+    }
+  ],
+  "userAuthenticated": false
+}

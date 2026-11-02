@@ -69,3 +69,23 @@ def smartrecruiters_page2_payload() -> dict:
 @pytest.fixture
 def smartrecruiters_detail_payload() -> dict:
     return json.loads((FIXTURES / "smartrecruiters_posting_detail.json").read_text())
+
+
+@pytest.fixture
+def workday_facets_payload() -> dict:
+    return json.loads((FIXTURES / "workday_facets.json").read_text())
+
+
+@pytest.fixture
+def workday_page1_payload() -> dict:
+    return json.loads((FIXTURES / "workday_jobs_page1.json").read_text())
+
+
+@pytest.fixture
+def workday_page2_payload() -> dict:
+    return json.loads((FIXTURES / "workday_jobs_page2.json").read_text())
+
+
+@pytest.fixture
+def workday_detail_payload() -> dict:
+    return json.loads((FIXTURES / "workday_job_detail.json").read_text())

@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import json
+from typing import Annotated
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+from shared.models import WorkdayLocationRule
 
 
 class Settings(BaseSettings):
@@ -63,6 +68,15 @@ class Settings(BaseSettings):
     # its own interval in the registry (ingest/sources.py).
     fetch_min_interval_s: float = Field(default=0.5)
 
+    # Workday boards are filtered by location on Workday's side (ADR-0030), so
+    # only postings in these places are listed and detail-fetched. JSON, e.g.
+    #   [{"countries": ["Somewhere"]},
+    #    {"countries": ["Elsewhere"], "location_types": ["Remote"]}]
+    # Private config -- a preference -- so in CI it is the WORKDAY_LOCATIONS
+    # Actions variable. Empty by default, and an empty list makes the adapter
+    # refuse to fetch rather than pull every posting on the board.
+    workday_locations: Annotated[list[WorkdayLocationRule], NoDecode] = Field(default_factory=list)
+
     # A source returning fewer than this many rows is a (non-failing) warning.
     # A source's rows_fetched is a *census* of everything currently on its
     # boards, not a count of new postings: raw is append-only and every run
@@ -82,6 +96,15 @@ class Settings(BaseSettings):
     volume_min_history: int = Field(default=5)
     # Where the run summary is written for the workflow to read.
     summary_path: str = Field(default="ingest_summary.json")
+
+    @field_validator("workday_locations", mode="before")
+    @classmethod
+    def _parse_workday_locations(cls, value: object) -> object:
+        # An unset Actions variable arrives as "" rather than being absent;
+        # that means "no rules", not a JSON error.
+        if isinstance(value, str):
+            return json.loads(value) if value.strip() else []
+        return value
 
     @property
     def is_prod(self) -> bool:

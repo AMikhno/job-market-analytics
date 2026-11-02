@@ -39,7 +39,7 @@ distinct job, so the chain earns its length.
 
 ## Ingestion
 
-One adapter per access method, not per company. There are 9 today. <!-- check:sources -->
+One adapter per access method, not per company. There are 10 today. <!-- check:sources -->
 
 Every adapter returns the same `RawPosting` (`shared/models.py`), so dbt downstream sees one shape:
 source, company, external id, title, location, remote policy, department, employment type, url,
@@ -50,6 +50,12 @@ body from that response, so each posting costs a second call — **a V1 source m
 description**, because silver's deal-breaker and desired-tech signals both read it, and a
 description-less row would be permanently unrankable (ADR-0021). A source with no keyless route to
 a description is not adopted.
+
+Workday is the one paginated POST, and the one source filtered on the server (ADR-0030). Its
+`board_ref` is `tenant/shard/site`. Each list response carries the board's facets, so the adapter
+resolves the private location rules (`WORKDAY_LOCATIONS`) to that board's facet ids and lists only
+postings in allowed places. That narrows nothing silver would keep, and it also keeps a large board
+under the list's 2000-posting cap. With no rules configured, the adapter refuses to fetch.
 
 Boards are fetched concurrently with the minimum interval enforced **per host** rather than
 globally, and rows landed on the main thread because DuckDB takes a single writer (ADR-0022). That

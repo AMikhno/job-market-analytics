@@ -48,6 +48,26 @@ class Company(BaseModel):
         return value
 
 
+class WorkdayLocationRule(BaseModel):
+    """One server-side location filter for Workday boards (ADR-0030).
+
+    A posting is requested when it is in one of `countries` and, if
+    `location_types` is set, also has one of those types (Workday's own facet
+    values, e.g. "Remote"). An empty `location_types` means any type. Names are
+    lists because tenants spell the same place differently ("United States" vs
+    "United States of America"); a rule matches a facet value by name,
+    case-insensitively. Rules are OR'd; within one rule the two parts are AND'd.
+
+    The values are a preference, so they are private config (shared/config.py),
+    never a default in code.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    countries: list[str] = Field(min_length=1)
+    location_types: list[str] = Field(default_factory=list)
+
+
 class RawPosting(BaseModel):
     """A job posting normalized to the common schema by a source adapter.
 

@@ -333,7 +333,7 @@ def _fetch_all(
     results: dict[str, list[_BoardResult]] = {source: [] for source in companies_by_source}
     work: list[tuple[SourceAdapter, str, Company]] = []
     for source_name, companies in companies_by_source.items():
-        adapter = _SOURCE_BY_ADAPTER[source_name].build(limiter)
+        adapter = _SOURCE_BY_ADAPTER[source_name].build_for_run(limiter, settings)
         work.extend((adapter, source_name, company) for company in companies)
     if not work:
         return results

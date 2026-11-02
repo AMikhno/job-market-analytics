@@ -1,8 +1,11 @@
 import pytest
 
 from ingest.adapters.lever import LeverAdapter
-from ingest.sources import SOURCES, AshbySource, GreenhouseSource, LeverSource
+from ingest.adapters.workday import WorkdayAdapter
+from ingest.sources import SOURCES, AshbySource, GreenhouseSource, LeverSource, WorkdaySource
+from shared.config import Settings
 from shared.http import HostRateLimiter
+from shared.models import WorkdayLocationRule
 
 
 def test_registry_has_all_adapters() -> None:
@@ -17,6 +20,7 @@ def test_registry_has_all_adapters() -> None:
         "pinpoint",
         "rippling",
         "smartrecruiters",
+        "workday",
     }
 
 
@@ -25,7 +29,55 @@ def test_url_templates_take_a_board_ref() -> None:
     assert "api.lever.co" in LeverSource(name="l").url_template
     assert "api.ashbyhq.com" in AshbySource(name="a").url_template
     for src in SOURCES:
+        if isinstance(src, WorkdaySource):
+            continue  # the one multi-segment ref: its template names the segments
         assert "{board_ref}" in src.url_template  # single placeholder, adapter-owned
+
+
+def test_workday_templates_name_every_ref_segment() -> None:
+    src = WorkdaySource(name="workday")
+    for template in (src.url_template, src.detail_url_template, src.public_url_template):
+        assert all(p in template for p in ("{tenant}", "{shard}", "{site}"))
+        assert "{board_ref}" not in template
+
+
+@pytest.mark.parametrize(
+    "good", ["examplewd/wd5/External", "ex-co/wd1/Ex_Careers", "e2/wd103/careers-carrieres"]
+)
+def test_workday_ref_accepts_tenant_shard_site(good: str) -> None:
+    WorkdaySource(name="workday").validate_board_ref(good)  # must not raise
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["examplewd", "examplewd/wd5", "examplewd/5/External", "a/wd5/b/c", "a/wd5/", "a b/wd5/c"],
+)
+def test_workday_ref_rejects_anything_else(bad: str) -> None:
+    """A tenant-only ref is what discovery records; on an active row it must
+    fail at load time, before any fetch."""
+    with pytest.raises(ValueError, match="tenant/wdN/site"):
+        WorkdaySource(name="workday").validate_board_ref(bad)
+
+
+def test_a_run_hands_workday_its_location_rules() -> None:
+    rules = [WorkdayLocationRule(countries=["Somewhere"])]
+    settings = Settings(_env_file=None, workday_locations=rules)
+
+    adapter = WorkdaySource(name="workday").build_for_run(None, settings)
+
+    assert isinstance(adapter, WorkdayAdapter)
+    assert adapter.locations == tuple(rules)
+    # built outside a run, it has none -- and so refuses to fetch
+    assert WorkdaySource(name="workday").build().locations == ()  # type: ignore[attr-defined]
+
+
+def test_other_sources_build_the_same_adapter_for_a_run() -> None:
+    limiter = HostRateLimiter(0.5)
+    settings = Settings(_env_file=None)
+    for src in SOURCES:
+        adapter = src.build_for_run(limiter, settings)
+        assert type(adapter) is type(src.build(limiter))
+        assert adapter.policy.limiter is limiter
 
 
 def test_every_source_builds_its_own_adapter() -> None:

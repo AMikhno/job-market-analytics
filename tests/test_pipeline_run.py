@@ -129,16 +129,24 @@ def test_a_fully_configured_run_reports_nothing_unconfigured(
 ) -> None:
     """The clause must stay quiet in the healthy case, or it becomes noise the
     reader learns to skip past."""
+    # A well-formed ref for each source: Workday's has three segments.
+    refs = {"workday": "demo/wd1/Site"}
     companies = tmp_path / "companies.csv"
     companies.write_text(
         "company_name,source,board_ref,active,tier,notes\n"
-        + "".join(f"{s.adapter} demo,{s.adapter},demoboard,true,1,\n" for s in SOURCES if s.active)
+        + "".join(
+            f"{s.adapter} demo,{s.adapter},{refs.get(s.adapter, 'demoboard')},true,1,\n"
+            for s in SOURCES
+            if s.active
+        )
     )
     _env(monkeypatch, tmp_path)
     monkeypatch.setenv("COMPANIES_CSV", str(companies))
+    monkeypatch.setenv("WORKDAY_LOCATIONS", '[{"countries": ["Somewhere"]}]')
     # Every board 404s; that is a per-source hard failure, but "unconfigured" is
     # about the list, not the network, and must stay empty either way.
     responses.add(responses.GET, re.compile(r"https?://.*"), status=404)
+    responses.add(responses.POST, re.compile(r"https?://.*"), status=404)
 
     pipeline.run()
 

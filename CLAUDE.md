@@ -7,7 +7,7 @@ Context and conventions for AI agents (and humans) working on this repo.
 Automated job-matching pipeline. **V1 (current) is ingestion + dbt transformations
 only** — no LLM, no embeddings, no scoring. Python pulls postings from every ATS with
 a public, keyless feed (Greenhouse, Lever, Ashby, BambooHR, Recruitee, Workable, Pinpoint,
-Rippling and SmartRecruiters today — ADR-0013/0021; Workday and the auth-gated ATS stay
+Rippling, SmartRecruiters and Workday today — ADR-0013/0021/0030; the auth-gated ATS stay
 inventory-only) into per-source raw tables; one dbt project transforms them through
 bronze → silver → gold into a deduplicated, rule-filtered table of postings.
 AI (LLM structuring/scoring, embeddings) is **V2**. See `ARCHITECTURE.md`.
@@ -92,7 +92,7 @@ current shape.
 
 - Ashby was built because it is shaped like Lever — one keyless GET, bare-token ref, so the
   adapter is a copy rather than a new access method.
-- Workday is deferred because it is not: POST body, offset pagination, and a multi-segment ref
+- Workday needed an access method of its own because it is not: POST body, offset pagination, and a multi-segment ref
   (tenant/shard/site) instead of a slug.
 - V2 scores requirements text because a title names the org chart the seat sits in, while the
   requirements name the daily work.
@@ -118,7 +118,7 @@ Three hard prohibitions on top of that, none of which have an exception:
   being illustrated instead ("a two-word Ashby ref", not the ref).
 - **No real PII, and no unredacted captured API responses.** Fixtures are sanitized before commit.
 - **No numbers that nothing verifies.** A count stated in prose rots the moment code moves under
-  it, so assert it: `9 sources <!-- check:sources -->`, enforced by `make docs-check`.
+  it, so assert it: `10 sources <!-- check:sources -->`, enforced by `make docs-check`.
 
 Write once, link elsewhere. One fact has one home — the same fact restated in four files is why
 docs drift, and it is how a superseded claim survived four days in `docs/research/ats-feeds.md`.
@@ -177,7 +177,8 @@ references like "§5.6" are unverifiable by construction and were wrong within o
 - Current state, priorities, open decisions → `TODO.md`
 - How the system works today → `ARCHITECTURE.md` (no roadmap and no history: those are `TODO.md`
   and git respectively)
-- Decision records (why, not what) → `docs/decisions/` — newest first: 0029 the site's market
+- Decision records (why, not what) → `docs/decisions/` — newest first: 0030 Workday filters
+  by location server-side and detail-fetches only new postings, 0029 the site's market
   charts publish suppressed aggregates, 0028 the filter-rule seeds are private config, 0027 score
   against a resume corpus, 0026 warehouse in us-central1, 0025 V2 model + its global-only endpoint (supersedes 0009), 0024 one match_score orders the
   digest, 0023 deal-breakers demote rather than delete, 0020 V2 scope
