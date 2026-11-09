@@ -8,6 +8,77 @@ models:
         data_tests: [not_null]
       - name: content_hash
         description: Surrogate of (title, clean_text); changes when the posting text changes (V2 reprocessing key).
+        # Tested on int_jobs__latest, not here: on this view the test hashes every
+        # description in the retained history, a full extra scan on each run.
+  - name: int_jobs__latest
+    description: >
+      One row per posting across every tracked board: its latest landing and its
+      lifecycle, before any filter. The single full read of description history
+      in a run; silver_jobs, the market tech mentions and the posting history all
+      read from here (ADR-0030).
+    columns:
+      - name: job_key
+        description: Stable posting identity; the grain of this table.
+        data_tests: [not_null, unique]
+      - name: content_hash
+        description: Change-detection hash of (title, clean_text).
+        data_tests: [not_null]
+      - name: first_seen_at
+        description: Earliest retained ingest that contained this posting.
+        data_tests: [not_null]
+      - name: last_seen_at
+        description: Most recent ingest that still contained this posting.
+        data_tests: [not_null]
+      - name: is_active
+        description: >
+          On its board's latest ingest, and the board was ingested within
+          board_staleness_hours of the pipeline's latest ingest.
+        data_tests: [not_null]
+  - name: int_posting_state
+    description: >
+      The columns snap_job_postings tracks. Keeps description text out of a table
+      that stores every column once per version.
+    columns:
+      - name: job_key
+        data_tests: [not_null, unique]
+  - name: int_posting_changes
+    description: >
+      One row per change to a posting, from its snapshot history: which fields
+      moved, how long the previous version lasted, and whether a text change was
+      part of a board-wide edit.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [job_key, changed_at]
+    columns:
+      - name: job_key
+        data_tests: [not_null]
+      - name: changed_at
+        description: The snapshot run that recorded the change.
+        data_tests: [not_null]
+      - name: days_in_previous_version
+        description: Whole calendar days between the previous version and this change.
+        data_tests: [not_null]
+      - name: content_changed
+        description: The title or text changed. Body-only edits are this and not title_changed.
+        data_tests: [not_null]
+      - name: title_changed
+        data_tests: [not_null]
+      - name: location_changed
+        data_tests: [not_null]
+      - name: remote_policy_changed
+        data_tests: [not_null]
+      - name: closed
+        description: The posting went from live to not live in this change.
+        data_tests: [not_null]
+      - name: reopened
+        description: The posting went from not live to live in this change.
+        data_tests: [not_null]
+      - name: is_board_wide_edit
+        description: >
+          A text change made in a run that changed at least board_wide_edit_share
+          of the board's live postings, on a board of at least
+          board_wide_edit_min_postings. Most likely a shared template edit.
         data_tests: [not_null]
   - name: silver_jobs
     description: >
@@ -226,7 +297,7 @@ unit_tests:
     description: >
       Lever re-ingests tie on posted_or_updated_at (createdAt never changes);
       ingested_at must break the tie so an edited posting surfaces.
-    model: silver_jobs
+    model: int_jobs__latest
     given:
       - input: ref('int_jobs__unioned')
         rows:
@@ -234,6 +305,54 @@ unit_tests:
              location: "Ottawa, Canada", ingested_at: 2026-07-01 10:00:00, posted_or_updated_at: 2026-06-01 00:00:00}
           - {job_key: k1, source: lever, company: acme, title: new title, clean_text: "",
              location: "Ottawa, Canada", ingested_at: 2026-07-02 10:00:00, posted_or_updated_at: 2026-06-01 00:00:00}
+    expect:
+      rows:
+        - {job_key: k1, title: new title}
+
+  - name: rows_within_one_landing_resolve_to_the_same_location_every_run
+    description: >
+      One landing can hold several rows for one posting, one per city, tied on
+      both timestamps. Location breaks the tie, or the chosen city could differ
+      between runs and the snapshot would record a change nobody made.
+    model: int_jobs__latest
+    given:
+      - input: ref('int_jobs__unioned')
+        rows:
+          - {job_key: k1, source: workable, company: acme, title: a, location: Toronto,
+             ingested_at: 2026-07-02 10:00:00, posted_or_updated_at: 2026-06-01 00:00:00}
+          - {job_key: k1, source: workable, company: acme, title: a, location: Montreal,
+             ingested_at: 2026-07-02 10:00:00, posted_or_updated_at: 2026-06-01 00:00:00}
+          - {job_key: k1, source: workable, company: acme, title: a, location: null,
+             ingested_at: 2026-07-02 10:00:00, posted_or_updated_at: 2026-06-01 00:00:00}
+    expect:
+      rows:
+        - {job_key: k1, location: Montreal}
+
+  - name: latest_applies_no_location_filter
+    description: >
+      The market models and the posting history read this table, and neither may
+      depend on the private location rules (ADR-0028, ADR-0029), so a posting
+      anywhere in the world stays in it.
+    model: int_jobs__latest
+    given:
+      - input: ref('int_jobs__unioned')
+        rows:
+          - {job_key: k1, source: lever, company: acme, title: a, location: "Berlin, Germany",
+             ingested_at: 2026-07-02 10:00:00}
+    expect:
+      rows:
+        - {job_key: k1, location: "Berlin, Germany", is_active: true}
+
+  - name: silver_passes_the_lifecycle_through
+    description: >
+      Lifecycle is derived upstream now, and gold and the digest still read it
+      from silver, so all three columns must survive the filter unchanged.
+    model: silver_jobs
+    given:
+      - input: ref('int_jobs__latest')
+        rows:
+          - {job_key: k1, title: a, clean_text: "", location: "Ottawa, Canada",
+             first_seen_at: 2026-07-01 10:00:00, last_seen_at: 2026-07-02 10:00:00, is_active: false}
       - input: ref('deal_breaker_tech')
         rows: []
       - input: ref('allowed_locations')
@@ -244,7 +363,7 @@ unit_tests:
         rows: []
     expect:
       rows:
-        - {job_key: k1, title: new title}
+        - {job_key: k1, first_seen_at: 2026-07-01 10:00:00, last_seen_at: 2026-07-02 10:00:00, is_active: false}
 
   - name: deal_breaker_annotates_and_matches_words_not_substrings
     description: >
@@ -254,7 +373,7 @@ unit_tests:
       naming two terms counts both, sorted.
     model: silver_jobs
     given:
-      - input: ref('int_jobs__unioned')
+      - input: ref('int_jobs__latest')
         rows:
           - {job_key: k1, source: lever, company: acme, title: a, clean_text: We use Kafka daily,
              location: "Ottawa, Canada", ingested_at: 2026-07-02 10:00:00}
@@ -287,7 +406,7 @@ unit_tests:
       the whole point of scoring rather than sorting on the flag first.
     model: silver_jobs
     given:
-      - input: ref('int_jobs__unioned')
+      - input: ref('int_jobs__latest')
         rows:
           # 2 tech + title bonus 2 - 1 deal-breaker = 3
           - {job_key: strong_flagged, source: lever, company: acme, title: Analytics Engineer,
@@ -324,7 +443,7 @@ unit_tests:
       one that omits the field mean the same thing.
     model: silver_jobs
     given:
-      - input: ref('int_jobs__unioned')
+      - input: ref('int_jobs__latest')
         rows:
           - {job_key: remote, source: lever, company: acme, title: a, clean_text: "",
              location: Remote, ingested_at: 2026-07-02 10:00:00}
@@ -375,7 +494,7 @@ unit_tests:
       k2 was seen on 07-01 but not in the board's 07-02 ingest — it was taken
       down. It stays in silver (history) but is_active must be false. Also pins
       first_seen_at to the earliest ingest (k1 first seen 07-01, not 07-02).
-    model: silver_jobs
+    model: int_jobs__latest
     given:
       - input: ref('int_jobs__unioned')
         rows:
@@ -385,14 +504,6 @@ unit_tests:
              location: "Ottawa, Canada", ingested_at: 2026-07-02 10:00:00}
           - {job_key: k2, source: lever, company: acme, title: gone, clean_text: "",
              location: "Ottawa, Canada", ingested_at: 2026-07-01 10:00:00}
-      - input: ref('deal_breaker_tech')
-        rows: []
-      - input: ref('allowed_locations')
-        rows: [{pattern: Canada}]
-      - input: ref('desired_tech')
-        rows: []
-      - input: ref('desired_titles')
-        rows: []
     expect:
       rows:
         - {job_key: k1, is_active: true, first_seen_at: 2026-07-01 10:00:00}
@@ -406,7 +517,7 @@ unit_tests:
       case: removed from the company list or 404-ing forever). acme, ingested one
       hour before the pipeline's latest, is comfortably within grace and stays
       active.
-    model: silver_jobs
+    model: int_jobs__latest
     given:
       - input: ref('int_jobs__unioned')
         rows:
@@ -416,14 +527,6 @@ unit_tests:
              location: "Ottawa, Canada", ingested_at: 2026-06-25 10:00:00}
           - {job_key: yardstick, source: greenhouse, company: other, title: c, clean_text: "",
              location: "Ottawa, Canada", ingested_at: 2026-07-02 10:00:00}
-      - input: ref('deal_breaker_tech')
-        rows: []
-      - input: ref('allowed_locations')
-        rows: [{pattern: Canada}]
-      - input: ref('desired_tech')
-        rows: []
-      - input: ref('desired_titles')
-        rows: []
     expect:
       rows:
         - {job_key: live, is_active: true}
@@ -438,7 +541,7 @@ unit_tests:
       '.' would match any character). Applies to every seed-driven matcher.
     model: silver_jobs
     given:
-      - input: ref('int_jobs__unioned')
+      - input: ref('int_jobs__latest')
         rows:
           - {job_key: cpp, source: lever, company: acme, title: a,
              clean_text: "Modern C++ services", location: "Ottawa, Canada",
@@ -470,7 +573,7 @@ unit_tests:
       with no desired tech and a non-target title still survives (soft, ADR-0015).
     model: silver_jobs
     given:
-      - input: ref('int_jobs__unioned')
+      - input: ref('int_jobs__latest')
         rows:
           - {job_key: hit, source: lever, company: acme, title: Analytics Engineer,
              clean_text: "We use dbt and BigQuery daily", location: "Ottawa, Canada",
@@ -490,3 +593,88 @@ unit_tests:
       rows:
         - {job_key: hit, desired_tech_hits: 2, title_match: true}
         - {job_key: miss, desired_tech_hits: 0, title_match: false}
+
+  - name: posting_changes_name_what_moved
+    description: >
+      A first version is an arrival, not a change. After that, each version names
+      exactly the fields that moved; a closed posting that returns is a close and
+      then a reopen; a null location appearing counts as a change.
+    model: int_posting_changes
+    given:
+      - input: ref('snap_job_postings')
+        rows:
+          - {job_key: k1, source: lever, company: acme, title: Analyst, location: null, remote_policy: Remote,
+             content_hash: h1, is_active: true,
+             dbt_valid_from: 2026-07-01 10:00:00, dbt_valid_to: 2026-07-04 10:00:00}
+          - {job_key: k1, source: lever, company: acme, title: Analyst, location: Toronto, remote_policy: Remote,
+             content_hash: h1, is_active: true,
+             dbt_valid_from: 2026-07-04 10:00:00, dbt_valid_to: 2026-07-05 10:00:00}
+          - {job_key: k1, source: lever, company: acme, title: Senior Analyst, location: Toronto, remote_policy: Hybrid,
+             content_hash: h2, is_active: true,
+             dbt_valid_from: 2026-07-05 10:00:00, dbt_valid_to: 2026-07-06 10:00:00}
+          - {job_key: k1, source: lever, company: acme, title: Senior Analyst, location: Toronto, remote_policy: Hybrid,
+             content_hash: h2, is_active: false,
+             dbt_valid_from: 2026-07-06 10:00:00, dbt_valid_to: 2026-07-08 10:00:00}
+          - {job_key: k1, source: lever, company: acme, title: Senior Analyst, location: Toronto, remote_policy: Hybrid,
+             content_hash: h2, is_active: true,
+             dbt_valid_from: 2026-07-08 10:00:00, dbt_valid_to: 9999-12-31 00:00:00}
+    expect:
+      rows:
+        - {job_key: k1, changed_at: 2026-07-04 10:00:00, days_in_previous_version: 3, content_changed: false,
+           title_changed: false, location_changed: true, remote_policy_changed: false, closed: false, reopened: false}
+        - {job_key: k1, changed_at: 2026-07-05 10:00:00, days_in_previous_version: 1, content_changed: true,
+           title_changed: true, location_changed: false, remote_policy_changed: true, closed: false, reopened: false}
+        - {job_key: k1, changed_at: 2026-07-06 10:00:00, days_in_previous_version: 1, content_changed: false,
+           title_changed: false, location_changed: false, remote_policy_changed: false, closed: true, reopened: false}
+        - {job_key: k1, changed_at: 2026-07-08 10:00:00, days_in_previous_version: 2, content_changed: false,
+           title_changed: false, location_changed: false, remote_policy_changed: false, closed: false, reopened: true}
+
+  - name: board_wide_edits_need_both_the_share_and_the_board_size
+    description: >
+      Half of a four-posting board changing together is flagged. One of four is
+      a single edit. Both postings of a two-posting board changing is not enough
+      evidence of a template, because the board is below the minimum size.
+    model: int_posting_changes
+    overrides:
+      vars:
+        board_wide_edit_min_postings: 3
+    given:
+      - input: ref('snap_job_postings')
+        rows:
+          - {job_key: a1, source: lever, company: wide, content_hash: h1, is_active: true,
+             dbt_valid_from: 2026-07-01 10:00:00, dbt_valid_to: 2026-07-02 10:00:00}
+          - {job_key: a1, source: lever, company: wide, content_hash: h2, is_active: true,
+             dbt_valid_from: 2026-07-02 10:00:00, dbt_valid_to: 9999-12-31 00:00:00}
+          - {job_key: a2, source: lever, company: wide, content_hash: h3, is_active: true,
+             dbt_valid_from: 2026-07-01 10:00:00, dbt_valid_to: 2026-07-02 10:00:00}
+          - {job_key: a2, source: lever, company: wide, content_hash: h4, is_active: true,
+             dbt_valid_from: 2026-07-02 10:00:00, dbt_valid_to: 9999-12-31 00:00:00}
+          - {job_key: a3, source: lever, company: wide, content_hash: h5, is_active: true,
+             dbt_valid_from: 2026-07-01 10:00:00, dbt_valid_to: 9999-12-31 00:00:00}
+          - {job_key: a4, source: lever, company: wide, content_hash: h6, is_active: true,
+             dbt_valid_from: 2026-07-01 10:00:00, dbt_valid_to: 9999-12-31 00:00:00}
+          - {job_key: b1, source: lever, company: single, content_hash: h7, is_active: true,
+             dbt_valid_from: 2026-07-01 10:00:00, dbt_valid_to: 2026-07-02 10:00:00}
+          - {job_key: b1, source: lever, company: single, content_hash: h8, is_active: true,
+             dbt_valid_from: 2026-07-02 10:00:00, dbt_valid_to: 9999-12-31 00:00:00}
+          - {job_key: b2, source: lever, company: single, content_hash: h9, is_active: true,
+             dbt_valid_from: 2026-07-01 10:00:00, dbt_valid_to: 9999-12-31 00:00:00}
+          - {job_key: b3, source: lever, company: single, content_hash: h10, is_active: true,
+             dbt_valid_from: 2026-07-01 10:00:00, dbt_valid_to: 9999-12-31 00:00:00}
+          - {job_key: b4, source: lever, company: single, content_hash: h11, is_active: true,
+             dbt_valid_from: 2026-07-01 10:00:00, dbt_valid_to: 9999-12-31 00:00:00}
+          - {job_key: c1, source: lever, company: small, content_hash: h12, is_active: true,
+             dbt_valid_from: 2026-07-01 10:00:00, dbt_valid_to: 2026-07-02 10:00:00}
+          - {job_key: c1, source: lever, company: small, content_hash: h13, is_active: true,
+             dbt_valid_from: 2026-07-02 10:00:00, dbt_valid_to: 9999-12-31 00:00:00}
+          - {job_key: c2, source: lever, company: small, content_hash: h14, is_active: true,
+             dbt_valid_from: 2026-07-01 10:00:00, dbt_valid_to: 2026-07-02 10:00:00}
+          - {job_key: c2, source: lever, company: small, content_hash: h15, is_active: true,
+             dbt_valid_from: 2026-07-02 10:00:00, dbt_valid_to: 9999-12-31 00:00:00}
+    expect:
+      rows:
+        - {job_key: a1, is_board_wide_edit: true}
+        - {job_key: a2, is_board_wide_edit: true}
+        - {job_key: b1, is_board_wide_edit: false}
+        - {job_key: c1, is_board_wide_edit: false}
+        - {job_key: c2, is_board_wide_edit: false}

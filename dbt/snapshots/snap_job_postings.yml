@@ -1,0 +1,47 @@
+version: 2
+
+# Posting history as SCD2 (ADR-0030). The only dbt object that cannot be rebuilt
+# from raw: its purpose is to outlive raw's partition expiry.
+snapshots:
+  - name: snap_job_postings
+    description: >
+      One row per version of a posting, across every tracked board and before any
+      filter. A new version opens when the posting's text, location, remote policy
+      or live status changes. Closes are recorded through is_active, so the current
+      row of a closed posting has is_active = false.
+    relation: ref('int_posting_state')
+    config:
+      schema: silver
+      unique_key: job_key
+      # Not `timestamp`: measured across the ATS feeds, most timestamp changes
+      # carry no content change and most content changes move no timestamp
+      # (ADR-0030).
+      strategy: check
+      # content_hash covers title and text only, so location and remote policy
+      # are tracked in their own right.
+      check_cols: [content_hash, location, remote_policy, is_active]
+      # Not `invalidate`: the source keeps closed postings, so a row leaves it only
+      # when raw expires, and that would stamp a false close date months later.
+      # is_active carries real closes, including the failed-board grace window.
+      hard_deletes: ignore
+      dbt_valid_to_current: "cast('9999-12-31' as timestamp)"
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [job_key, dbt_valid_from]
+    columns:
+      - name: job_key
+        description: Stable posting identity; one row per version.
+        data_tests: [not_null]
+      - name: content_hash
+        description: Hash of (title, clean_text) as of this version.
+        data_tests: [not_null]
+      - name: is_active
+        description: Whether the posting was live during this version.
+        data_tests: [not_null]
+      - name: dbt_valid_from
+        description: The snapshot run that first recorded this version.
+        data_tests: [not_null]
+      - name: dbt_valid_to
+        description: The run that replaced this version; 9999-12-31 while current.
+        data_tests: [not_null]

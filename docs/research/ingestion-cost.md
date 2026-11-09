@@ -188,6 +188,9 @@ the cheaper resource, so both are parked rather than scheduled — not because t
 uncertain, but because it is decisive in the other direction. The retention change was still worth
 doing: it was a config edit, and six months is what the data is actually worth.
 
+This section prices storage only. Query bytes turned out to be the larger cost; ADR-0030 has the
+measurement and the change it produced.
+
 This also retires the "back inside the free allowance" framing above. Getting under 10 GiB was
 never the goal; it was a proxy for a cost that turns out not to matter.
 

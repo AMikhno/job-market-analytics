@@ -177,7 +177,8 @@ references like "§5.6" are unverifiable by construction and were wrong within o
 - Current state, priorities, open decisions → `TODO.md`
 - How the system works today → `ARCHITECTURE.md` (no roadmap and no history: those are `TODO.md`
   and git respectively)
-- Decision records (why, not what) → `docs/decisions/` — newest first: 0029 the site's market
+- Decision records (why, not what) → `docs/decisions/` — newest first: 0030 posting history is an
+  SCD2 snapshot and a run reads description history once, 0029 the site's market
   charts publish suppressed aggregates, 0028 the filter-rule seeds are private config, 0027 score
   against a resume corpus, 0026 warehouse in us-central1, 0025 V2 model + its global-only endpoint (supersedes 0009), 0024 one match_score orders the
   digest, 0023 deal-breakers demote rather than delete, 0020 V2 scope

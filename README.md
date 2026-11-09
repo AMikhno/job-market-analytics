@@ -19,7 +19,7 @@ flowchart LR
 
 ### **→ [Project site](https://amikhno.github.io/job-market-analytics/)**
 
-Live market charts, design decisions, rendered docs and all 29 ADRs, and the dbt lineage DAG. <!-- check:adrs -->
+Live market charts, design decisions, rendered docs and all 30 ADRs, and the dbt lineage DAG. <!-- check:adrs -->
 Rebuilt in CI on every push to main, or locally with `make site` (output in `_site/`). Every number
 on the landing page is read from the dbt manifest, the ADRs and the test suite at build time, and
 the build fails on a broken link. Every PR's CI run also uploads a `site-preview` artifact, so a
@@ -50,7 +50,7 @@ ingest/      per-ATS adapters, source registry, parallel pipeline entrypoint
 shared/      config (Pydantic Settings), models, http, storage (one writer, both warehouses)
 deliver/     email digest of new postings (watermark in ops.digest_runs)
 config/      private company list (gitignored; .example committed)
-dbt/         one dual-target project: models/{bronze,silver,gold}, seeds, macros, unit tests
+dbt/         one dual-target project: models/{bronze,silver,gold}, snapshots, seeds, macros, unit tests
 scripts/     repo gates that are not lint or tests (see below), and the Pages site build
 site/        landing page template + docs theme for the Pages site
 tests/       pytest suite + sanitized fixtures
@@ -58,7 +58,7 @@ docs/        decisions/, v2-plan.md, research/  (ARCHITECTURE.md at repo root)
 .github/     four workflows, split by permission scope — see ARCHITECTURE.md#automation
 ```
 
-Currently 9 ingestion sources, 22 dbt models and 29 ADRs. <!-- check:sources check:dbt_models check:adrs -->
+Currently 9 ingestion sources, 25 dbt models and 30 ADRs. <!-- check:sources check:dbt_models check:adrs -->
 
 ## Quality gates
 

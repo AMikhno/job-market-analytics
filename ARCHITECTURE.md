@@ -18,8 +18,9 @@ stubs them instead of requiring a model to build the DAG.
 ┌────────┐   ┌─────────┐   ┌───────────────────────────────────┐   ┌──────┐
 │ INGEST │ → │ BRONZE  │ → │              SILVER               │ → │ GOLD │ → DELIVER
 └────────┘   └─────────┘   │  int_jobs__unioned    (view)      │   └──────┘   (links)
- ATS APIs     stg_* views  │  silver_jobs          (table)     │    fct_job_postings
- 1 table/src               │  ┄ AI: extract → score, match     │    (table)
+ ATS APIs     stg_* views  │  int_jobs__latest     (table)     │    fct_job_postings
+ 1 table/src               │  silver_jobs          (table)     │    (table)
+                           │  ┄ AI: extract → score, match     │
  + run meta                └───────────────────────────────────┘
 ```
 
@@ -33,7 +34,10 @@ distinct job, so the chain earns its length.
 | Ingest (Python) | `raw_<source>_jobs`, `ops.ingest_runs` | — | Normalize, land, record run metadata |
 | Bronze / staging | `stg_<source>__jobs` | view | Cast and standardize one source's landing |
 | Silver / intermediate | `int_jobs__unioned` | view | Union + `job_key` + `content_hash` + `clean_text` |
-| Silver | `silver_jobs` | table | Dedup, location filter, soft signals, lifecycle |
+| Silver | `int_jobs__latest` | table | Current row per posting and its lifecycle, before any filter |
+| Silver | `silver_jobs` | table | Location filter and soft signals |
+| Silver | `snap_job_postings` | snapshot | Every version of every posting (SCD2) |
+| Silver | `int_posting_changes` | table | One row per change: what moved, and whether it was board-wide |
 | Gold / marts | `fct_job_postings` | table | One row per *live* posting, ranked, with the link |
 | Deliver (Python) | `deliver/digest.py` → `ops.digest_runs` | — | Email postings new since the last digest (ADR-0019) |
 
@@ -90,8 +94,13 @@ run that still contained it. `is_active` requires both that the posting was in i
 ingest **and** that the board itself ingested recently, so a board that is removed or persistently
 failing ages out of gold within a day instead of leaving zombie postings behind.
 
-`silver_jobs` is the durable record of every posting, live or closed; gold shows only live ones
-(ADR-0016).
+`silver_jobs` is the durable record of every posting, live or closed, for as long as raw retains
+it; gold shows only live ones (ADR-0016).
+
+`snap_job_postings` keeps what raw will not: one row per version of each posting, across every
+board, opened when its text, location, remote policy or live status changes. A closed posting's
+current row has `is_active = false` rather than an end date, so a failed board fetch cannot close
+it and raw expiring cannot date it falsely (ADR-0030).
 
 ## Filtering: one rule removes, the rest rank
 
@@ -126,19 +135,21 @@ against a typed schema before anything leaves the warehouse (ADR-0029).
 
 ## Rebuilds, not migrations
 
-Everything dbt builds is recreated from raw on every run, which has three consequences worth
-stating:
+Everything dbt builds, apart from the incremental and snapshot exceptions below, is recreated from
+raw on every run, which has three consequences worth stating:
 
 - **Adding or changing a column needs no migration.** The next run materializes the new shape over
   the whole retained history.
 - **Changing a seed is retroactive by design.** The next run re-evaluates every posting still in
   raw, which is what you want while the rules are still maturing.
-- **The only stateful objects are the raw and ops tables**, which are append-only. Changing them is
-  additive nullable columns only, applied before the code that writes them; a rename is a new
-  column plus a backfill.
+- **The stateful objects are the raw and ops tables, and the snapshot.** Raw and ops are
+  append-only. Changing them is additive nullable columns only, applied before the code that writes
+  them; a rename is a new column plus a backfill.
 
-V2's incremental models are the exception — they exist to avoid recomputation, so a schema change
-there re-bills a backfill and is a costed decision (`docs/v2-plan.md`).
+V2's incremental models are one exception — they exist to avoid recomputation, so a schema change
+there re-bills a backfill and is a costed decision (`docs/v2-plan.md`). `snap_job_postings` is the
+other: its history exists nowhere else once raw expires, so it is never dropped to fix a mistake,
+and a change to how text is hashed writes a new version for every affected posting (ADR-0030).
 
 ## Automation
 

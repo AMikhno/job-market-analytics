@@ -1,41 +1,15 @@
--- Dedup to the current row per posting, derive its lifecycle (is it still on the
--- board?), then annotate it with keyword signals (no LLM in V1). Deal-breaker
--- tech, desired tech/titles and the Canada location marker are all seed-driven,
--- so the rules are data, not hardcoded SQL.
+-- Apply the location filter to the current row per posting, then annotate it with
+-- keyword signals (no LLM in V1). Dedup and lifecycle happen upstream, in
+-- int_jobs__latest. Deal-breaker tech, desired tech/titles and the Canada location
+-- marker are all seed-driven, so the rules are data, not hardcoded SQL.
 --
 -- Location is the only hard filter left. Deal-breaker tech used to drop a posting
 -- outright; it is now a negative *signal* (ADR-0023) because a single mention
 -- anywhere in the text -- including a "nice to have" line -- was deleting roles
 -- that matched on everything else.
-with lifecycle as (
-    select
-        *,
-        -- the earliest ingest that saw this posting: a job_key whose first_seen_at
-        -- falls in the current run is net-new (the "new since last run" signal).
-        min(ingested_at) over (partition by job_key) as first_seen_at,
-        -- when this posting was last seen on its board, across all ingests
-        max(ingested_at) over (partition by job_key) as last_seen_at,
-        -- the board's most recent ingest: a posting absent from it was taken down
-        max(ingested_at) over (partition by source, company) as board_last_ingested_at,
-        -- the latest ingest across the whole pipeline: the staleness yardstick
-        -- for boards that stopped being ingested at all (see is_active below)
-        max(ingested_at) over () as pipeline_last_ingested_at
-    from {{ ref('int_jobs__unioned') }}
-),
-
-deduped as (
+with deduped as (
     select *
-    from lifecycle
-    -- `where true` keeps BigQuery's parser happy: QUALIFY historically requires a
-    -- WHERE / GROUP BY / HAVING clause alongside it.
-    where true
-    -- The raw landing is append-only, so "most recently ingested" is the current
-    -- version of a posting. posted_or_updated_at can't order this: Lever only
-    -- exposes createdAt, which never changes, so every re-ingest would tie.
-    qualify row_number() over (
-        partition by job_key
-        order by ingested_at desc, posted_or_updated_at desc nulls last
-    ) = 1
+    from {{ ref('int_jobs__latest') }}
 ),
 
 -- Deal-breaker tech named anywhere in the posting text (word match). Counted and
@@ -130,19 +104,7 @@ select
         * case when coalesce(tm.title_match, false) then 1 else 0 end
         - {{ var('match_deal_breaker_penalty', 1) }} * coalesce(dbm.deal_breaker_hits, 0)
     ) as match_score,
-    -- Active = still on the board as of that board's latest ingest, AND that
-    -- board is itself still being ingested. Without the second clause, a board
-    -- removed from the company list (or 404-ing forever - per-company failures
-    -- only warn) freezes its board_last_ingested_at and its postings would stay
-    -- "active" in gold indefinitely. The grace window tolerates ~2 consecutive
-    -- failed runs at the twice-daily cadence (mirroring the 30h freshness gate)
-    -- and self-heals: a recovering board's postings are re-seen and reactivate.
-    (
-        d.last_seen_at >= d.board_last_ingested_at
-        and d.board_last_ingested_at >= {{ timestamp_hours_before(
-            'd.pipeline_last_ingested_at', var('board_staleness_hours', 36)
-        ) }}
-    ) as is_active
+    d.is_active
 from deduped d
 left join desired_tech_counts dtc on d.job_key = dtc.job_key
 left join title_matches tm on d.job_key = tm.job_key
