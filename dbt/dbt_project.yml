@@ -6,12 +6,19 @@ profile: job_pipeline
 model-paths: ["models"]
 seed-paths: ["seeds"]
 macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
 
 vars:
   # A board whose latest ingest lags the pipeline's latest by more than this is
   # considered retired (removed from the list, or persistently failing) and its
   # postings go inactive. ~2 missed runs of grace at the twice-daily cadence.
   board_staleness_hours: 36
+
+  # A text change counts as board-wide when at least this share of a board's live
+  # postings changed in the same run, on a board with at least this many postings.
+  # Below the minimum, half a board is one or two postings, not a template.
+  board_wide_edit_share: 0.5
+  board_wide_edit_min_postings: 5
 
   # match_score = desired_tech_hits + bonus*(title_match) - penalty*deal_breaker_hits.
   # One number, shown in the digest and used to order it (ADR-0024), so the score
@@ -66,6 +73,7 @@ vars:
 # Three medallion zones = dbt staging -> intermediate -> marts.
 # Folder defaults below; per-model overrides live in-model:
 #   - int_jobs__unioned        -> view  (free; ephemeral would block unit tests)
+#   - int_posting_state        -> view  (a column projection of int_jobs__latest)
 #   - int_jobs_structured/scored (V2) -> incremental (never recompute LLM calls)
 models:
   job_pipeline:

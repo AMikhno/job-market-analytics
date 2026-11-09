@@ -12,13 +12,11 @@ with open_data_roles as (
 
 latest_text as (
     select
-        u.job_key,
-        u.clean_text
-    from {{ ref('int_jobs__unioned') }} u
+        l.job_key,
+        l.clean_text
+    from {{ ref('int_jobs__latest') }} l
     inner join open_data_roles o
-        on u.job_key = o.job_key
-    where true
-    qualify row_number() over (partition by u.job_key order by u.ingested_at desc) = 1
+        on l.job_key = o.job_key
 )
 
 select distinct

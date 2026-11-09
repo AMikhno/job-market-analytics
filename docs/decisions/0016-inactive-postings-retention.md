@@ -16,7 +16,7 @@ closed posting must not surface as an apply link. Anyone who needs closed postin
 
 No separate archive mart is built in V1: it would have no consumer yet (the deliverable is live
 links) and this repo avoids dead code. The hard retention floor is raw's ingestion-time
-partition expiry (`bq_raw_partition_expiry_days`, 400 days — `shared/storage.py`), after which a
-long-closed posting's raw rows age out and it leaves silver on the next rebuild. If a browsable
-archive of closed postings is wanted later, add a thin gold view over
-`silver_jobs where not is_active` then.
+partition expiry (`bq_raw_partition_expiry_days` — `shared/storage.py`), after which a
+long-closed posting's raw rows age out and it leaves silver on the next rebuild. Its version
+history outlives that in `snap_job_postings` (ADR-0030). If a browsable archive of closed postings
+is wanted later, add a thin gold view over `silver_jobs where not is_active` then.
