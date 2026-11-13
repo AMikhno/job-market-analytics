@@ -101,7 +101,8 @@ embedding matcher that reports which piece of experience a posting resembles.
 
 **Deliberately unvalidated so far.** Two rankings run side by side — the LLM score and embedding
 similarity — because choosing between them without measuring is how a project ends up carrying
-both forever. `make evaluate` scores a ranking by precision@k against human labels, and labels
+both forever. `make evaluate` grades each ranking against human labels (tie-aware nDCG, with a bootstrap interval
+before it names a winner), and labels
 from an LLM cannot settle it: grading a scorer against its predecessor's judgements rewards
 reproducing that predecessor's mistakes. Both rankings are kept until labels exist *and* a month
 of live runs has shown the winner stays the winner; only then does the loser get deleted.

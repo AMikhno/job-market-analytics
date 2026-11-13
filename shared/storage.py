@@ -255,6 +255,13 @@ def gold_relation(name: str, settings: Settings) -> str:
     return f"main_gold.{name}"
 
 
+def silver_relation(name: str, settings: Settings) -> str:
+    """Fully-qualified name of any model in the silver zone (see gold_table)."""
+    if settings.is_prod:
+        return f"{settings.gcp_project}.{settings.bq_dataset}_silver.{name}"
+    return f"main_silver.{name}"
+
+
 def ensure_digest_table(settings: Settings) -> None:
     """Idempotently provision ops digest state, so the first digest run can
     read an (empty) watermark instead of erroring on a missing table."""

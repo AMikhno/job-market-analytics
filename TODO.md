@@ -37,30 +37,31 @@ Two rankings are *designed* to run side by side — `fit_score` (LLM, 1–5) and
 (embeddings) — because choosing between them without measuring is how a project ends up carrying
 both forever. Only the first is actually running; see the holding note below.
 
-**`make evaluate` does not yet grade `similarity`.** It compares `fit_score` against `match_score`
-and hardcodes a two-way verdict, so the embedding ranking currently ships to the digest ungraded.
-Until it is a third ranking in that report, running embeddings produces a column nothing measures.
+**`make evaluate` grades all three rankings** — the keyword score, `fit_score` and `similarity` —
+on four-grade labels, reads silver so a label outlives its posting, and names a winner only when a
+bootstrap interval on the nDCG difference excludes zero. A ranking nothing is scored under is
+reported as not running rather than graded. **It has not yet been run against prod**, so there is
+still no measured baseline for the scorer that is live.
 
 ### Next, in order
 
-1. **Human labels** → `make labels-template` writes a worksheet from live gold; fill the
-   `relevant` column with yes/no, blank to skip; then `make evaluate`. A few hundred is plenty.
-   The LLM pass in `docs/research/relevance-signals.md` cannot substitute — grading an LLM scorer
-   against LLM labels rewards reproducing its predecessor's mistakes.
+1. **Labels, then the baseline** → labels are keyed by posting URL or `job_key` and graded
+   fit / near / reach / drop (`config/labels.example.csv`); `make labels-template` still writes a
+   yes/no worksheet from live gold. Then `make evaluate`, with `--window` when every posting in a
+   span was read, which is what makes recall measurable. The LLM pass in
+   `docs/research/relevance-signals.md` cannot substitute — grading an LLM scorer against labels
+   from a model reading the same trimmed text rewards reproducing its predecessor's mistakes.
    - Take the worksheet's spread sample as it is. It stratifies by score band on purpose —
      labelling only the top measures precision and can never measure recall, and a ranking that
      buries something relevant then looks perfect. The measured fact that the two rankings mostly
      agree in the keyword score's top quartile (42 of 44 high-fit postings sit there) is a reason
      to *read* the result carefully, not a reason to sample there.
-2. **Grade `similarity` in `make evaluate`** — a third `Ranking` in `evaluation/report.py` and an
-   n-way verdict in place of the two-way one. Before embeddings go on, not after: the point of
-   running both is the comparison, and an ungraded column is just cost.
-3. **Turn embeddings on**: create the CLOUD_RESOURCE connection and the remote model
+2. **Turn embeddings on**: create the CLOUD_RESOURCE connection and the remote model
    (`docs/v2-plan.md`), then set `enable_embeddings: true`. Until then `int_jobs_matched` emits an
    empty stub, so `similarity` is null and delivery falls back to the LLM score and `match_score`.
    No `--full-refresh` is needed for this one: the stub already materialized the table with the
    right column shape and no rows, so the ordinary incremental run backfills every posting.
-4. **Full refresh to re-extract under the fixed prompt — now the weakest item on this list.**
+3. **Full refresh to re-extract under the fixed prompt — now the weakest item on this list.**
    `dbt build --full-refresh --select int_jobs_structured+`. The incremental guard compares text,
    prompt version and model, none of which a changed *extraction prompt* moves, so gold mixes two
    vintages: rows extracted under the old prompt are **32.5% `unclear` on eligibility against
@@ -102,7 +103,8 @@ human labels, and cannot double as V2's evaluation set — see the provenance no
       model/prompt-version/scored-at provenance, `accepted_values` test
 - [x] Gold and digest become score-aware: the score orders delivery and never filters it
       (ADR-0020); unscored postings still ship
-- [x] `make evaluate` — precision@k of the LLM ranking against the keyword one
+- [x] `make evaluate` — tie-aware nDCG, precision and recall of each ranking against graded
+      labels, with a bootstrap interval in place of a bare verdict
 - [x] `int_jobs_matched` — embedding similarity against the resume corpus, behind
       `enable_embeddings` until its remote model exists
 

@@ -291,6 +291,8 @@ Untrusted posting text is delimited and framed as data rather than instructions 
 the output is type-constrained, so a posting cannot instruct the scorer.
 
 **Whether any of this beats the keyword score is an open question**, and deliberately so: `make
-evaluate` scores a ranking by precision@k over human labels. Labels from an LLM cannot settle it —
+evaluate` grades each ranking against four-grade human labels — tie-aware, because a 1–5 score
+leaves most of an ordering undecided, and with a bootstrap interval so a handful of labels cannot
+produce a verdict by chance. Labels from an LLM cannot settle it —
 grading a scorer against its predecessor's judgements rewards reproducing that predecessor's
 mistakes. Until those labels exist, all three orderings are carried and none is trusted.
