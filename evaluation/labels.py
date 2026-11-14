@@ -5,11 +5,11 @@ two. "Would I apply" hides the distinction that matters when a ranking is
 wrong: a posting whose every requirement is met and a long shot worth a try are
 both a yes, and a ranking that swaps them is not doing its job.
 
-    fit    every must-have is covered
-    near   one real gap, or the bar sits below the candidate's level
-    reach  a hard must-have is missing; worth applying to anyway
-    drop   not worth an application
-    skip   seen, deliberately not judged — kept out of the evaluation entirely
+    best fit  the candidate's own work, tools and level
+    fit       close to it: an equivalent tool, a gap, or a level that is not ideal
+    stretch   a neighbouring discipline or a hard gap; worth applying to anyway
+    drop      not worth an application
+    skip      seen, deliberately not judged — kept out of the evaluation entirely
 
 The judgement must be the labeller's own: typed by hand, or read in full by
 someone else and then accepted row by row. It must never be the output of the
@@ -38,21 +38,21 @@ log = logging.getLogger(__name__)
 ROOT: Final = Path(__file__).resolve().parents[1]
 EXAMPLE_LABELS: Final = ROOT / "config" / "labels.example.csv"
 
-FIT: Final = 3
-NEAR: Final = 2
-REACH: Final = 1
+BEST: Final = 3
+FIT: Final = 2
+STRETCH: Final = 1
 DROP: Final = 0
-GRADE_NAMES: Final = {FIT: "fit", NEAR: "near", REACH: "reach", DROP: "drop"}
+GRADE_NAMES: Final = {BEST: "best fit", FIT: "fit", STRETCH: "stretch", DROP: "drop"}
 # A posting at or above this grade is one a digest should surface near the top.
-RELEVANT_FROM: Final = NEAR
+RELEVANT_FROM: Final = FIT
 
 # The binary spellings are kept because the worksheet (`make labels-template`)
-# and older files use them. `maybe` is a reach: the labeller would try it, and
+# and older files use them. `maybe` is a stretch: the labeller would try it, and
 # did not call it a fit.
 _GRADES: Final = {
-    **dict.fromkeys(("fit", "yes", "y", "true", "1"), FIT),
-    "near": NEAR,
-    **dict.fromkeys(("reach", "maybe", "m"), REACH),
+    **dict.fromkeys(("best fit", "best_fit", "best", "yes", "y", "true", "1"), BEST),
+    "fit": FIT,
+    **dict.fromkeys(("stretch", "maybe", "m"), STRETCH),
     **dict.fromkeys(("drop", "no", "n", "false", "0"), DROP),
 }
 _KEY_COLUMNS: Final = ("job_key", "url")
@@ -68,7 +68,7 @@ class Label(BaseModel):
     key: str
     # None is `skip`: the posting was seen and no judgement was made, so it must
     # be neither graded nor assumed a rejection.
-    grade: int | None = Field(ge=DROP, le=FIT)
+    grade: int | None = Field(ge=DROP, le=BEST)
 
     @field_validator("key")
     @classmethod
@@ -98,7 +98,7 @@ def parse_grade(raw: str) -> int | None:
         return None
     if value not in _GRADES:
         raise ValueError(
-            f"unrecognized verdict {raw!r}; use fit/near/reach/drop/skip (or yes/maybe/no)"
+            f"unrecognized verdict {raw!r}; use best fit/fit/stretch/drop/skip (or yes/maybe/no)"
         )
     return _GRADES[value]
 

@@ -43,7 +43,7 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
                 company_type VARCHAR, geo_restriction VARCHAR, manages_people VARCHAR,
                 similarity DOUBLE, best_match_source VARCHAR,
                 first_seen_at TIMESTAMP, posted_or_updated_at TIMESTAMP,
-                fit_tier VARCHAR, tier_rank BIGINT, field_relation VARCHAR,
+                fit_tier VARCHAR, tier_rank BIGINT,
                 fit_why VARCHAR, fit_gap VARCHAR)"""
         )
         for r in rows:
@@ -52,7 +52,7 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
             first_seen = r["first_seen_at"].replace(tzinfo=None)
             con.execute(
                 "INSERT INTO main_gold.fct_job_postings "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     r.get("title", "Analytics Engineer"),
                     r.get("company", "acme"),
@@ -82,8 +82,7 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
                     # Default null: not assessed is the state while the
                     # assessment is off, and must leave the digest unchanged.
                     r.get("fit_tier"),
-                    {"fit": 3, "near": 2, "reach": 1, "unrelated": 0}.get(r.get("fit_tier", "")),
-                    r.get("field_relation"),
+                    {"best_fit": 3, "fit": 2, "stretch": 1, "drop": 0}.get(r.get("fit_tier", "")),
                     r.get("fit_why"),
                     r.get("fit_gap"),
                 ],
@@ -692,23 +691,23 @@ def _tiered_rows(tmp_path: Path) -> list[dict[str, object]]:
         [
             {
                 "title": "Long Shot",
-                "fit_tier": "reach",
+                "fit_tier": "stretch",
                 "fit_score": 5,
                 "first_seen_at": now,
                 "fit_gap": "Requires a domain the profile lacks.",
             },
             {
                 "title": "Real Fit",
-                "fit_tier": "fit",
+                "fit_tier": "best_fit",
                 "fit_score": 2,
                 "first_seen_at": now,
                 "fit_why": "Covers the <b>modelling</b> work.",
                 "url": "https://example/fit",
             },
-            {"title": "Close", "fit_tier": "near", "first_seen_at": now},
+            {"title": "Close", "fit_tier": "fit", "first_seen_at": now},
             {
                 "title": "Nurse Practitioner",
-                "fit_tier": "unrelated",
+                "fit_tier": "drop",
                 "fit_score": 1,
                 "first_seen_at": now,
                 "url": "https://example/nurse",
@@ -720,7 +719,7 @@ def _tiered_rows(tmp_path: Path) -> list[dict[str, object]]:
 
 
 def test_tier_leads_the_order_ahead_of_fit_score(tmp_path: Path) -> None:
-    """A reach scored 5/5 must not sit above a fit scored 2/5: the tier is the
+    """A stretch scored 5/5 must not sit above a best fit scored 2/5: the tier is the
     judgement, and the 1-5 only orders within it. Not assessed sorts last."""
     titles = [r["title"] for r in _tiered_rows(tmp_path)]
     assert titles == ["Real Fit", "Close", "Long Shot", "Nurse Practitioner", "Fresh"]
@@ -733,12 +732,12 @@ def test_assessed_postings_are_banded_and_unrelated_ones_collapsed(tmp_path: Pat
     page = msg.get_body(("html",)).get_content()
 
     # One heading per tier that has postings, in order, then the unassessed.
-    order = [text.index(h) for h in ("Fit —", "Near —", "Reach —", "Not assessed yet")]
+    order = [text.index(h) for h in ("Best fit —", "Fit —", "Stretch —", "Not assessed yet")]
     assert order == sorted(order)
-    assert "Fit — every must-have covered (1)" in text
+    assert "Best fit — your work, your tools, your level (1)" in text
 
     # Collapsed, not dropped: named so a wrong call can be seen, but not linked.
-    assert "1 unrelated posting collapsed: Nurse Practitioner @ acme." in text
+    assert "1 dropped posting collapsed: Nurse Practitioner @ acme." in text
     assert "https://example/nurse" not in text
     assert "https://example/nurse" not in page
     assert "https://example/fit" in text
@@ -765,6 +764,6 @@ def test_nothing_assessed_leaves_the_digest_a_flat_list(tmp_path: Path) -> None:
 def test_a_long_collapsed_list_names_the_first_and_counts_the_rest() -> None:
     rows: list[dict[str, object]] = [{"title": f"T{i}", "company": "acme"} for i in range(30)]
     line = digest._collapsed(rows)
-    assert line.startswith("30 unrelated postings collapsed: T0 @ acme;")
+    assert line.startswith("30 dropped postings collapsed: T0 @ acme;")
     assert line.endswith("; and 5 more.")
     assert "T25" not in line

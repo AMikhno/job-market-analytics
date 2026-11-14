@@ -10,9 +10,9 @@ Three tables, for the three ways a posting is compared against the corpus:
 * **resume_units** — one row per work bullet, for the embedding matcher.
   Replaced wholesale: an edited or deleted bullet must stop being matched.
 
-* **assessment_profile** — the candidate profile the assessment model reads:
-  what can be claimed, what cannot, and which kinds of work count as the
-  candidate's field. Append-only and versioned, for the same reason.
+* **assessment_profile** — the candidate text the assessment model reads: the
+  same corpus without the scoring rubric. Append-only and versioned, for the
+  same reason.
 
 All live in the `_ops` dataset, and none holds anything the resume does not.
 """
@@ -137,8 +137,8 @@ def run(settings: Settings | None = None) -> int:
 def _land_profile(settings: Settings, profile: str) -> None:
     """Land the assessment profile unless the newest row already is this one.
 
-    Its own version, digested the same way: editing the never-claim list must
-    re-assess every posting, and must not re-score them.
+    Its own version, digested the same way, so a change to what the assessment
+    reads re-assesses every posting.
     """
     storage.ensure_assessment_profile_table(settings)
     version = landed_version(profile, PROFILE_VERSION)

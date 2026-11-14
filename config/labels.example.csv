@@ -7,20 +7,20 @@
 # One row per posting, named by its URL (what you have open when you judge it)
 # or by its job_key. Four grades, and keep the question the same every time:
 #
-#   fit    every must-have is covered
-#   near   one real gap, or the bar sits below your level
-#   reach  a hard must-have is missing, but you would apply anyway
-#   drop   not worth an application
+#   best fit  your own work, tools and level
+#   fit       close to it: an equivalent tool, a gap, or a level that is not ideal
+#   stretch   a neighbouring discipline or a hard gap, but you would apply anyway
+#   drop      not worth an application
 #   skip   you saw it and made no judgement (it closed before you read it):
 #          left out entirely, where a blank or missing row could count as drop
 #
-# yes / maybe / no are accepted too and read as fit / reach / drop.
+# yes / maybe / no are accepted too and read as best fit / stretch / drop.
 #
 # Label the ambiguous ones. A set of obvious yeses and obvious noes makes every
 # ranking look good. If you judged every posting that arrived in a span of
 # days, list only the ones you kept and pass that span to `make evaluate` as
 # --window: the rest are then counted as drop, and recall becomes measurable.
 url,tier
-https://jobs.example.com/example-company/00000000-0000-0000-0000-000000000000,fit
-https://jobs.example.com/example-company/11111111-1111-1111-1111-111111111111,reach
+https://jobs.example.com/example-company/00000000-0000-0000-0000-000000000000,best fit
+https://jobs.example.com/example-company/11111111-1111-1111-1111-111111111111,stretch
 example-source:example-company:00001,drop

@@ -82,3 +82,14 @@
 {% macro bigquery__strip_html(column) -%}
     regexp_replace({{ column }}, '<[^>]+>', ' ')
 {%- endmacro %}
+
+{# True when a text column contains any of a list of literal words, whole-word
+   and case-insensitive. A Jinja list rather than a seed, for vocabularies that
+   are part of a rule and not a preference. #}
+{% macro has_any_word(column, words) -%}
+    (
+    {%- for word in words %}
+        {{ regexp_word_ci(column, "'" ~ word ~ "'") }}{% if not loop.last %} or{% endif %}
+    {%- endfor %}
+    )
+{%- endmacro %}

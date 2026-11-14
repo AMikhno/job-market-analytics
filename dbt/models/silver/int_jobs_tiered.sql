@@ -1,47 +1,89 @@
--- The tier each assessed posting falls in, computed from the facts the
--- assessment returned (ADR-0031). A view on purpose: the thresholds are vars,
--- and a rule change must re-tier every posting without re-billing a model call.
+-- The tier each assessed posting falls in (ADR-0031). A view on purpose: the
+-- rule and its thresholds live here, so changing either re-tiers every posting
+-- on the next run without a model call.
 --
---   fit        nothing an employer would refuse over, and at most a waivable gap
---   near       several waivable gaps, or a role below the candidate's level
---   reach      at least one gap an employer would not waive, or a kind of work
---              listed only as an interest -- worth trying, not likely
---   unrelated  a different field, or a level too far away in either direction
+--   best_fit  the candidate's own work, with their own tools, at mid or senior
+--   fit       mostly that work, or an equivalent tool, or a level that is not
+--             the best one: junior, staff, or leading a team
+--   stretch   a neighbouring discipline, or a role built around an ecosystem
+--             the candidate does not use
+--   drop      a different kind of work, or a level far out of range
 --
--- Order matters and is the rule: a posting is unrelated before it is anything
--- else, and a hard gap outranks every soft consideration. `unrelated` is the
--- only tier delivery collapses to a count; nothing is deleted anywhere.
+-- First match wins, worst first. Only `drop` is collapsed by delivery, and it is
+-- deliberately narrow: an unusual level alone never drops a posting, it only
+-- keeps it out of best_fit.
 --
--- A null level_distance (the posting did not say) fails both level tests, so an
--- unstated level never moves a posting.
+-- The LEVEL is read here, not asked of the model, from columns that already
+-- exist: the title's seniority words, the years the posting requires, and
+-- whether it manages people. Each of those is a fact a rule reads more
+-- consistently than a model summarises.
 {{ config(materialized='view') }}
 
-with tiered as (
+{%- set executive_titles = ['director', 'vp', 'vice president', 'head', 'chief', 'president'] %}
+{%- set staff_titles = ['staff', 'principal', 'distinguished'] %}
+{%- set junior_titles = ['junior', 'jr', 'intern', 'internship', 'graduate', 'entry level'] %}
+
+with titles as (
     select
         content_hash,
-        field_relation,
-        level_distance,
-        must_have_count,
-        soft_gap_count,
-        hard_gap_count,
-        soft_gaps,
-        hard_gaps,
+        any_value(title) as title
+    from {{ ref('silver_jobs') }}
+    group by content_hash
+),
+
+levelled as (
+    select
+        a.content_hash,
+        a.work_match,
+        a.stack_gap,
+        a.people_management_years,
+        a.why,
+        a.gap,
+        a.profile_version,
+        a.assessed_at,
+        case
+            when coalesce({{ has_any_word('ti.title', executive_titles) }}, false)
+                then 'out_of_range'
+            when a.people_management_years >= {{ var('tier_max_people_years') }} then 'out_of_range'
+            when s.manages_people = 'yes' then 'lead'
+            when coalesce({{ has_any_word('ti.title', staff_titles) }}, false) then 'staff'
+            when s.years_experience_min >= {{ var('tier_staff_min_years') }} then 'staff'
+            when coalesce({{ has_any_word('ti.title', junior_titles) }}, false) then 'junior'
+            when s.years_experience_min <= {{ var('tier_junior_max_years') }} then 'junior'
+            else 'mid_senior'
+        end as level_band
+    from {{ ref('int_jobs_assessed') }} a
+    left join {{ ref('int_jobs_structured') }} s
+        on a.content_hash = s.content_hash
+    left join titles ti
+        on a.content_hash = ti.content_hash
+    -- A failed generation has no judgement, and an answer outside the two
+    -- vocabularies is not one this rule can read. Both stay untiered -- shown as
+    -- not assessed -- rather than falling through to a tier by default.
+    where
+        a.assess_ok
+        and a.work_match in ('same', 'close', 'adjacent', 'different')
+        and a.stack_gap in ('none', 'substitutable', 'central')
+),
+
+tiered as (
+    select
+        content_hash,
+        work_match,
+        stack_gap,
+        level_band,
         why,
         gap,
         profile_version,
         assessed_at,
         case
-            when field_relation = 'unrelated' then 'unrelated'
-            when abs(level_distance) > {{ var('tier_max_level_distance') }} then 'unrelated'
-            when hard_gap_count > 0 then 'reach'
-            when field_relation = 'interest' then 'reach'
-            when soft_gap_count > {{ var('tier_fit_max_soft_gaps') }} then 'near'
-            when level_distance < 0 then 'near'
-            else 'fit'
+            when work_match = 'different' or level_band = 'out_of_range' then 'drop'
+            when work_match = 'adjacent' or stack_gap = 'central' then 'stretch'
+            when work_match = 'close' or stack_gap = 'substitutable' then 'fit'
+            when level_band != 'mid_senior' then 'fit'
+            else 'best_fit'
         end as fit_tier
-    from {{ ref('int_jobs_assessed') }}
-    -- A failed generation has no facts; tiering it would read "no gaps" as fit.
-    where assess_ok
+    from levelled
 )
 
 select
@@ -51,19 +93,15 @@ select
     -- sort on.
     cast(
         case fit_tier
-            when 'fit' then 3
-            when 'near' then 2
-            when 'reach' then 1
+            when 'best_fit' then 3
+            when 'fit' then 2
+            when 'stretch' then 1
             else 0
         end as {{ dbt.type_bigint() }}
     ) as tier_rank,
-    field_relation,
-    level_distance,
-    must_have_count,
-    soft_gap_count,
-    hard_gap_count,
-    soft_gaps,
-    hard_gaps,
+    work_match,
+    stack_gap,
+    level_band,
     why,
     gap,
     profile_version,

@@ -35,7 +35,7 @@ def fetch_new_postings(settings: Settings, watermark: str) -> list[dict[str, obj
     """Gold postings first seen after the watermark, best fit first.
 
     The assessment tier leads where there is one (ADR-0031), so the email reads
-    fit, near, reach, then whatever was not assessed. Within a tier
+    best fit, fit, stretch, then whatever was not assessed. Within a tier
     `fit_score` leads, `match_score` (ADR-0024) breaks ties and carries the
     unscored tail. `nulls last` is what keeps the score an ordering and not a
     filter (ADR-0020): an unscored posting sinks below scored ones but still
@@ -46,7 +46,7 @@ def fetch_new_postings(settings: Settings, watermark: str) -> list[dict[str, obj
                title_match, deal_breaker_hits, deal_breaker_terms, first_seen_at,
                fit_score, company_type, geo_restriction, manages_people,
                similarity, best_match_source,
-               fit_tier, field_relation, fit_why, fit_gap
+               fit_tier, fit_why, fit_gap
         from {storage.gold_table(settings)}
         where first_seen_at > cast(? as timestamp)
         order by tier_rank desc nulls last,
@@ -210,14 +210,14 @@ def _signal_line(row: dict[str, object]) -> str:
     return " — ".join(", ".join(g) for g in groups)
 
 
-# The tiers delivery lists, in order, with the heading each gets. `unrelated` is
+# The tiers delivery lists, in order, with the heading each gets. `drop` is
 # deliberately absent: it is the one tier collapsed to a count (ADR-0031).
 _BANDS: Final = (
-    ("fit", "Fit — every must-have covered"),
-    ("near", "Near — a waivable gap, or below your level"),
-    ("reach", "Reach — a hard gap, or work you listed as an interest"),
+    ("best_fit", "Best fit — your work, your tools, your level"),
+    ("fit", "Fit — close: an equivalent tool, a gap, or a different level"),
+    ("stretch", "Stretch — a neighbouring discipline, or built on another stack"),
 )
-_UNRELATED: Final = "unrelated"
+_DROPPED: Final = "drop"
 # Enough titles to notice a posting that should not be here, not a second list.
 _COLLAPSED_TITLES: Final = 25
 
@@ -244,7 +244,7 @@ def _posting_lines(row: dict[str, object]) -> tuple[str, str]:
 
 
 def _collapsed(rows: list[dict[str, object]]) -> str:
-    """The unrelated postings as one line: a count, then titles without links.
+    """The dropped postings as one line: a count, then titles without links.
 
     Collapsed, not dropped. The titles stay because the tier is a model's
     reading, and the only way to catch a posting wrongly sent here is to see
@@ -254,7 +254,7 @@ def _collapsed(rows: list[dict[str, object]]) -> str:
     more = len(rows) - len(names)
     tail = f"; and {more} more" if more > 0 else ""
     return (
-        f"{len(rows)} unrelated posting{'s' if len(rows) != 1 else ''} collapsed: "
+        f"{len(rows)} dropped posting{'s' if len(rows) != 1 else ''} collapsed: "
         f"{'; '.join(names)}{tail}."
     )
 
@@ -285,9 +285,9 @@ def _render_postings(rows: list[dict[str, object]]) -> tuple[str, str]:
         text_parts.append(f"{heading} ({len(members)})\n" + "\n".join(t for t, _ in lines))
         items = "".join(i for _, i in lines)
         html_parts.append(f"<h3>{html.escape(heading)} ({len(members)})</h3><ul>{items}</ul>")
-    unrelated = [r for r in rows if r.get("fit_tier") == _UNRELATED]
-    if unrelated:
-        line = _collapsed(unrelated)
+    dropped = [r for r in rows if r.get("fit_tier") == _DROPPED]
+    if dropped:
+        line = _collapsed(dropped)
         text_parts.append(line)
         html_parts.append(f"<p><small>{html.escape(line)}</small></p>")
     return "\n\n".join(text_parts), "".join(html_parts)

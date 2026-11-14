@@ -52,7 +52,9 @@ select
     -- Null until a posting is assessed, like every other AI column here.
     tr.fit_tier,
     tr.tier_rank,
-    tr.field_relation,
+    tr.work_match,
+    tr.stack_gap,
+    tr.level_band,
     tr.why as fit_why,
     tr.gap as fit_gap,
     row_number() over (

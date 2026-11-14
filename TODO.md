@@ -46,7 +46,7 @@ still no measured baseline for the scorer that is live.
 ### Next, in order
 
 1. **Labels, then the baseline** → labels are keyed by posting URL or `job_key` and graded
-   fit / near / reach / drop (`config/labels.example.csv`); `make labels-template` still writes a
+   best fit / fit / stretch / drop (`config/labels.example.csv`); `make labels-template` still writes a
    yes/no worksheet from live gold. Then `make evaluate`, with `--window` when every posting in a
    span was read, which is what makes recall measurable. The LLM pass in
    `docs/research/relevance-signals.md` cannot substitute — grading an LLM scorer against labels
@@ -56,12 +56,11 @@ still no measured baseline for the scorer that is live.
      buries something relevant then looks perfect. The measured fact that the two rankings mostly
      agree in the keyword score's top quartile (42 of 44 high-fit postings sit there) is a reason
      to *read* the result carefully, not a reason to sample there.
-2. **Run the assessment once and grade it** (ADR-0031). It is built and off. Add the profile
-   fields to the private resume (`config/resume.example.yaml` shows them), then build
-   `int_jobs_assessed+` on prod with `--vars 'enable_assessment: true'` — the first execution of
-   its BigQuery branch, which has only been parsed — and run `make evaluate`. Turn it on for the
-   scheduled run only if the tier beats the keyword baseline and collapses nothing labelled as
-   worth applying to. If it fails that, the next candidate is assessing outside the warehouse.
+2. **Run the assessment once and grade it** (ADR-0031). It is built and off, and needs no
+   configuration beyond what scoring already has. Build `int_jobs_assessed+` on prod with
+   `--vars 'enable_assessment: true'` — the first execution of its BigQuery branch, which has only
+   been parsed — and run `make evaluate`. Turn it on for the scheduled run only if the tier beats
+   the keyword baseline and drops nothing labelled as worth applying to. If it fails that, the next candidate is assessing outside the warehouse.
 3. **Turn embeddings on**: create the CLOUD_RESOURCE connection and the remote model
    (`docs/v2-plan.md`), then set `enable_embeddings: true`. Until then `int_jobs_matched` emits an
    empty stub, so `similarity` is null and delivery falls back to the LLM score and `match_score`.

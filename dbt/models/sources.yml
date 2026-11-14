@@ -101,7 +101,7 @@ sources:
       # table would hand one model the other's prompt.
       - name: assessment_profile
         description: >
-          One row per rendered candidate profile (prompt_version,
+          One row per rendered candidate text (prompt_version,
           rendered_prompt, rendered_at). int_jobs_assessed cross-joins the
           newest row.
       # Replaced wholesale by `make land-resume`, not appended: an edited or

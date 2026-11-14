@@ -283,62 +283,42 @@ def test_committed_example_is_valid() -> None:
 
 
 def _profile_resume(**overrides: object) -> resume_mod.Resume:
-    base = resume_mod.load_resume("config/resume_mod.example.yaml").model_dump()
+    base = resume_mod.load_resume("config/resume.example.yaml").model_dump()
     return resume_mod.Resume.model_validate({**base, **overrides})
 
 
-def test_profile_states_what_cannot_be_claimed_and_which_work_is_whose() -> None:
-    """The three things a list of accomplishments leaves a reader to guess."""
-    text = resume_mod.render_profile(
-        _profile_resume(
-            years_experience=7,
-            never_claim=["an orchestrator, beyond configuring schedules"],
-            core_work=["analytics engineering"],
-            adjacent_work=["data engineering"],
-            reach_interests=["solutions engineering"],
-        )
-    )
-    assert "Years of relevant experience: 7" in text
-    assert "- an orchestrator, beyond configuring schedules" in text
-    # Each list is labelled with the value the model is asked to return for it.
-    for label, item in [
-        ("field_relation = core", "analytics engineering"),
-        ("field_relation = adjacent", "data engineering"),
-        ("field_relation = interest", "solutions engineering"),
-    ]:
-        assert text.index(label) < text.index(f"- {item}")
-    assert "Work done:" in text
-
-
-def test_profile_carries_no_rubric() -> None:
-    """Facts only. The instruction lives beside the model call and the tier is
-    computed in SQL; a rubric here would be a second, unversioned copy."""
+def test_profile_is_the_corpus_without_the_rubric() -> None:
+    """Summary, skills and bullets -- what the work was. How to judge it lives
+    beside the model call, so a rubric here would be a second, unversioned copy."""
     text = resume_mod.render_profile(_profile_resume())
+    assert text.startswith("Summary:")
+    assert "Skills:" in text
+    assert "Work done:\n- [" in text
     assert "Score 1 to 5" not in text
     assert "rules" not in text.lower()
 
 
-def test_profile_of_a_resume_without_the_new_fields_says_so_rather_than_omitting() -> None:
-    """A resume written before these fields existed still loads. An empty list
-    is rendered as stated-empty, so the model is not left to assume one."""
-    bare = _profile_resume(
-        years_experience=None, never_claim=[], core_work=[], adjacent_work=[], reach_interests=[]
-    )
-    text = resume_mod.render_profile(bare)
-    assert "Years of relevant experience" not in text
-    assert text.count("- (none stated)") >= 4
+def test_profile_needs_nothing_the_resume_did_not_already_have() -> None:
+    """The assessment adds no configuration: a resume that scores also assesses."""
+    assert set(resume_mod.Resume.model_fields) == {
+        "summary",
+        "seniority",
+        "constraints",
+        "skills",
+        "work_history",
+        "projects",
+        "education",
+    }
 
 
-def test_profile_is_deterministic_and_leaves_the_scoring_prompt_alone() -> None:
-    """Adding profile fields must not move the scoring prompt, or every posting
-    would be re-scored for a change the scorer never reads."""
-    plain = _profile_resume(never_claim=[], core_work=[])
-    edited = _profile_resume(never_claim=["something new"], core_work=["other work"])
-    assert resume_mod.render_profile(edited) == resume_mod.render_profile(edited)
+def test_profile_is_deterministic_and_moves_with_the_bullets() -> None:
+    plain = _profile_resume()
+    edited = _profile_resume(summary="A different summary.")
+    assert resume_mod.render_profile(plain) == resume_mod.render_profile(plain)
     assert resume_mod.render_profile(plain) != resume_mod.render_profile(edited)
-    assert resume_mod.render_prompt(plain) == resume_mod.render_prompt(edited)
 
 
-def test_years_of_experience_cannot_be_negative() -> None:
-    with pytest.raises(ValueError, match="greater than or equal to 0"):
-        _profile_resume(years_experience=-1)
+def test_profile_without_skills_or_education_omits_those_sections() -> None:
+    text = resume_mod.render_profile(_profile_resume(skills={}, education=[]))
+    assert "Skills:" not in text
+    assert "Education:" not in text

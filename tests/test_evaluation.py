@@ -9,7 +9,7 @@ import duckdb
 import pytest
 
 from evaluation import metrics, report, template
-from evaluation.labels import DROP, FIT, NEAR, REACH, Label, load_labels
+from evaluation.labels import BEST, DROP, FIT, STRETCH, Label, load_labels
 from evaluation.matching import Candidate, normalise_url, resolve
 from evaluation.metrics import Item
 from shared.config import Settings
@@ -25,18 +25,33 @@ def _write(tmp_path: Path, body: str) -> str:
 
 
 def test_loads_graded_labels_keyed_by_url_or_job_key(tmp_path: Path) -> None:
-    body = "url,tier\nhttps://x/1,fit\nhttps://x/2,near\na:b:3,reach\na:b:4,drop\n"
+    body = "url,tier\nhttps://x/1,best fit\nhttps://x/2,fit\na:b:3,stretch\na:b:4,drop\n"
     labels = load_labels(_write(tmp_path, body))
-    assert [x.grade for x in labels] == [FIT, NEAR, REACH, DROP]
+    assert [x.grade for x in labels] == [BEST, FIT, STRETCH, DROP]
     assert [x.is_url for x in labels] == [True, True, False, False]
-    # Near is the line: a digest should surface it, and a reach it need not.
+    # Fit is the line: a digest should surface it, and a stretch it need not.
     assert [x.relevant for x in labels] == [True, True, False, False]
 
 
 @pytest.mark.parametrize(
     ("raw", "grade"),
-    [("yes", FIT), ("Y", FIT), ("true", FIT), ("1", FIT), ("FIT", FIT), ("near", NEAR)]
-    + [("maybe", REACH), ("reach", REACH), ("no", DROP), ("N", DROP), ("0", DROP), ("drop", DROP)],
+    [
+        ("yes", BEST),
+        ("Y", BEST),
+        ("true", BEST),
+        ("1", BEST),
+        ("Best Fit", BEST),
+        ("best_fit", BEST),
+        ("fit", FIT),
+    ]
+    + [
+        ("maybe", STRETCH),
+        ("stretch", STRETCH),
+        ("no", DROP),
+        ("N", DROP),
+        ("0", DROP),
+        ("drop", DROP),
+    ],
 )
 def test_verdict_spellings(tmp_path: Path, raw: str, grade: int) -> None:
     """The worksheet's yes/no and a hand-kept yes/maybe/no both still load."""
@@ -54,7 +69,7 @@ def test_duplicate_key_is_rejected(tmp_path: Path) -> None:
     """Two rows for one posting means the file was edited twice with different
     answers; keeping either picks a judgement the labeller did not make."""
     with pytest.raises(ValueError, match="duplicate key"):
-        load_labels(_write(tmp_path, "url,tier\nhttps://x/1,fit\nhttps://X/1,drop\n"))
+        load_labels(_write(tmp_path, "url,tier\nhttps://x/1,best fit\nhttps://X/1,drop\n"))
 
 
 def test_an_unanswered_row_is_skipped_not_counted_as_drop(tmp_path: Path) -> None:
@@ -70,7 +85,7 @@ def test_extra_worksheet_columns_are_ignored(tmp_path: Path) -> None:
     present, because it is the exact identity."""
     body = "job_key,relevant,title,url\na:b:1,yes,Some Role,https://x\n"
     label = load_labels(_write(tmp_path, body))[0]
-    assert (label.key, label.grade) == ("a:b:1", FIT)
+    assert (label.key, label.grade) == ("a:b:1", BEST)
 
 
 def test_comments_and_blank_keys_are_skipped(tmp_path: Path) -> None:
@@ -94,7 +109,7 @@ def test_committed_example_parses() -> None:
 
 def test_a_blank_key_is_not_a_label() -> None:
     with pytest.raises(ValueError, match="must not be blank"):
-        Label(key="  ", grade=FIT)
+        Label(key="  ", grade=BEST)
 
 
 # ------------------------------------------------------------------- matching
@@ -106,8 +121,8 @@ def _candidate(job_key: str, **fields: object) -> Candidate:
 
 def test_url_matches_whatever_its_encoding_case_or_trailing_slash() -> None:
     posting = _candidate("k1", url="https://jobs.example.com/Two%20Words/abc/")
-    label = Label(key="https://jobs.example.com/two words/abc#apply", grade=FIT)
-    assert resolve([label], [posting]).grades == {"k1": FIT}
+    label = Label(key="https://jobs.example.com/two words/abc#apply", grade=BEST)
+    assert resolve([label], [posting]).grades == {"k1": BEST}
 
 
 def test_a_redirected_url_matches_on_the_posting_id_it_carries() -> None:
@@ -116,15 +131,15 @@ def test_a_redirected_url_matches_on_the_posting_id_it_carries() -> None:
     posting = _candidate(
         "k1", url="https://boards.example.com/acme/jobs/7000001", external_id="7000001"
     )
-    label = Label(key="https://careers.acme.example/opportunity/7000001?jid=7000001", grade=NEAR)
-    assert resolve([label], [posting]).grades == {"k1": NEAR}
+    label = Label(key="https://careers.acme.example/opportunity/7000001?jid=7000001", grade=FIT)
+    assert resolve([label], [posting]).grades == {"k1": FIT}
 
 
 def test_a_uuid_id_matches_too() -> None:
     uid = "0a1b2c3d-1111-4222-8333-444455556666"
     posting = _candidate("k1", url=f"https://a.example/x/{uid}/apply", external_id=uid)
-    label = Label(key=f"https://b.example/y/{uid}", grade=FIT)
-    assert resolve([label], [posting]).grades == {"k1": FIT}
+    label = Label(key=f"https://b.example/y/{uid}", grade=BEST)
+    assert resolve([label], [posting]).grades == {"k1": BEST}
 
 
 def test_no_match_and_an_ambiguous_match_are_both_reported_not_guessed() -> None:
@@ -135,8 +150,8 @@ def test_no_match_and_an_ambiguous_match_are_both_reported_not_guessed() -> None
         _candidate("k2", url="https://b.example/2", external_id="555555"),
     ]
     labels = [
-        Label(key="https://c.example/jobs/555555", grade=FIT),
-        Label(key="https://c.example/jobs/999999", grade=FIT),
+        Label(key="https://c.example/jobs/555555", grade=BEST),
+        Label(key="https://c.example/jobs/999999", grade=BEST),
         Label(key="gone:acme:1", grade=DROP),
     ]
     resolution = resolve(labels, twins)
@@ -146,8 +161,8 @@ def test_no_match_and_an_ambiguous_match_are_both_reported_not_guessed() -> None
 
 def test_two_labels_on_one_posting_must_agree() -> None:
     posting = _candidate("k1", url="https://a.example/jobs/777777", external_id="777777")
-    same = [Label(key="k1", grade=FIT), Label(key="https://a.example/jobs/777777", grade=FIT)]
-    assert resolve(same, [posting]).grades == {"k1": FIT}
+    same = [Label(key="k1", grade=BEST), Label(key="https://a.example/jobs/777777", grade=BEST)]
+    assert resolve(same, [posting]).grades == {"k1": BEST}
     with pytest.raises(ValueError, match="disagree"):
         resolve([same[0], Label(key="https://a.example/jobs/777777", grade=DROP)], [posting])
 
@@ -157,8 +172,8 @@ def test_an_alphanumeric_shortcode_id_matches() -> None:
     posting = _candidate(
         "k1", url="https://apply.example.com/acme/j/AB12CD34EF", external_id="AB12CD34EF"
     )
-    label = Label(key="https://apply.example.com/j/AB12CD34EF/", grade=FIT)
-    assert resolve([label], [posting]).grades == {"k1": FIT}
+    label = Label(key="https://apply.example.com/j/AB12CD34EF/", grade=BEST)
+    assert resolve([label], [posting]).grades == {"k1": BEST}
 
 
 def test_a_short_id_only_matches_when_the_url_names_the_board() -> None:
@@ -170,8 +185,8 @@ def test_a_short_id_only_matches_when_the_url_names_the_board() -> None:
     theirs = _candidate(
         "k2", company="globex", url="https://globex.example.com/x/48/detail", external_id="48"
     )
-    label = Label(key="https://acme.example.com/careers/48", grade=NEAR)
-    assert resolve([label], [ours, theirs]).grades == {"k1": NEAR}
+    label = Label(key="https://acme.example.com/careers/48", grade=FIT)
+    assert resolve([label], [ours, theirs]).grades == {"k1": FIT}
     assert resolve([label], [theirs]).unmatched == [label.key]
 
 
@@ -179,7 +194,7 @@ def test_a_skipped_label_is_neither_graded_nor_assumed_a_rejection(tmp_path: Pat
     """A posting that closed before it was read has no judgement. Left out of
     the file, a window would count it as drop; graded, it would be invented."""
     labels = load_labels(
-        _write(tmp_path, "url,tier\nhttps://x.example/jobs/100002,skip\ngood_fit,fit\n")
+        _write(tmp_path, "url,tier\nhttps://x.example/jobs/100002,skip\ngood_fit,best fit\n")
     )
     assert labels[0].grade is None and not labels[0].relevant
 
@@ -202,9 +217,9 @@ def _items(*pairs: tuple[int, float]) -> list[Item]:
 
 
 def test_untied_ranking_scores_as_the_plain_definition() -> None:
-    perfect = _items((FIT, 3), (NEAR, 2), (DROP, 1))
+    perfect = _items((BEST, 3), (FIT, 2), (DROP, 1))
     assert metrics.ndcg(perfect) == pytest.approx(1.0)
-    worst = _items((FIT, 1), (NEAR, 2), (DROP, 3))
+    worst = _items((BEST, 1), (FIT, 2), (DROP, 3))
     assert metrics.ndcg(worst) is not None and metrics.ndcg(worst) < 1.0
 
 
@@ -212,13 +227,13 @@ def test_a_tie_is_scored_as_the_average_of_its_orderings() -> None:
     """One relevant posting tied with three irrelevant ones for four places: a
     hash tie-break would report P@2 as 0 or 0.5 depending on the hash. The
     expectation is 1/4 of the group in each place, so 0.25."""
-    tied = _items((FIT, 1), (DROP, 1), (DROP, 1), (DROP, 1), (DROP, 0))
+    tied = _items((BEST, 1), (DROP, 1), (DROP, 1), (DROP, 1), (DROP, 0))
     assert metrics.precision_at(tied, 2) == pytest.approx(0.25)
     assert metrics.recall_at(tied, 2) == pytest.approx(0.5)
 
 
 def test_tied_metric_does_not_depend_on_input_order() -> None:
-    tied = _items((FIT, 1), (DROP, 1), (NEAR, 1), (DROP, 0))
+    tied = _items((BEST, 1), (DROP, 1), (FIT, 1), (DROP, 0))
     assert metrics.ndcg(tied) == pytest.approx(metrics.ndcg(list(reversed(tied))))
 
 
@@ -226,7 +241,7 @@ def test_a_cutoff_that_takes_everything_scores_none_not_a_tie() -> None:
     """With k >= the candidate count every ordering holds the same rows, so the
     number is identical by construction. Reporting it would read as "the
     rankings performed the same" when it means "this cutoff cannot tell"."""
-    two = _items((FIT, 2), (DROP, 1))
+    two = _items((BEST, 2), (DROP, 1))
     assert metrics.precision_at(two, 5) is None
     assert metrics.recall_at(two, 5) is None
 
@@ -240,7 +255,7 @@ def test_nothing_above_drop_has_no_ndcg_or_recall() -> None:
 def _separated(n: int = 40) -> dict[str, list[Item]]:
     """A baseline that ranks the relevant postings last and a challenger that
     ranks them first, over enough postings that no resample hides it."""
-    grades = [FIT if i < 8 else DROP for i in range(n)]
+    grades = [BEST if i < 8 else DROP for i in range(n)]
     return {
         "match_score": [Item(g, (float(i),)) for i, g in enumerate(grades)],
         "fit_score": [Item(g, (float(-i),)) for i, g in enumerate(grades)],
@@ -327,7 +342,7 @@ def _postings() -> list[Candidate]:
 
 def _labels() -> list[Label]:
     return [
-        Label(key="https://x.example/jobs/100001", grade=FIT),
+        Label(key="https://x.example/jobs/100001", grade=BEST),
         Label(key="keyword_bait", grade=DROP),
         Label(key="unscored", grade=DROP),
     ] + [Label(key=f"pad{i}", grade=DROP) for i in range(8)]
@@ -346,7 +361,7 @@ def test_the_rankings_disagree_on_keyword_bait() -> None:
 def test_an_unscored_posting_sorts_last_under_fit_score() -> None:
     """A null cannot occupy a top slot it did not earn: relabel the unscored
     posting as the only fit and fit_score must find nothing in its top five."""
-    labels = [Label(key=x.key, grade=FIT if x.key == "unscored" else DROP) for x in _labels()]
+    labels = [Label(key=x.key, grade=BEST if x.key == "unscored" else DROP) for x in _labels()]
     labels[0] = Label(key="good_fit", grade=DROP)
     fit = next(r for r in report.evaluate(labels, _postings()).results if r.name == "fit_score")
     assert fit.recall_at[5] == pytest.approx(0.0)
@@ -372,7 +387,7 @@ def test_similarity_is_graded_once_it_exists() -> None:
 
 
 def test_unmatched_labels_are_counted_and_listed() -> None:
-    labels = [*_labels(), Label(key="https://x.example/jobs/424242", grade=FIT)]
+    labels = [*_labels(), Label(key="https://x.example/jobs/424242", grade=BEST)]
     ev = report.evaluate(labels, _postings())
     assert ev.unmatched == ["https://x.example/jobs/424242"]
     text = report.format_report(ev)
@@ -384,7 +399,7 @@ def test_window_counts_unlabelled_postings_as_drop() -> None:
     """Without the window an unlabelled posting is simply absent; with it, a
     posting first seen in a span that was read in full is a known rejection —
     which is what lets recall be measured against everything that arrived."""
-    kept = [Label(key="good_fit", grade=FIT)]
+    kept = [Label(key="good_fit", grade=BEST)]
     without = report.evaluate(kept, _postings())
     assert (without.judged, without.assumed_drop) == (1, 0)
 
@@ -397,7 +412,7 @@ def test_window_counts_unlabelled_postings_as_drop() -> None:
 
 def test_crosstab_shows_where_fit_score_put_each_grade() -> None:
     ev = report.evaluate(_labels(), _postings())
-    assert ev.crosstab[(FIT, 5)] == 1
+    assert ev.crosstab[(BEST, 5)] == 1
     assert ev.crosstab[(DROP, 1)] == 9
     assert ev.crosstab[(DROP, None)] == 1
     assert "fit_score by grade" in report.format_report(ev)
@@ -429,16 +444,16 @@ def test_tier_is_compared_with_the_grade_it_claims() -> None:
     count that matters most is a posting worth applying to that the tier would
     collapse out of the digest."""
     labels = [
-        Label(key="good_fit", grade=FIT),
-        Label(key="keyword_bait", grade=REACH),
+        Label(key="good_fit", grade=BEST),
+        Label(key="keyword_bait", grade=STRETCH),
         Label(key="unscored", grade=DROP),
     ]
     ev = report.evaluate(labels, _with_tiers({"good_fit": 3, "keyword_bait": 0, "unscored": 0}))
-    assert ev.tier_table[(FIT, 3)] == 1
-    assert ev.tier_table[(REACH, 0)] == 1
+    assert ev.tier_table[(BEST, 3)] == 1
+    assert ev.tier_table[(STRETCH, 0)] == 1
     text = report.format_report(ev)
     assert "Tier agrees with the grade on 2 of 3 assessed (67%)." in text
-    assert "tiered unrelated (would be collapsed): 1." in text
+    assert "tiered drop (would be collapsed): 1." in text
 
 
 def test_no_agreement_line_when_nothing_is_assessed() -> None:
@@ -494,13 +509,15 @@ def test_run_reads_silver_so_a_closed_posting_is_still_graded(
     """This warehouse has no gold table at all. Gold holds live postings only,
     so a label read against it loses rows every day; silver keeps them."""
     settings = _settings_with_silver(tmp_path)
-    labels = _write(tmp_path, "url,tier\nhttps://x.example/jobs/500001,fit\nk0,drop\nk7,drop\n")
+    labels = _write(
+        tmp_path, "url,tier\nhttps://x.example/jobs/500001,best fit\nk0,drop\nk7,drop\n"
+    )
 
     assert report.run(settings, labels) == 0
 
     out = capsys.readouterr().out
     assert "Matched:       3" in out
-    assert "fit 1" in out
+    assert "best fit 1" in out
     candidates = {c.job_key: c for c in report.fetch_candidates(settings)}
     assert candidates["k1"].fit_score == 4
     assert candidates["k7"].fit_score is None

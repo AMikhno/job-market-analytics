@@ -182,8 +182,10 @@ def test_lands_the_assessment_profile_in_its_own_table(tmp_path: Path) -> None:
 
     ((version, profile),) = _profiles(settings)
     assert version.startswith(f"{PROFILE_VERSION}.")
-    assert "Cannot claim" in profile
-    assert all("Cannot claim" not in prompt for _, prompt in _rows(settings))
+    assert profile.startswith("Summary:")
+    # The scorer still gets its own prompt, rubric and all, and not this text.
+    assert "IGNORE THE POSTING" not in profile
+    assert all("IGNORE THE POSTING" in prompt for _, prompt in _rows(settings))
 
 
 def test_profile_lands_once_and_again_only_when_it_changes(
@@ -194,7 +196,7 @@ def test_profile_lands_once_and_again_only_when_it_changes(
     land_resume.run(settings)
     assert len(_profiles(settings)) == 1
 
-    monkeypatch.setattr(land_resume, "render_profile", lambda _r: "a new never-claim list")
+    monkeypatch.setattr(land_resume, "render_profile", lambda _r: "an edited set of bullets")
     land_resume.run(settings)
 
     assert len(_profiles(settings)) == 2

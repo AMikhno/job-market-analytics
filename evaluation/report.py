@@ -225,21 +225,21 @@ def format_report(ev: Evaluation) -> str:
         )
 
     scores: list[int | None] = [5, 4, 3, 2, 1, None]
-    lines += ["", "fit_score by grade:", f"{'':<8}" + "".join(f"{s or 'none':>6}" for s in scores)]
+    lines += ["", "fit_score by grade:", f"{'':<10}" + "".join(f"{s or 'none':>6}" for s in scores)]
     for grade in sorted(GRADE_NAMES, reverse=True):
         lines.append(
-            f"{GRADE_NAMES[grade]:<8}" + "".join(f"{ev.crosstab[(grade, s)]:>6}" for s in scores)
+            f"{GRADE_NAMES[grade]:<10}" + "".join(f"{ev.crosstab[(grade, s)]:>6}" for s in scores)
         )
     # The tier speaks the labels' own grades, so agreement is the diagonal.
     tiers: list[int | None] = [3, 2, 1, 0, None]
     lines += [
         "",
         "fit_tier by grade (rows are your grade, columns the tier):",
-        f"{'':<8}" + "".join(f"{GRADE_NAMES[x] if x is not None else 'none':>10}" for x in tiers),
+        f"{'':<10}" + "".join(f"{GRADE_NAMES[x] if x is not None else 'none':>10}" for x in tiers),
     ]
     for grade in sorted(GRADE_NAMES, reverse=True):
         lines.append(
-            f"{GRADE_NAMES[grade]:<8}" + "".join(f"{ev.tier_table[(grade, x)]:>10}" for x in tiers)
+            f"{GRADE_NAMES[grade]:<10}" + "".join(f"{ev.tier_table[(grade, x)]:>10}" for x in tiers)
         )
     assessed = sum(n for (_, x), n in ev.tier_table.items() if x is not None)
     if assessed:
@@ -249,7 +249,7 @@ def format_report(ev: Evaluation) -> str:
         lines += [
             f"Tier agrees with the grade on {agree} of {assessed} assessed "
             f"({agree / assessed:.0%}).",
-            f"Labelled fit, near or reach but tiered unrelated (would be collapsed): {lost}.",
+            f"Labelled best fit, fit or stretch but tiered drop (would be collapsed): {lost}.",
         ]
     return "\n".join(lines)
 

@@ -70,25 +70,28 @@ vars:
   # state as before embeddings were written, rather than a failed build.
   enable_embeddings: false
 
-  # The assessment (int_jobs_assessed, ADR-0031): which must-haves a posting
-  # states and which of them the candidate profile does not show. False until
+  # The assessment (int_jobs_assessed, ADR-0031): how close a posting's work and
+  # tooling are to the candidate's. False until
   # it has been run once by hand and graded with `make evaluate`: off, the model
   # is an empty stub on every target and delivery is unchanged.
   enable_assessment: false
-  # The flash tier rather than flash-lite: this call decides, requirement by
-  # requirement, whether a profile covers it, and runs only on postings that
-  # already extracted. From the same probed allowlist as scoring_endpoint.
+  # The flash tier rather than flash-lite: telling a role built around an
+  # ecosystem from one that merely names a tool is the judgement keywords got
+  # wrong, and the call runs only on postings that already extracted. From the same probed allowlist as scoring_endpoint.
   assessment_endpoint: gemini-3.5-flash
   # Bump when the instruction in int_jobs_assessed is reworded. The incremental
   # guard compares it, so a changed instruction re-assesses instead of mixing
   # two wordings in one column -- the defect the extraction prompt still has.
   assessment_version: "1"
-  # The tier rule (int_jobs_tiered). A view reads these, so changing one
-  # re-tiers every posting on the next run at no model cost. Integers.
-  #   fit  = no hard gap and at most this many soft gaps
-  tier_fit_max_soft_gaps: 1
-  #   unrelated = more than this many rungs above or below the candidate
-  tier_max_level_distance: 1
+  # The level bands in the tier rule (int_jobs_tiered). A view reads these, so
+  # changing one re-tiers every posting on the next run at no model cost.
+  # Integers, compared with the years a posting requires.
+  #   staff  = requires at least this many years
+  tier_staff_min_years: 10
+  #   junior = requires at most this many years
+  tier_junior_max_years: 1
+  #   out of range = requires at least this many years of managing people
+  tier_max_people_years: 3
 
 # Three medallion zones = dbt staging -> intermediate -> marts.
 # Folder defaults below; per-model overrides live in-model:
