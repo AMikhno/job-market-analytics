@@ -1,14 +1,27 @@
-"""Human relevance labels — the only ground truth this project has.
+"""Relevance labels — the only ground truth this project has.
 
-They must be human: grading an LLM scorer against the LLM labels in
-`docs/research/relevance-signals.md` would measure agreement with a predecessor
-including its mistakes.
+A label is one person's judgement of one posting, on four grades rather than
+two. "Would I apply" hides the distinction that matters when a ranking is
+wrong: a posting whose every requirement is met and a long shot worth a try are
+both a yes, and a ranking that swaps them is not doing its job.
 
-Gitignored, because a `job_key` is `(source, company, external_id)` — a label
-file is a list of company identifiers plus a judgement about each.
+    best fit  the candidate's own work, tools and level
+    fit       close to it: an equivalent tool, a gap, or a level that is not ideal
+    stretch   a neighbouring discipline or a hard gap; worth applying to anyway
+    drop      not worth an application
+    skip      seen, deliberately not judged — kept out of the evaluation entirely
 
-Binary, not 1-5. "Would I apply to this?" has a stable answer; "is this a 3 or a
-4?" does not, and an unstable label makes the metric noise.
+The judgement must be the labeller's own: typed by hand, or read in full by
+someone else and then accepted row by row. It must never be the output of the
+scorer under test, or of a model reading the same trimmed text that scorer
+reads — that measures agreement with a predecessor, mistakes included.
+
+A row names its posting by `job_key` or by `url`. A URL is what a person has in
+front of them when they judge a posting; `evaluation/matching.py` resolves it.
+
+Gitignored either way: a `job_key` is `(source, company, external_id)` and a URL
+carries the board, so a label file is a list of company identifiers plus a
+judgement about each.
 """
 
 from __future__ import annotations
@@ -18,50 +31,84 @@ import logging
 from pathlib import Path
 from typing import Final
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 log = logging.getLogger(__name__)
 
 ROOT: Final = Path(__file__).resolve().parents[1]
 EXAMPLE_LABELS: Final = ROOT / "config" / "labels.example.csv"
 
-_TRUE: Final = frozenset({"true", "yes", "y", "1"})
-_FALSE: Final = frozenset({"false", "no", "n", "0"})
+BEST: Final = 3
+FIT: Final = 2
+STRETCH: Final = 1
+DROP: Final = 0
+GRADE_NAMES: Final = {BEST: "best fit", FIT: "fit", STRETCH: "stretch", DROP: "drop"}
+# A posting at or above this grade is one a digest should surface near the top.
+RELEVANT_FROM: Final = FIT
+
+# The binary spellings are kept because the worksheet (`make labels-template`)
+# and older files use them. `maybe` is a stretch: the labeller would try it, and
+# did not call it a fit.
+_GRADES: Final = {
+    **dict.fromkeys(("best fit", "best_fit", "best", "yes", "y", "true", "1"), BEST),
+    "fit": FIT,
+    **dict.fromkeys(("stretch", "maybe", "m"), STRETCH),
+    **dict.fromkeys(("drop", "no", "n", "false", "0"), DROP),
+}
+_KEY_COLUMNS: Final = ("job_key", "url")
+_VERDICT_COLUMNS: Final = ("tier", "relevant", "verdict")
 
 
 class Label(BaseModel):
-    """One human judgement about one posting."""
+    """One judgement about one posting."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
-    job_key: str
-    relevant: bool
+    # A job_key, or the posting's URL.
+    key: str
+    # None is `skip`: the posting was seen and no judgement was made, so it must
+    # be neither graded nor assumed a rejection.
+    grade: int | None = Field(ge=DROP, le=BEST)
 
-    @field_validator("job_key")
+    @field_validator("key")
     @classmethod
     def _not_blank(cls, value: str) -> str:
         cleaned = value.strip()
         if not cleaned:
-            raise ValueError("job_key must not be blank")
+            raise ValueError("key must not be blank")
         return cleaned
 
+    @property
+    def relevant(self) -> bool:
+        return self.grade is not None and self.grade >= RELEVANT_FROM
 
-def _parse_relevant(raw: str) -> bool:
-    """Accept the spellings a human actually types, reject anything else.
+    @property
+    def is_url(self) -> bool:
+        return self.key.lower().startswith(("http://", "https://"))
 
-    Treating an unrecognized value as False would relabel a relevant posting as
-    irrelevant — moving every metric in the flattering direction, invisibly.
+
+def parse_grade(raw: str) -> int | None:
+    """Accept the spellings a person actually types, reject anything else.
+
+    Treating an unrecognized value as `drop` would relabel a relevant posting
+    as irrelevant — moving every metric in the flattering direction, invisibly.
     """
     value = raw.strip().lower()
-    if value in _TRUE:
-        return True
-    if value in _FALSE:
-        return False
-    raise ValueError(f"unrecognized relevant value {raw!r}; use yes/no")
+    if value == "skip":
+        return None
+    if value not in _GRADES:
+        raise ValueError(
+            f"unrecognized verdict {raw!r}; use best fit/fit/stretch/drop/skip (or yes/maybe/no)"
+        )
+    return _GRADES[value]
+
+
+def _first(row: dict[str, str | None], columns: tuple[str, ...]) -> str:
+    return next((v.strip() for c in columns if (v := row.get(c)) and v.strip()), "")
 
 
 def load_labels(path: str | Path) -> list[Label]:
-    """Read a label CSV (`job_key,relevant`). Raises on a malformed row.
+    """Read a label CSV (`job_key` or `url`, then `tier`). Raises on a malformed row.
 
     Duplicates are rejected, not deduplicated: keeping one of two answers picks
     a judgement the labeller did not make.
@@ -87,18 +134,19 @@ def load_labels(path: str | Path) -> list[Label]:
     labels: list[Label] = []
     seen: set[str] = set()
     for i, row in enumerate(csv.DictReader(lines), start=2):
-        key = (row.get("job_key") or "").strip()
+        key = _first(row, _KEY_COLUMNS)
         if not key:
             continue
-        # A blank verdict means "skipped", not "irrelevant": the worksheet
-        # ships pre-filled, and reading an unanswered row as `no` would invent
+        # A blank verdict means "skipped", not "drop": the worksheet ships
+        # pre-filled, and reading an unanswered row as a rejection would invent
         # judgements in the direction that flatters every ranking.
-        if not (row.get("relevant") or "").strip():
+        verdict = _first(row, _VERDICT_COLUMNS)
+        if not verdict:
             continue
-        if key in seen:
-            raise ValueError(f"{resolved}: duplicate job_key {key!r} (row {i})")
-        seen.add(key)
-        labels.append(Label(job_key=key, relevant=_parse_relevant(row.get("relevant") or "")))
+        if key.lower() in seen:
+            raise ValueError(f"{resolved}: duplicate key {key!r} (row {i})")
+        seen.add(key.lower())
+        labels.append(Label(key=key, grade=parse_grade(verdict)))
     if not labels:
         raise ValueError(f"{resolved} contains no labels")
     return labels
