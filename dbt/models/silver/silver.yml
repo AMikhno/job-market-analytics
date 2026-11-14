@@ -323,7 +323,9 @@ models:
           Seniority the posting's scope implies minus the candidate's level, in
           whole rungs; negative when the posting is more junior, null when it
           does not say. A distance rather than a level, so the candidate's own
-          level stays in the private profile.
+          level stays in the private profile. Staff, lead and first-line
+          manager are one rung: a people-management track beside a senior
+          individual one is a different seat, not a more distant one.
       - name: must_have_count
         description: How many requirements the posting states as required.
       - name: soft_gap_count
