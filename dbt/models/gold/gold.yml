@@ -108,6 +108,28 @@ models:
           Which role or project the nearest bullet came from — the thing an
           embedding can say and a 1-5 score cannot.
         data_type: varchar
+      - name: fit_tier
+        description: >
+          fit / near / reach / unrelated, computed in int_jobs_tiered from the
+          assessment's facts (ADR-0031); null when the posting has not been
+          assessed. `unrelated` is the only tier delivery collapses to a count.
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [fit, near, reach, unrelated]
+      - name: tier_rank
+        description: The tier as a number, 3 (fit) to 0 (unrelated); null when not assessed.
+        data_type: bigint
+      - name: field_relation
+        description: core / adjacent / interest / unrelated; null when not assessed.
+        data_type: varchar
+      - name: fit_why
+        description: One sentence naming the strongest match; null when not assessed.
+        data_type: varchar
+      - name: fit_gap
+        description: One sentence naming the most serious missing must-have; empty when none.
+        data_type: varchar
       - name: recency_rank
         description: 1 = most recent by posted_or_updated_at; dense unique ordering for the digest.
         data_type: bigint
@@ -130,6 +152,8 @@ unit_tests:
       - input: ref('int_jobs_structured')
         rows: []
       - input: ref('int_jobs_matched')
+        rows: []
+      - input: ref('int_jobs_tiered')
         rows: []
     expect:
       rows:
@@ -155,6 +179,8 @@ unit_tests:
         rows:
           - {content_hash: h1, company_type: B2B SaaS, geo_restriction: canada_ok, manages_people: no}
       - input: ref('int_jobs_matched')
+        rows: []
+      - input: ref('int_jobs_tiered')
         rows: []
     expect:
       rows:
@@ -184,6 +210,8 @@ unit_tests:
       - input: ref('int_jobs_structured')
         rows: []
       - input: ref('int_jobs_matched')
+        rows: []
+      - input: ref('int_jobs_tiered')
         rows: []
     expect:
       rows:

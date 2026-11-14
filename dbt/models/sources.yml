@@ -96,6 +96,14 @@ sources:
         description: >
           One row per rendered prompt version (prompt_version, rendered_prompt,
           rendered_at). V2 scoring cross-joins the newest row.
+      # Same shape and the same append-only rule as scoring_prompt, in its own
+      # table: each consumer takes the newest row, so two kinds of text in one
+      # table would hand one model the other's prompt.
+      - name: assessment_profile
+        description: >
+          One row per rendered candidate profile (prompt_version,
+          rendered_prompt, rendered_at). int_jobs_assessed cross-joins the
+          newest row.
       # Replaced wholesale by `make land-resume`, not appended: an edited or
       # deleted bullet must stop being matched against.
       - name: resume_units

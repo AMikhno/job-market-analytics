@@ -43,6 +43,8 @@ class Candidate(BaseModel):
     match_score: int = 0
     fit_score: int | None = None
     similarity: float | None = None
+    # 3 fit, 2 near, 1 reach, 0 unrelated; None when the posting is not assessed.
+    tier_rank: int | None = None
 
 
 class Resolution(NamedTuple):

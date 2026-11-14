@@ -1,6 +1,6 @@
 """Land everything dbt needs from the private resume (`make land-resume`).
 
-Two tables, for the two ways a posting is compared against the corpus:
+Three tables, for the three ways a posting is compared against the corpus:
 
 * **scoring_prompt** — the rendered prompt the LLM scorer reads. Through a table
   rather than `dbt --vars` because it is several KB of quoted multi-line text.
@@ -10,7 +10,11 @@ Two tables, for the two ways a posting is compared against the corpus:
 * **resume_units** — one row per work bullet, for the embedding matcher.
   Replaced wholesale: an edited or deleted bullet must stop being matched.
 
-Both live in the `_ops` dataset, and neither holds anything the resume does not.
+* **assessment_profile** — the candidate profile the assessment model reads:
+  what can be claimed, what cannot, and which kinds of work count as the
+  candidate's field. Append-only and versioned, for the same reason.
+
+All live in the `_ops` dataset, and none holds anything the resume does not.
 """
 
 from __future__ import annotations
@@ -22,11 +26,13 @@ import sys
 from shared import storage
 from shared.config import Settings, get_settings
 from shared.resume import (
+    PROFILE_VERSION,
     PROMPT_VERSION,
     EvidenceUnit,
     evidence_units,
     family_coverage,
     load_resume,
+    render_profile,
     render_prompt,
 )
 
@@ -34,7 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("land_resume")
 
 
-def landed_version(rendered: str) -> str:
+def landed_version(rendered: str, base: str = PROMPT_VERSION) -> str:
     """The version written beside every score: rubric version + text digest.
 
     `PROMPT_VERSION` alone tracks only the *rubric wording*, so replacing the
@@ -44,12 +50,11 @@ def landed_version(rendered: str) -> str:
     the invalidation self-enforcing instead.
     """
     digest = hashlib.sha256(rendered.encode("utf-8")).hexdigest()[:12]
-    return f"{PROMPT_VERSION}.{digest}"
+    return f"{base}.{digest}"
 
 
-def _current(settings: Settings) -> tuple[str, str] | None:
-    """The newest landed (prompt_version, rendered_prompt), or None if empty."""
-    table = storage.scoring_prompt_table(settings)
+def _current(table: str, settings: Settings) -> tuple[str, str] | None:
+    """The newest landed (prompt_version, rendered_prompt) in a table, or None."""
     rows = storage.query_rows(
         f"select prompt_version, rendered_prompt from {table} order by rendered_at desc limit 1",
         settings=settings,
@@ -112,18 +117,38 @@ def run(settings: Settings | None = None) -> int:
     log.info("landed %d resume unit(s) for embedding", landed)
     _log_coverage(units)
 
-    if _current(settings) == (version, rendered):
+    if _current(storage.scoring_prompt_table(settings), settings) == (version, rendered):
         log.info("scoring prompt already current at version %s; nothing landed", version)
-        return 0
+    else:
+        storage.land_scoring_prompt(
+            prompt_version=version, rendered_prompt=rendered, settings=settings
+        )
+        log.info(
+            "landed scoring prompt version %s (%d chars) — scores from earlier "
+            "versions are not comparable and will be re-scored",
+            version,
+            len(rendered),
+        )
 
-    storage.land_scoring_prompt(prompt_version=version, rendered_prompt=rendered, settings=settings)
-    log.info(
-        "landed scoring prompt version %s (%d chars) — scores from earlier "
-        "versions are not comparable and will be re-scored",
-        version,
-        len(rendered),
-    )
+    _land_profile(settings, render_profile(resume))
     return 0
+
+
+def _land_profile(settings: Settings, profile: str) -> None:
+    """Land the assessment profile unless the newest row already is this one.
+
+    Its own version, digested the same way: editing the never-claim list must
+    re-assess every posting, and must not re-score them.
+    """
+    storage.ensure_assessment_profile_table(settings)
+    version = landed_version(profile, PROFILE_VERSION)
+    if _current(storage.assessment_profile_table(settings), settings) == (version, profile):
+        log.info("assessment profile already current at version %s; nothing landed", version)
+        return
+    storage.land_assessment_profile(
+        profile_version=version, rendered_profile=profile, settings=settings
+    )
+    log.info("landed assessment profile version %s (%d chars)", version, len(profile))
 
 
 if __name__ == "__main__":  # pragma: no cover

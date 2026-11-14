@@ -361,26 +361,20 @@ def replace_resume_units(rows: list[dict[str, object]], *, settings: Settings) -
         con.close()
 
 
-def scoring_prompt_table(settings: Settings) -> str:
-    """Fully-qualified name of the scoring-prompt table on the active target."""
+def _prompt_table(name: str, settings: Settings) -> str:
     if settings.is_prod:
-        return f"{settings.gcp_project}.{settings.bq_dataset}_ops.scoring_prompt"
-    return "scoring_prompt"
+        return f"{settings.gcp_project}.{settings.bq_dataset}_ops.{name}"
+    return name
 
 
-def ensure_scoring_prompt_table(settings: Settings) -> None:
-    """Idempotently provision the scoring-prompt table.
-
-    dbt reads it as a source, and a missing source fails the whole DAG rather
-    than the one model needing it -- so even a dev target gets one.
-    """
+def _ensure_prompt_table(name: str, settings: Settings) -> None:
     if settings.is_prod:
         from google.cloud import bigquery
 
         client = bigquery.Client(project=settings.gcp_project, location=settings.bq_location)
         table = bigquery.Table(
-            f"{settings.gcp_project}.{settings.bq_dataset}_ops.scoring_prompt",
-            schema=[bigquery.SchemaField(name, kind) for name, kind in _PROMPT_BQ_SCHEMA],
+            _prompt_table(name, settings),
+            schema=[bigquery.SchemaField(column, kind) for column, kind in _PROMPT_BQ_SCHEMA],
         )
         client.create_table(table, exists_ok=True)
         return
@@ -389,27 +383,70 @@ def ensure_scoring_prompt_table(settings: Settings) -> None:
     Path(settings.duckdb_path).parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(settings.duckdb_path)
     try:
-        cols = ", ".join(f"{name} VARCHAR" for name, _ in _PROMPT_BQ_SCHEMA)
-        con.execute(f"CREATE TABLE IF NOT EXISTS scoring_prompt ({cols})")
+        cols = ", ".join(f"{column} VARCHAR" for column, _ in _PROMPT_BQ_SCHEMA)
+        con.execute(f"CREATE TABLE IF NOT EXISTS {name} ({cols})")
     finally:
         con.close()
 
 
-def land_scoring_prompt(*, prompt_version: str, rendered_prompt: str, settings: Settings) -> None:
-    """Append one rendered prompt. Never updates in place -- see the schema note."""
+def _land_prompt(name: str, *, version: str, rendered: str, settings: Settings) -> None:
     _write(
         [
             {
-                "prompt_version": prompt_version,
-                "rendered_prompt": rendered_prompt,
+                "prompt_version": version,
+                "rendered_prompt": rendered,
                 "rendered_at": datetime.now(UTC).isoformat(),
             }
         ],
-        duckdb_table="scoring_prompt",
+        duckdb_table=name,
         bq_dataset=f"{settings.bq_dataset}_ops",
-        bq_table="scoring_prompt",
+        bq_table=name,
         bq_schema=_PROMPT_BQ_SCHEMA,
         settings=settings,
+    )
+
+
+def scoring_prompt_table(settings: Settings) -> str:
+    """Fully-qualified name of the scoring-prompt table on the active target."""
+    return _prompt_table("scoring_prompt", settings)
+
+
+def ensure_scoring_prompt_table(settings: Settings) -> None:
+    """Idempotently provision the scoring-prompt table.
+
+    dbt reads it as a source, and a missing source fails the whole DAG rather
+    than the one model needing it -- so even a dev target gets one.
+    """
+    _ensure_prompt_table("scoring_prompt", settings)
+
+
+def land_scoring_prompt(*, prompt_version: str, rendered_prompt: str, settings: Settings) -> None:
+    """Append one rendered prompt. Never updates in place -- see the schema note."""
+    _land_prompt(
+        "scoring_prompt", version=prompt_version, rendered=rendered_prompt, settings=settings
+    )
+
+
+# The candidate profile the assessment model reads (int_jobs_assessed). The same
+# shape as the scoring prompt and the same append-only rule, in its own table:
+# each consumer takes "the newest row", so two kinds of text in one table would
+# hand one model the other's prompt.
+def assessment_profile_table(settings: Settings) -> str:
+    """Fully-qualified name of the assessment-profile table on the active target."""
+    return _prompt_table("assessment_profile", settings)
+
+
+def ensure_assessment_profile_table(settings: Settings) -> None:
+    """Idempotently provision the assessment-profile table."""
+    _ensure_prompt_table("assessment_profile", settings)
+
+
+def land_assessment_profile(
+    *, profile_version: str, rendered_profile: str, settings: Settings
+) -> None:
+    """Append one rendered profile. Never updates in place."""
+    _land_prompt(
+        "assessment_profile", version=profile_version, rendered=rendered_profile, settings=settings
     )
 
 

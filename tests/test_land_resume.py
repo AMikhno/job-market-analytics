@@ -11,7 +11,7 @@ import pytest
 from ingest import land_resume
 from shared import storage
 from shared.config import Settings
-from shared.resume import PROMPT_VERSION
+from shared.resume import PROFILE_VERSION, PROMPT_VERSION
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -158,3 +158,58 @@ def test_warns_when_a_family_has_no_bullets(
     assert len(warnings) == 1
     assert "product-analyst" in warnings[0]
     assert "analytics-engineer" not in warnings[0]
+
+
+def _profiles(settings: Settings) -> list[tuple[str, str]]:
+    con = duckdb.connect(settings.duckdb_path)
+    try:
+        return [
+            (str(v), str(p))
+            for v, p in con.execute(
+                "select prompt_version, rendered_prompt from assessment_profile"
+            ).fetchall()
+        ]
+    finally:
+        con.close()
+
+
+def test_lands_the_assessment_profile_in_its_own_table(tmp_path: Path) -> None:
+    """Its own table, because each consumer takes "the newest row": in one
+    table, the scorer would be handed the profile as its prompt."""
+    settings = _settings(tmp_path)
+
+    assert land_resume.run(settings) == 0
+
+    ((version, profile),) = _profiles(settings)
+    assert version.startswith(f"{PROFILE_VERSION}.")
+    assert "Cannot claim" in profile
+    assert all("Cannot claim" not in prompt for _, prompt in _rows(settings))
+
+
+def test_profile_lands_once_and_again_only_when_it_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _settings(tmp_path)
+    land_resume.run(settings)
+    land_resume.run(settings)
+    assert len(_profiles(settings)) == 1
+
+    monkeypatch.setattr(land_resume, "render_profile", lambda _r: "a new never-claim list")
+    land_resume.run(settings)
+
+    assert len(_profiles(settings)) == 2
+    # Editing the profile must re-assess, and must not re-score: the scoring
+    # prompt did not move, so no second scoring row is landed.
+    assert len(_rows(settings)) == 1
+
+
+def test_a_changed_scoring_prompt_still_lands_the_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The two are landed independently: neither branch may return early and
+    skip the other."""
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(land_resume, "render_prompt", lambda _r: "reworded prompt")
+    land_resume.run(settings)
+    assert len(_rows(settings)) == 1
+    assert len(_profiles(settings)) == 1

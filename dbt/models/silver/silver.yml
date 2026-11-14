@@ -292,6 +292,86 @@ models:
       - name: scoring_model
         description: Pinned endpoint, not the managed default (ADR-0025).
 
+  - name: int_jobs_assessed
+    description: >
+      Requirement-by-requirement assessment of a posting against the candidate
+      profile (ADR-0031): which must-haves it states, and which of them the
+      profile does not show. Facts only — the tier is computed from these in
+      int_jobs_tiered. Off until `enable_assessment` is set, and a typed-null
+      stub on DuckDB either way.
+    columns:
+      - name: content_hash
+        description: >
+          Assessment key and grain — one row per distinct posting text. Part of
+          the incremental guard, with profile_version, assessment_version and
+          assess_endpoint.
+        data_tests: [not_null, unique]
+      - name: field_relation
+        description: >
+          How the described work relates to the candidate's field, judged from
+          the work and never the title. `interest` is work the candidate would
+          apply to despite a gap; `unrelated` is the only value delivery
+          collapses.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [core, adjacent, interest, unrelated]
+              config:
+                severity: warn
+      - name: level_distance
+        description: >
+          Seniority the posting's scope implies minus the candidate's level, in
+          whole rungs; negative when the posting is more junior, null when it
+          does not say. A distance rather than a level, so the candidate's own
+          level stays in the private profile.
+      - name: must_have_count
+        description: How many requirements the posting states as required.
+      - name: soft_gap_count
+        description: Missing must-haves an employer would plausibly waive.
+      - name: hard_gap_count
+        description: >
+          Missing must-haves an employer would not waive — a cannot-claim item,
+          a required domain, a core function never performed, years short by two
+          or more, a required language or credential.
+      - name: soft_gaps
+        description: The soft gaps, semicolon-joined.
+      - name: hard_gaps
+        description: The hard gaps, semicolon-joined.
+      - name: why
+        description: One sentence naming the strongest match.
+      - name: gap
+        description: One sentence naming the most serious missing must-have; empty when none.
+      - name: assess_ok
+        description: False when the generation failed; such rows are retried and never tiered.
+      - name: profile_version
+        description: Which rendered profile the posting was assessed against.
+      - name: assessment_version
+        description: Which wording of the instruction produced the row.
+      - name: assess_endpoint
+        description: Pinned endpoint, not the managed default (ADR-0025).
+
+  - name: int_jobs_tiered
+    description: >
+      The tier each assessed posting falls in, computed in SQL from the
+      assessment's facts (ADR-0031). A view, so a threshold change re-tiers
+      every posting without a model call.
+    columns:
+      - name: content_hash
+        description: One row per assessed posting text.
+        data_tests: [not_null, unique]
+      - name: fit_tier
+        description: >
+          fit / near / reach / unrelated. The rule is ordered: unrelated first,
+          then any hard gap, then soft gaps and level.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [fit, near, reach, unrelated]
+      - name: tier_rank
+        description: The tier as a number, 3 (fit) to 0 (unrelated).
+        data_tests: [not_null]
+
 unit_tests:
   - name: dedup_keeps_the_most_recently_ingested_row
     description: >
@@ -678,3 +758,45 @@ unit_tests:
         - {job_key: b1, is_board_wide_edit: false}
         - {job_key: c1, is_board_wide_edit: false}
         - {job_key: c2, is_board_wide_edit: false}
+
+  # The tier rule, one row per branch. It lives in SQL so that it can be pinned
+  # like this: a model asked for a 1-5 has no rule to test.
+  - name: tier_rule_orders_unrelated_then_hard_gaps_then_soft
+    model: int_jobs_tiered
+    given:
+      - input: ref('int_jobs_assessed')
+        rows:
+          - {content_hash: clean, assess_ok: true, field_relation: core, level_distance: 0, soft_gap_count: 0, hard_gap_count: 0}
+          - {content_hash: one_soft, assess_ok: true, field_relation: core, level_distance: 0, soft_gap_count: 1, hard_gap_count: 0}
+          - {content_hash: two_soft, assess_ok: true, field_relation: core, level_distance: 0, soft_gap_count: 2, hard_gap_count: 0}
+          - {content_hash: below_level, assess_ok: true, field_relation: core, level_distance: -1, soft_gap_count: 0, hard_gap_count: 0}
+          - {content_hash: one_hard, assess_ok: true, field_relation: core, level_distance: 0, soft_gap_count: 0, hard_gap_count: 1}
+          - {content_hash: hard_beats_soft, assess_ok: true, field_relation: core, level_distance: 0, soft_gap_count: 3, hard_gap_count: 1}
+          - {content_hash: interest_clean, assess_ok: true, field_relation: interest, level_distance: 0, soft_gap_count: 0, hard_gap_count: 0}
+          - {content_hash: adjacent_clean, assess_ok: true, field_relation: adjacent, level_distance: 0, soft_gap_count: 0, hard_gap_count: 0}
+          - {content_hash: other_field, assess_ok: true, field_relation: unrelated, level_distance: 0, soft_gap_count: 0, hard_gap_count: 0}
+          - {content_hash: unrelated_beats_clean, assess_ok: true, field_relation: unrelated, level_distance: 0, soft_gap_count: 0, hard_gap_count: 0}
+          - {content_hash: two_rungs_up, assess_ok: true, field_relation: core, level_distance: 2, soft_gap_count: 0, hard_gap_count: 0}
+          - {content_hash: two_rungs_down, assess_ok: true, field_relation: core, level_distance: -2, soft_gap_count: 0, hard_gap_count: 0}
+          - {content_hash: one_rung_up, assess_ok: true, field_relation: core, level_distance: 1, soft_gap_count: 0, hard_gap_count: 0}
+          - {content_hash: level_unstated, assess_ok: true, field_relation: core, level_distance: null, soft_gap_count: 0, hard_gap_count: 0}
+          - {content_hash: failed, assess_ok: false, field_relation: core, level_distance: 0, soft_gap_count: 0, hard_gap_count: 0}
+    expect:
+      rows:
+        - {content_hash: clean, fit_tier: fit, tier_rank: 3}
+        - {content_hash: one_soft, fit_tier: fit, tier_rank: 3}
+        - {content_hash: two_soft, fit_tier: near, tier_rank: 2}
+        - {content_hash: below_level, fit_tier: near, tier_rank: 2}
+        - {content_hash: one_hard, fit_tier: reach, tier_rank: 1}
+        - {content_hash: hard_beats_soft, fit_tier: reach, tier_rank: 1}
+        # Work listed only as an interest is never ranked above a long shot.
+        - {content_hash: interest_clean, fit_tier: reach, tier_rank: 1}
+        - {content_hash: adjacent_clean, fit_tier: fit, tier_rank: 3}
+        - {content_hash: other_field, fit_tier: unrelated, tier_rank: 0}
+        - {content_hash: unrelated_beats_clean, fit_tier: unrelated, tier_rank: 0}
+        - {content_hash: two_rungs_up, fit_tier: unrelated, tier_rank: 0}
+        - {content_hash: two_rungs_down, fit_tier: unrelated, tier_rank: 0}
+        - {content_hash: one_rung_up, fit_tier: fit, tier_rank: 3}
+        # An unstated level moves nothing.
+        - {content_hash: level_unstated, fit_tier: fit, tier_rank: 3}
+        # `failed` is absent: a failed generation has no facts to tier.

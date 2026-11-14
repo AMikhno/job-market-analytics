@@ -21,6 +21,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
+from typing import Final
 
 from shared import storage
 from shared.config import Settings, get_settings
@@ -33,6 +34,8 @@ log = logging.getLogger("deliver")
 def fetch_new_postings(settings: Settings, watermark: str) -> list[dict[str, object]]:
     """Gold postings first seen after the watermark, best fit first.
 
+    The assessment tier leads where there is one (ADR-0031), so the email reads
+    fit, near, reach, then whatever was not assessed. Within a tier
     `fit_score` leads, `match_score` (ADR-0024) breaks ties and carries the
     unscored tail. `nulls last` is what keeps the score an ordering and not a
     filter (ADR-0020): an unscored posting sinks below scored ones but still
@@ -42,10 +45,12 @@ def fetch_new_postings(settings: Settings, watermark: str) -> list[dict[str, obj
         select title, company, location, url, match_score, desired_tech_hits,
                title_match, deal_breaker_hits, deal_breaker_terms, first_seen_at,
                fit_score, company_type, geo_restriction, manages_people,
-               similarity, best_match_source
+               similarity, best_match_source,
+               fit_tier, field_relation, fit_why, fit_gap
         from {storage.gold_table(settings)}
         where first_seen_at > cast(? as timestamp)
-        order by fit_score desc nulls last,
+        order by tier_rank desc nulls last,
+                 fit_score desc nulls last,
                  match_score desc,
                  posted_or_updated_at desc nulls last
     """
@@ -205,6 +210,89 @@ def _signal_line(row: dict[str, object]) -> str:
     return " — ".join(", ".join(g) for g in groups)
 
 
+# The tiers delivery lists, in order, with the heading each gets. `unrelated` is
+# deliberately absent: it is the one tier collapsed to a count (ADR-0031).
+_BANDS: Final = (
+    ("fit", "Fit — every must-have covered"),
+    ("near", "Near — a waivable gap, or below your level"),
+    ("reach", "Reach — a hard gap, or work you listed as an interest"),
+)
+_UNRELATED: Final = "unrelated"
+# Enough titles to notice a posting that should not be here, not a second list.
+_COLLAPSED_TITLES: Final = 25
+
+
+def _posting_lines(row: dict[str, object]) -> tuple[str, str]:
+    """One posting as a text line and an HTML list item. Every field is escaped
+    in the HTML — posting metadata is scraped web content, not trusted markup."""
+    title, company = str(row["title"]), str(row["company"])
+    location = str(row["location"]) if row["location"] is not None else "location unknown"
+    url = str(row["url"])
+    signals = _signal_line(row)
+    # The two sentences the tier rests on, so a wrong tier can be argued with.
+    reasons = [str(row[k]) for k in ("fit_why", "fit_gap") if row.get(k)]
+    text = f"- {title} @ {company} ({location}) [{signals}]\n  {url}"
+    item = (
+        f'<li><a href="{html.escape(url, quote=True)}">{html.escape(title)}</a>'
+        f" @ {html.escape(company)} ({html.escape(location)})"
+        f" <small>[{html.escape(signals)}]</small>"
+    )
+    if reasons:
+        text += "".join(f"\n  {r}" for r in reasons)
+        item += "".join(f"<br><small>{html.escape(r)}</small>" for r in reasons)
+    return text, item + "</li>"
+
+
+def _collapsed(rows: list[dict[str, object]]) -> str:
+    """The unrelated postings as one line: a count, then titles without links.
+
+    Collapsed, not dropped. The titles stay because the tier is a model's
+    reading, and the only way to catch a posting wrongly sent here is to see
+    its name. The rows themselves are untouched in the warehouse.
+    """
+    names = [f"{r['title']} @ {r['company']}" for r in rows[:_COLLAPSED_TITLES]]
+    more = len(rows) - len(names)
+    tail = f"; and {more} more" if more > 0 else ""
+    return (
+        f"{len(rows)} unrelated posting{'s' if len(rows) != 1 else ''} collapsed: "
+        f"{'; '.join(names)}{tail}."
+    )
+
+
+def _render_postings(rows: list[dict[str, object]]) -> tuple[str, str]:
+    """The posting list as (text, html).
+
+    Banded by tier once anything has one. With nothing assessed the output is
+    the flat list it always was, so the assessment being off, failing or still
+    catching up changes nothing about delivery (ADR-0020).
+    """
+    if not any(r.get("fit_tier") for r in rows):
+        lines = [_posting_lines(r) for r in rows]
+        return "\n".join(text for text, _ in lines), f"<ul>{''.join(i for _, i in lines)}</ul>"
+
+    sections = [
+        (heading, [r for r in rows if r.get("fit_tier") == tier]) for tier, heading in _BANDS
+    ]
+    # Not assessed is its own section rather than folded into a tier: an absent
+    # tier is not a low one, and the two mean opposite things.
+    sections.append(("Not assessed yet", [r for r in rows if not r.get("fit_tier")]))
+    text_parts: list[str] = []
+    html_parts: list[str] = []
+    for heading, members in sections:
+        if not members:
+            continue
+        lines = [_posting_lines(r) for r in members]
+        text_parts.append(f"{heading} ({len(members)})\n" + "\n".join(t for t, _ in lines))
+        items = "".join(i for _, i in lines)
+        html_parts.append(f"<h3>{html.escape(heading)} ({len(members)})</h3><ul>{items}</ul>")
+    unrelated = [r for r in rows if r.get("fit_tier") == _UNRELATED]
+    if unrelated:
+        line = _collapsed(unrelated)
+        text_parts.append(line)
+        html_parts.append(f"<p><small>{html.escape(line)}</small></p>")
+    return "\n\n".join(text_parts), "".join(html_parts)
+
+
 def build_email(
     rows: list[dict[str, object]], summary: RunSummary | None, settings: Settings
 ) -> EmailMessage:
@@ -218,27 +306,15 @@ def build_email(
     msg["From"] = settings.smtp_user
     msg["To"] = settings.digest_to or settings.smtp_user
 
-    text_lines: list[str] = []
-    html_items: list[str] = []
-    for r in rows:
-        title, company = str(r["title"]), str(r["company"])
-        location = str(r["location"]) if r["location"] is not None else "location unknown"
-        url = str(r["url"])
-        signals = _signal_line(r)
-        text_lines.append(f"- {title} @ {company} ({location}) [{signals}]\n  {url}")
-        html_items.append(
-            f'<li><a href="{html.escape(url, quote=True)}">{html.escape(title)}</a>'
-            f" @ {html.escape(company)} ({html.escape(location)})"
-            f" <small>[{html.escape(signals)}]</small></li>"
-        )
+    text_body, html_body = _render_postings(rows)
 
     status = _footer(summary)
     footer_text = f"\n\n{status}"
     footer_html = f"<p><small>{html.escape(status)}</small></p>"
 
     if rows:
-        body_text = "\n".join(text_lines)
-        body_html = f"<ul>{''.join(html_items)}</ul>"
+        body_text = text_body
+        body_html = html_body
     else:
         body_text = "No new job postings since the last digest."
         body_html = f"<p>{body_text}</p>"

@@ -1,9 +1,14 @@
 """Which ranking puts the postings worth applying to nearest the top?
 
 An A/B on the *same* judged postings, so any difference is the ranking and not
-the sample. Three rankings are graded: the keyword score, the LLM fit score and
-embedding similarity — each as delivery would order it, with the keyword score
-breaking ties, because a 1-5 rating alone leaves most of the order undecided.
+the sample. Four rankings are graded: the keyword score, the LLM fit score,
+embedding similarity and the assessment tier — each with the keyword score
+breaking ties, because a 1-5 rating or a four-way tier alone leaves most of the
+order undecided.
+
+The tier is also compared with the labels directly. It uses the labels' own
+four grades, so a posting labelled `fit` and tiered `reach` is a disagreement
+that can be counted and read, where a wrong 1-5 can only be noticed.
 
 Reads silver rather than gold. Gold holds live postings only, and a label
 outlives the posting it judges: read from gold, a label file loses rows every
@@ -65,11 +70,13 @@ RANKINGS: Final[dict[str, Callable[[Candidate], tuple[float, ...]]]] = {
     "match_score": lambda c: (float(c.match_score),),
     "fit_score": lambda c: (_score(c.fit_score), float(c.match_score)),
     "similarity": lambda c: (_score(c.similarity), float(c.match_score)),
+    "fit_tier": lambda c: (_score(c.tier_rank), float(c.match_score)),
 }
 _HAS_SCORE: Final[dict[str, Callable[[Candidate], bool]]] = {
     "match_score": lambda c: True,
     "fit_score": lambda c: c.fit_score is not None,
     "similarity": lambda c: c.similarity is not None,
+    "fit_tier": lambda c: c.tier_rank is not None,
 }
 
 
@@ -91,6 +98,8 @@ class Evaluation(NamedTuple):
     intervals: dict[str, Interval]
     # (grade, fit_score or None) -> postings
     crosstab: Counter[tuple[int, int | None]]
+    # (grade, tier_rank or None) -> postings
+    tier_table: Counter[tuple[int, int | None]]
 
 
 def fetch_candidates(settings: Settings) -> list[Candidate]:
@@ -102,12 +111,14 @@ def fetch_candidates(settings: Settings) -> list[Candidate]:
     sql = f"""
         select s.job_key, s.company, s.url, s.external_id, s.first_seen_at, s.match_score,
                case when sc.fit_score between 1 and 5 then sc.fit_score end as fit_score,
-               m.similarity
+               m.similarity, tr.tier_rank
         from {storage.silver_relation("silver_jobs", settings)} s
         left join {storage.silver_relation("int_jobs_scored", settings)} sc
             on s.content_hash = sc.content_hash
         left join {storage.silver_relation("int_jobs_matched", settings)} m
             on s.content_hash = m.content_hash
+        left join {storage.silver_relation("int_jobs_tiered", settings)} tr
+            on s.content_hash = tr.content_hash
     """
     return [Candidate.model_validate(row) for row in storage.query_rows(sql, settings=settings)]
 
@@ -160,6 +171,7 @@ def evaluate(
         results=results,
         intervals=bootstrap(running, BASELINE) if judged else {},
         crosstab=Counter((grades[c.job_key], c.fit_score) for c in judged),
+        tier_table=Counter((grades[c.job_key], c.tier_rank) for c in judged),
     )
 
 
@@ -218,6 +230,27 @@ def format_report(ev: Evaluation) -> str:
         lines.append(
             f"{GRADE_NAMES[grade]:<8}" + "".join(f"{ev.crosstab[(grade, s)]:>6}" for s in scores)
         )
+    # The tier speaks the labels' own grades, so agreement is the diagonal.
+    tiers: list[int | None] = [3, 2, 1, 0, None]
+    lines += [
+        "",
+        "fit_tier by grade (rows are your grade, columns the tier):",
+        f"{'':<8}" + "".join(f"{GRADE_NAMES[x] if x is not None else 'none':>10}" for x in tiers),
+    ]
+    for grade in sorted(GRADE_NAMES, reverse=True):
+        lines.append(
+            f"{GRADE_NAMES[grade]:<8}" + "".join(f"{ev.tier_table[(grade, x)]:>10}" for x in tiers)
+        )
+    assessed = sum(n for (_, x), n in ev.tier_table.items() if x is not None)
+    if assessed:
+        agree = sum(n for (grade, x), n in ev.tier_table.items() if x == grade)
+        # The cost that matters most: a posting worth applying to, collapsed.
+        lost = sum(n for (grade, x), n in ev.tier_table.items() if x == DROP and grade > DROP)
+        lines += [
+            f"Tier agrees with the grade on {agree} of {assessed} assessed "
+            f"({agree / assessed:.0%}).",
+            f"Labelled fit, near or reach but tiered unrelated (would be collapsed): {lost}.",
+        ]
     return "\n".join(lines)
 
 

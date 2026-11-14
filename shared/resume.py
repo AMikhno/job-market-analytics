@@ -27,6 +27,9 @@ EXAMPLE_RESUME: Final = ROOT / "config" / "resume.example.yaml"
 # column (docs/v2-plan.md).
 PROMPT_VERSION: Final = "2"
 
+# The same contract for render_profile: bump when its wording or layout changes.
+PROFILE_VERSION: Final = "1"
+
 # The role families a bullet can be evidence for: work SHAPES, deliberately
 # fewer than the titles they cover, because a family exists to group bullets and
 # a title does not describe work (ADR-0027 rule 0). bi-developer covers BI
@@ -167,6 +170,18 @@ class Resume(BaseModel):
     summary: str = Field(min_length=1)
     seniority: str = Field(min_length=1)
     constraints: list[str] = Field(default_factory=list)
+    # The five below feed the assessment profile only (render_profile). All
+    # optional, so a resume written before they existed still loads.
+    years_experience: int | None = Field(default=None, ge=0)
+    # Things a posting may require that must not be counted as covered, however
+    # close the work history looks. The scorer sees only what was done; without
+    # this it cannot tell "adjacent to X" from "has done X".
+    never_claim: list[str] = Field(default_factory=list)
+    # Kinds of work, in plain words: what the candidate does, what sits next to
+    # it, and what they would apply to anyway. Everything else is unrelated.
+    core_work: list[str] = Field(default_factory=list)
+    adjacent_work: list[str] = Field(default_factory=list)
+    reach_interests: list[str] = Field(default_factory=list)
     skills: dict[str, list[str]] = Field(default_factory=dict)
     work_history: list[Role] = Field(min_length=1)
     projects: list[Project] = Field(default_factory=list)
@@ -241,6 +256,43 @@ def render_prompt(resume: Resume) -> str:
             parts.append(f"  {group}: {', '.join(items)}")
         parts.append("")
     parts.append("Work done (match against this, not against titles):")
+    for unit in evidence_units(resume):
+        parts.append(f"- [{unit.source}] {unit.text}")
+    if resume.education:
+        parts.append(f"\nEducation:\n{_bullets(resume.education)}")
+    return "\n".join(parts) + "\n"
+
+
+def render_profile(resume: Resume) -> str:
+    """The candidate profile the assessment model reads. Deterministic.
+
+    Facts only, no rubric: the instruction lives beside the model call in
+    int_jobs_assessed, and the tier is computed in SQL from what comes back. The
+    profile's job is to state what can be claimed, what cannot, and which kinds
+    of work count as the candidate's field -- the three things a list of
+    accomplishments leaves a reader to guess.
+    """
+    parts = [
+        f"Summary:\n{resume.summary}\n",
+        f"Level: {resume.seniority}",
+    ]
+    if resume.years_experience is not None:
+        parts.append(f"Years of relevant experience: {resume.years_experience}")
+    parts += [
+        f"\nCannot claim (a must-have naming one of these is a hard gap):\n"
+        f"{_bullets(resume.never_claim)}\n",
+        f"Core work (field_relation = core):\n{_bullets(resume.core_work)}\n",
+        f"Adjacent work (field_relation = adjacent):\n{_bullets(resume.adjacent_work)}\n",
+        f"Work of interest despite gaps (field_relation = interest):\n"
+        f"{_bullets(resume.reach_interests)}\n",
+        f"Constraints:\n{_bullets(resume.constraints)}\n",
+    ]
+    if resume.skills:
+        parts.append("Skills:")
+        for group, items in resume.skills.items():
+            parts.append(f"  {group}: {', '.join(items)}")
+        parts.append("")
+    parts.append("Work done:")
     for unit in evidence_units(resume):
         parts.append(f"- [{unit.source}] {unit.text}")
     if resume.education:

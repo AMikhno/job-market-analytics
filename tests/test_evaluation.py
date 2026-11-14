@@ -408,6 +408,43 @@ def test_long_unmatched_list_is_truncated_in_the_report() -> None:
     assert "… and 4 more" in report.format_report(report.evaluate(labels, _postings()))
 
 
+def _with_tiers(tiers: dict[str, int]) -> list[Candidate]:
+    return [c.model_copy(update={"tier_rank": tiers.get(c.job_key)}) for c in _postings()]
+
+
+def test_the_tier_is_graded_as_a_ranking_once_postings_are_assessed() -> None:
+    off = report.evaluate(_labels(), _postings())
+    assert next(r for r in off.results if r.name == "fit_tier").scored == 0
+    assert "fit_tier" not in off.intervals
+
+    on = report.evaluate(_labels(), _with_tiers({"good_fit": 3, "keyword_bait": 0}))
+    tier = next(r for r in on.results if r.name == "fit_tier")
+    assert tier.scored == 2
+    assert tier.ndcg == pytest.approx(1.0)
+    assert "fit_tier" in on.intervals
+
+
+def test_tier_is_compared_with_the_grade_it_claims() -> None:
+    """The tier uses the labels' own grades, so disagreement is countable. The
+    count that matters most is a posting worth applying to that the tier would
+    collapse out of the digest."""
+    labels = [
+        Label(key="good_fit", grade=FIT),
+        Label(key="keyword_bait", grade=REACH),
+        Label(key="unscored", grade=DROP),
+    ]
+    ev = report.evaluate(labels, _with_tiers({"good_fit": 3, "keyword_bait": 0, "unscored": 0}))
+    assert ev.tier_table[(FIT, 3)] == 1
+    assert ev.tier_table[(REACH, 0)] == 1
+    text = report.format_report(ev)
+    assert "Tier agrees with the grade on 2 of 3 assessed (67%)." in text
+    assert "tiered unrelated (would be collapsed): 1." in text
+
+
+def test_no_agreement_line_when_nothing_is_assessed() -> None:
+    assert "Tier agrees" not in report.format_report(report.evaluate(_labels(), _postings()))
+
+
 def _settings_with_silver(tmp_path: Path, scored: bool = True) -> Settings:
     settings = Settings(_env_file=None, duckdb_path=str(tmp_path / "jobs.duckdb"))
     con = duckdb.connect(settings.duckdb_path)
@@ -423,6 +460,9 @@ def _settings_with_silver(tmp_path: Path, scored: bool = True) -> Settings:
         )
         con.execute(
             "CREATE TABLE main_silver.int_jobs_matched (content_hash VARCHAR, similarity DOUBLE)"
+        )
+        con.execute(
+            "CREATE TABLE main_silver.int_jobs_tiered (content_hash VARCHAR, tier_rank BIGINT)"
         )
         for i in range(8):
             con.execute(

@@ -51,6 +51,35 @@ seniority: senior individual contributor
 constraints:
   - no relocation
 
+# ── The assessment profile (optional, but it is what makes a tier honest) ─────
+# The work history says what you did. It cannot say what you have NOT done, and
+# a model reading accomplishments will credit anything nearby. These five fields
+# are read only by the assessment (int_jobs_assessed), never by the 1-5 score.
+#
+# Compared against a posting's required years. A shortfall under two years is a
+# soft gap; two or more is a hard one.
+years_experience: 7
+
+# Must-haves that must not be counted as covered, however close your history
+# looks. Be specific: "no Kimball dimensional modelling as built" works, "weak
+# at modelling" does not.
+never_claim:
+  - a BI tool you have only evaluated, never run in production
+  - an orchestrator you have configured but never authored pipelines in
+
+# Kinds of work, in plain words. `core` is what you do; `adjacent` is next to it
+# and worth seeing; `reach_interests` you would apply to despite a gap, and is
+# never ranked above a long shot. Work in none of the three is collapsed to a
+# count in the digest rather than listed.
+core_work:
+  - analytics engineering and BI on a cloud warehouse
+  - product and go-to-market analytics
+adjacent_work:
+  - data engineering
+  - analyst or analytics roles one level above or below, including a team lead
+reach_interests:
+  - forward-deployed or solutions engineering
+
 # Free-form groups; the names are yours. Context for the LLM, not the matching
 # key — the work history below is what gets matched.
 skills:

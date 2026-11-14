@@ -70,11 +70,32 @@ vars:
   # state as before embeddings were written, rather than a failed build.
   enable_embeddings: false
 
+  # The assessment (int_jobs_assessed, ADR-0031): which must-haves a posting
+  # states and which of them the candidate profile does not show. False until
+  # it has been run once by hand and graded with `make evaluate`: off, the model
+  # is an empty stub on every target and delivery is unchanged.
+  enable_assessment: false
+  # The flash tier rather than flash-lite: this call decides, requirement by
+  # requirement, whether a profile covers it, and runs only on postings that
+  # already extracted. From the same probed allowlist as scoring_endpoint.
+  assessment_endpoint: gemini-3.5-flash
+  # Bump when the instruction in int_jobs_assessed is reworded. The incremental
+  # guard compares it, so a changed instruction re-assesses instead of mixing
+  # two wordings in one column -- the defect the extraction prompt still has.
+  assessment_version: "1"
+  # The tier rule (int_jobs_tiered). A view reads these, so changing one
+  # re-tiers every posting on the next run at no model cost. Integers.
+  #   fit  = no hard gap and at most this many soft gaps
+  tier_fit_max_soft_gaps: 1
+  #   unrelated = more than this many rungs above or below the candidate
+  tier_max_level_distance: 1
+
 # Three medallion zones = dbt staging -> intermediate -> marts.
 # Folder defaults below; per-model overrides live in-model:
 #   - int_jobs__unioned        -> view  (free; ephemeral would block unit tests)
 #   - int_posting_state        -> view  (a column projection of int_jobs__latest)
-#   - int_jobs_structured/scored (V2) -> incremental (never recompute LLM calls)
+#   - int_jobs_structured/scored/assessed (V2) -> incremental (never recompute LLM calls)
+#   - int_jobs_tiered          -> view  (the tier rule; retuned without a model call)
 models:
   job_pipeline:
     # Push model + column descriptions into the warehouse so BigQuery tables/views

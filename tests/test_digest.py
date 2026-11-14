@@ -42,7 +42,9 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
                 match_score BIGINT, fit_score BIGINT,
                 company_type VARCHAR, geo_restriction VARCHAR, manages_people VARCHAR,
                 similarity DOUBLE, best_match_source VARCHAR,
-                first_seen_at TIMESTAMP, posted_or_updated_at TIMESTAMP)"""
+                first_seen_at TIMESTAMP, posted_or_updated_at TIMESTAMP,
+                fit_tier VARCHAR, tier_rank BIGINT, field_relation VARCHAR,
+                fit_why VARCHAR, fit_gap VARCHAR)"""
         )
         for r in rows:
             # Insert naive-UTC: binding an aware datetime makes DuckDB localize
@@ -50,7 +52,7 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
             first_seen = r["first_seen_at"].replace(tzinfo=None)
             con.execute(
                 "INSERT INTO main_gold.fct_job_postings "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     r.get("title", "Analytics Engineer"),
                     r.get("company", "acme"),
@@ -77,6 +79,13 @@ def _seed_gold(settings: Settings, rows: list[dict]) -> None:
                     r.get("best_match_source"),
                     first_seen,
                     first_seen,
+                    # Default null: not assessed is the state while the
+                    # assessment is off, and must leave the digest unchanged.
+                    r.get("fit_tier"),
+                    {"fit": 3, "near": 2, "reach": 1, "unrelated": 0}.get(r.get("fit_tier", "")),
+                    r.get("field_relation"),
+                    r.get("fit_why"),
+                    r.get("fit_gap"),
                 ],
             )
     finally:
@@ -673,3 +682,89 @@ def test_digest_line_shows_the_score_it_is_sorted_by(tmp_path, monkeypatch, stub
         int(line.split("match ")[1].split(" ")[0]) for line in body.splitlines() if "match " in line
     ]
     assert scores == sorted(scores, reverse=True)
+
+
+def _tiered_rows(tmp_path: Path) -> list[dict[str, object]]:
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(
+        settings,
+        [
+            {
+                "title": "Long Shot",
+                "fit_tier": "reach",
+                "fit_score": 5,
+                "first_seen_at": now,
+                "fit_gap": "Requires a domain the profile lacks.",
+            },
+            {
+                "title": "Real Fit",
+                "fit_tier": "fit",
+                "fit_score": 2,
+                "first_seen_at": now,
+                "fit_why": "Covers the <b>modelling</b> work.",
+                "url": "https://example/fit",
+            },
+            {"title": "Close", "fit_tier": "near", "first_seen_at": now},
+            {
+                "title": "Nurse Practitioner",
+                "fit_tier": "unrelated",
+                "fit_score": 1,
+                "first_seen_at": now,
+                "url": "https://example/nurse",
+            },
+            {"title": "Fresh", "first_seen_at": now, "fit_score": 4},
+        ],
+    )
+    return digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+
+
+def test_tier_leads_the_order_ahead_of_fit_score(tmp_path: Path) -> None:
+    """A reach scored 5/5 must not sit above a fit scored 2/5: the tier is the
+    judgement, and the 1-5 only orders within it. Not assessed sorts last."""
+    titles = [r["title"] for r in _tiered_rows(tmp_path)]
+    assert titles == ["Real Fit", "Close", "Long Shot", "Nurse Practitioner", "Fresh"]
+
+
+def test_assessed_postings_are_banded_and_unrelated_ones_collapsed(tmp_path: Path) -> None:
+    rows = _tiered_rows(tmp_path)
+    msg = digest.build_email(rows, None, _settings(tmp_path))
+    text = msg.get_body(("plain",)).get_content()
+    page = msg.get_body(("html",)).get_content()
+
+    # One heading per tier that has postings, in order, then the unassessed.
+    order = [text.index(h) for h in ("Fit —", "Near —", "Reach —", "Not assessed yet")]
+    assert order == sorted(order)
+    assert "Fit — every must-have covered (1)" in text
+
+    # Collapsed, not dropped: named so a wrong call can be seen, but not linked.
+    assert "1 unrelated posting collapsed: Nurse Practitioner @ acme." in text
+    assert "https://example/nurse" not in text
+    assert "https://example/nurse" not in page
+    assert "https://example/fit" in text
+
+    # The reasons ride under the posting, escaped like every other field.
+    assert "Requires a domain the profile lacks." in text
+    assert "&lt;b&gt;modelling&lt;/b&gt;" in page
+    assert "<b>modelling</b>" not in page
+
+
+def test_nothing_assessed_leaves_the_digest_a_flat_list(tmp_path: Path) -> None:
+    """The assessment being off, failing or behind must change nothing about
+    delivery (ADR-0020): no headings, no collapsed line."""
+    settings = _settings(tmp_path)
+    now = datetime.now(UTC)
+    _seed_gold(settings, [{"title": "Plain", "first_seen_at": now}])
+    rows = digest.fetch_new_postings(settings, (now - timedelta(hours=1)).isoformat())
+    text = digest.build_email(rows, None, settings).get_body(("plain",)).get_content()
+    assert text.startswith("- Plain @ acme")
+    assert "Not assessed" not in text
+    assert "collapsed" not in text
+
+
+def test_a_long_collapsed_list_names_the_first_and_counts_the_rest() -> None:
+    rows: list[dict[str, object]] = [{"title": f"T{i}", "company": "acme"} for i in range(30)]
+    line = digest._collapsed(rows)
+    assert line.startswith("30 unrelated postings collapsed: T0 @ acme;")
+    assert line.endswith("; and 5 more.")
+    assert "T25" not in line

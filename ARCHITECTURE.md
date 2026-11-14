@@ -248,7 +248,8 @@ in a GitHub Actions variable and never in the tree.
 
 ## V2
 
-Three prod-only models inside silver, all SQL against warehouse-native AI functions (ADR-0004),
+Four prod-only models inside silver that call a model, all SQL against warehouse-native AI
+functions (ADR-0004), and one view that turns the last one's output into a tier,
 reading from `silver_jobs` so they only ever see postings that survived filtering. On the DuckDB
 target each emits a typed-null stub with the same column shape, so the dev DAG and its unit tests
 run without a model.
@@ -258,6 +259,8 @@ run without a model.
 | `int_jobs_structured` | Typed extraction: `company_type`, `geo_restriction`, `manages_people`, minimum years, required and nice-to-have techs, and `relevant_text` |
 | `int_jobs_scored` | 1–5 `fit_score` of `relevant_text` against the resume corpus |
 | `int_jobs_matched` | Embedding `similarity` of `relevant_text` to the closest single resume bullet, and which bullet it was |
+| `int_jobs_assessed` | Which requirements the posting states as must-haves, and which of them the candidate profile does not show |
+| `int_jobs_tiered` | View: fit / near / reach / unrelated, computed in SQL from those facts |
 
 The third answers the same question as the second by different means, and runs beside it on
 purpose until labels say which is better. Embeddings take only that half: similarity is blind to
@@ -265,6 +268,19 @@ polarity — "we do not sponsor visas" and "we sponsor visas" are nearly identic
 `geo_restriction` and `manages_people` stay with the LLM and never move there. It is gated behind
 `enable_embeddings`, which stays false until its remote model exists; off, the model emits its
 stub and `similarity` is simply null.
+
+**The assessment splits reading from judging** (ADR-0031). A 1–5 returned for a whole posting has
+nowhere to put what the candidate has *not* done, cannot say which requirement sank it, and leaves
+most of the order tied. So `int_jobs_assessed` returns facts — the must-haves, the gaps an employer
+would waive and the ones one would not, how the work relates to the candidate's field, the distance
+in level — and `int_jobs_tiered` turns them into a tier with an ordered SQL rule. Each branch of
+that rule is unit-tested, its thresholds are vars, and because the tier is a view over stored facts
+a threshold change re-tiers every posting without a model call. It is gated behind
+`enable_assessment`, false until the tier has been graded against labels.
+
+Where a tier exists the digest is banded by it, and `unrelated` postings are collapsed to one line
+of titles rather than listed. Nothing is deleted, and with nothing assessed the digest is the flat
+list it always was.
 
 **Scoring reads the requirements, not the posting.** Extraction drops the responsibilities blurb
 and the boilerplate, which measured 570 characters out of 6,854 — about 8% of the text. Every
@@ -295,4 +311,4 @@ evaluate` grades each ranking against four-grade human labels — tie-aware, bec
 leaves most of an ordering undecided, and with a bootstrap interval so a handful of labels cannot
 produce a verdict by chance. Labels from an LLM cannot settle it —
 grading a scorer against its predecessor's judgements rewards reproducing that predecessor's
-mistakes. Until those labels exist, all three orderings are carried and none is trusted.
+mistakes. Until those labels exist, every ordering is carried and none is trusted.
