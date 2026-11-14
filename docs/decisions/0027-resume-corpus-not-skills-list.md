@@ -20,7 +20,8 @@ postings, applied to the other side of the comparison.
 2. **Matching happens per bullet, not per resume** (`evidence_units`). One vector over a whole
    resume averages unrelated work into something that matches everything weakly; short specific
    texts also embed more reliably. Each unit carries its origin, because a bullet read without
-   knowing who it was built for loses the distinction between role families.
+   knowing who it was built for loses the distinction between role families. (ADR-0032 applies
+   the same split to the posting side.)
 3. **Bullets may be tagged with role families**, from a closed set — seven work *shapes*,
    deliberately fewer than the titles they cover. The tag drives no matching: scoring and
    similarity both read `text` alone, and the tags are kept out of the prompt on purpose, since a

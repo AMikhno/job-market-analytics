@@ -47,6 +47,7 @@ select
     -- The embedding matcher's answer, beside fit_score rather than blended with
     -- it: two unvalidated rankings averaged make a bad result undiagnosable.
     m.similarity,
+    m.industry_similarity,
     m.best_match_source,
     row_number() over (
         order by s.posted_or_updated_at desc nulls last, s.job_key asc

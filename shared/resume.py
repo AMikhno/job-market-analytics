@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -157,6 +157,9 @@ class EvidenceUnit(BaseModel):
     source: str
     text: str
     evidences: list[str]
+    # What a unit is compared with: a `work` bullet answers a posting's
+    # requirements, an `industry` answers its description of the employer.
+    kind: Literal["work", "industry"] = "work"
 
 
 class Resume(BaseModel):
@@ -200,6 +203,31 @@ def evidence_units(resume: Resume) -> list[EvidenceUnit]:
             )
         )
     return units
+
+
+def industry_units(resume: Resume) -> list[EvidenceUnit]:
+    """Each distinct industry worked in, as its own embeddable unit.
+
+    Separate from the work bullets because it answers a different question: a
+    posting's description of its employer is compared with these, and its
+    requirements with the bullets, so a sector match and a work match are never
+    one number. First mention wins the order, so ids are stable across runs.
+    """
+    seen: dict[str, str] = {}
+    for role in resume.work_history:
+        if role.industry and role.industry.strip():
+            label = " ".join(role.industry.split())
+            seen.setdefault(label.casefold(), label)
+    return [
+        EvidenceUnit(
+            unit_id=f"industry:{label}",
+            source=f"Industry: {label}",
+            text=label,
+            evidences=[],
+            kind="industry",
+        )
+        for label in seen.values()
+    ]
 
 
 def family_coverage(units: list[EvidenceUnit]) -> dict[str, int]:
