@@ -10,7 +10,10 @@
 # so build this from what you did, using old versions only as memory joggers.
 #
 # ── What actually affects matching ────────────────────────────────────────────
-# Only `text` inside bullets is embedded and compared against postings. So:
+# Only `text` inside bullets is embedded and compared against what a posting
+# asks for. (A role's `industry` is embedded too, but separately: it is compared
+# with the posting's description of the employer and never moves the main
+# score.) So:
 #   * bullet COUNT and bullet QUALITY are what move results;
 #   * job titles do NOT affect matching — do not invent one hoping to rank
 #     better, it does nothing. Keep them honest so the digest is readable;
