@@ -29,7 +29,7 @@ provenance columns cannot be expressed through it.
 
 ## Human preconditions (before the prod run; the build itself needs none of these)
 
-- [ ] Vertex AI API enabled.
+- [x] Vertex AI API enabled.
 - [ ] Application Default Credentials for local prod runs
       (`gcloud auth application-default login`) — CI uses Workload Identity Federation and needs
       none.
