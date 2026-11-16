@@ -19,7 +19,7 @@ flowchart LR
 
 ### **→ [Project site](https://amikhno.github.io/job-market-analytics/)**
 
-Live market charts, design decisions, rendered docs and all 31 ADRs, and the dbt lineage DAG. <!-- check:adrs -->
+Live market charts, design decisions, rendered docs and all 32 ADRs, and the dbt lineage DAG. <!-- check:adrs -->
 Rebuilt in CI on every push to main, or locally with `make site` (output in `_site/`). Every number
 on the landing page is read from the dbt manifest, the ADRs and the test suite at build time, and
 the build fails on a broken link. Every PR's CI run also uploads a `site-preview` artifact, so a
