@@ -27,6 +27,9 @@ EXAMPLE_RESUME: Final = ROOT / "config" / "resume.example.yaml"
 # column (docs/v2-plan.md).
 PROMPT_VERSION: Final = "2"
 
+# The same contract for render_profile: bump when its wording or layout changes.
+PROFILE_VERSION: Final = "1"
+
 # The role families a bullet can be evidence for: work SHAPES, deliberately
 # fewer than the titles they cover, because a family exists to group bullets and
 # a title does not describe work (ADR-0027 rule 0). bi-developer covers BI
@@ -241,6 +244,29 @@ def render_prompt(resume: Resume) -> str:
             parts.append(f"  {group}: {', '.join(items)}")
         parts.append("")
     parts.append("Work done (match against this, not against titles):")
+    for unit in evidence_units(resume):
+        parts.append(f"- [{unit.source}] {unit.text}")
+    if resume.education:
+        parts.append(f"\nEducation:\n{_bullets(resume.education)}")
+    return "\n".join(parts) + "\n"
+
+
+def render_profile(resume: Resume) -> str:
+    """The candidate text the assessment model reads. Deterministic.
+
+    The same corpus the scorer gets, without its rubric: summary, skills and the
+    work bullets. Nothing here says how to judge -- the instruction lives beside
+    the model call in int_jobs_assessed and the tier is computed in SQL -- and
+    nothing is added that the resume does not already hold, so the assessment
+    needs no configuration of its own.
+    """
+    parts = [f"Summary:\n{resume.summary}\n"]
+    if resume.skills:
+        parts.append("Skills:")
+        for group, items in resume.skills.items():
+            parts.append(f"  {group}: {', '.join(items)}")
+        parts.append("")
+    parts.append("Work done:")
     for unit in evidence_units(resume):
         parts.append(f"- [{unit.source}] {unit.text}")
     if resume.education:

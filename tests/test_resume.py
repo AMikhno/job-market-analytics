@@ -9,6 +9,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+import shared.resume as resume_mod
 from shared.resume import (
     EXAMPLE_RESUME,
     PROMPT_VERSION,
@@ -279,3 +280,45 @@ def test_committed_example_is_valid() -> None:
     resume = load_resume(str(EXAMPLE_RESUME))
     assert evidence_units(resume)
     assert render_prompt(resume)
+
+
+def _profile_resume(**overrides: object) -> resume_mod.Resume:
+    base = resume_mod.load_resume("config/resume.example.yaml").model_dump()
+    return resume_mod.Resume.model_validate({**base, **overrides})
+
+
+def test_profile_is_the_corpus_without_the_rubric() -> None:
+    """Summary, skills and bullets -- what the work was. How to judge it lives
+    beside the model call, so a rubric here would be a second, unversioned copy."""
+    text = resume_mod.render_profile(_profile_resume())
+    assert text.startswith("Summary:")
+    assert "Skills:" in text
+    assert "Work done:\n- [" in text
+    assert "Score 1 to 5" not in text
+    assert "rules" not in text.lower()
+
+
+def test_profile_needs_nothing_the_resume_did_not_already_have() -> None:
+    """The assessment adds no configuration: a resume that scores also assesses."""
+    assert set(resume_mod.Resume.model_fields) == {
+        "summary",
+        "seniority",
+        "constraints",
+        "skills",
+        "work_history",
+        "projects",
+        "education",
+    }
+
+
+def test_profile_is_deterministic_and_moves_with_the_bullets() -> None:
+    plain = _profile_resume()
+    edited = _profile_resume(summary="A different summary.")
+    assert resume_mod.render_profile(plain) == resume_mod.render_profile(plain)
+    assert resume_mod.render_profile(plain) != resume_mod.render_profile(edited)
+
+
+def test_profile_without_skills_or_education_omits_those_sections() -> None:
+    text = resume_mod.render_profile(_profile_resume(skills={}, education=[]))
+    assert "Skills:" not in text
+    assert "Education:" not in text

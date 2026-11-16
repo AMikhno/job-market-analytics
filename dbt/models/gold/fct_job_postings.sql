@@ -48,6 +48,15 @@ select
     -- it: two unvalidated rankings averaged make a bad result undiagnosable.
     m.similarity,
     m.best_match_source,
+    -- The assessment's tier and the two sentences that explain it (ADR-0031).
+    -- Null until a posting is assessed, like every other AI column here.
+    tr.fit_tier,
+    tr.tier_rank,
+    tr.work_match,
+    tr.stack_gap,
+    tr.level_band,
+    tr.why as fit_why,
+    tr.gap as fit_gap,
     row_number() over (
         order by s.posted_or_updated_at desc nulls last, s.job_key asc
     ) as recency_rank
@@ -61,5 +70,7 @@ left join {{ ref('int_jobs_structured') }} st
     on s.content_hash = st.content_hash
 left join {{ ref('int_jobs_matched') }} m
     on s.content_hash = m.content_hash
+left join {{ ref('int_jobs_tiered') }} tr
+    on s.content_hash = tr.content_hash
 -- postings that disappeared from their board are closed — not deliverable
 where s.is_active
