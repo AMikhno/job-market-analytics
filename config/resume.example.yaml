@@ -10,8 +10,8 @@
 # so build this from what you did, using old versions only as memory joggers.
 #
 # ── What actually affects matching ────────────────────────────────────────────
-# Only `text` inside bullets is embedded and compared against what a posting
-# asks for. (A role's `industry` is embedded too, but separately: it is compared
+# Only `text` inside bullets, and any `variants` of it, is embedded and compared
+# against what a posting asks for. (A role's `industry` is embedded too, but separately: it is compared
 # with the posting's description of the employer and never moves the main
 # score.) So:
 #   * bullet COUNT and bullet QUALITY are what move results;
@@ -30,6 +30,19 @@
 #           replacing a manual account review."
 # One bullet per distinct thing built. Splitting them is what lets a posting
 # match the relevant half of your history instead of an average of all of it.
+#
+# ── variants: other wordings of the same bullet ───────────────────────────────
+# Optional, and free. A variant says the SAME thing in other words — the
+# vocabulary a different kind of posting would use for that work. It is embedded
+# beside the bullet and is never sent to the scoring or assessment model, which
+# read meaning rather than vocabulary and gain nothing from a second wording. So
+# adding one changes `similarity` on the next run and re-scores nothing.
+#
+# If the new wording states something the bullet does not — a tool, a scale, a
+# team — it is not a variant. Put it in `text`: that is new evidence, the models
+# should read it, and open postings are re-scored against it.
+# `make land-resume ARGS=--check` says which kind an edit is before it costs
+# anything.
 #
 # ── evidences: which role families a bullet is evidence for ───────────────────
 # From a closed set (shared/resume.py ROLE_FAMILIES). It does NOT affect
@@ -89,6 +102,10 @@ work_history:
           A model or metric layer you owned end to end: what it replaced, how
           far it grew, and which team made decisions on it afterwards.
         evidences: [analytics-engineer, gtm-engineer]
+        variants:
+          - >
+            The same model or metric layer, in the words a posting from another
+            role family would use for it. Same facts, different vocabulary.
       - text: >
           A pipeline that unified several source systems into one view, naming
           the systems and who adopted the result.

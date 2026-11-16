@@ -54,8 +54,8 @@ dbt-deps:         ## Install dbt package dependencies (dbt_utils)
 ensure-raw:       ## Create empty raw tables so dbt can build without an ingest run
 	uv run python -c "from ingest.pipeline import ensure_raw_tables; ensure_raw_tables()"
 
-land-resume:      ## Land the private resume into BigQuery for scoring + matching
-	uv run python -m ingest.land_resume
+land-resume:      ## Land the private resume for scoring + matching. Preview an edit's cost, landing nothing: ARGS=--check
+	uv run python -m ingest.land_resume $(ARGS)
 
 labels-template:  ## Write a labelling worksheet from gold to config/labels.csv
 	uv run python -m evaluation.template

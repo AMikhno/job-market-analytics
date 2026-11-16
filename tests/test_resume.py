@@ -20,6 +20,7 @@ from shared.resume import (
     industry_units,
     load_resume,
     render_prompt,
+    variant_units,
 )
 
 VALID: dict[str, object] = {
@@ -191,6 +192,90 @@ def test_evidence_unit_carries_its_origin() -> None:
     units = evidence_units(Resume.model_validate(VALID))
     assert "Senior Analyst at Example Corp" in units[0].source
     assert units[-1].source.startswith("Personal project")
+
+
+def _with_variants(*variants: str) -> Resume:
+    """VALID with the given other wordings on its first bullet."""
+    base = VALID["work_history"]
+    assert isinstance(base, list)
+    first, second = base[0]["bullets"]
+    role = {**base[0], "bullets": [{**first, "variants": list(variants)}, second]}
+    return Resume.model_validate({**VALID, "work_history": [role]})
+
+
+def test_a_variant_never_reaches_a_prompt() -> None:
+    """The property the whole field rests on: the two rendered texts are what a
+    model is billed to read and what versions every stored result, so a variant
+    appearing in either would re-run every posting to add a second wording of
+    something the model already read."""
+    plain = Resume.model_validate(VALID)
+    reworded = _with_variants("Owned the semantic layer renewals were forecast from.")
+
+    assert render_prompt(reworded) == render_prompt(plain)
+    assert resume_mod.render_profile(reworded) == resume_mod.render_profile(plain)
+    assert "semantic layer" not in render_prompt(reworded)
+
+
+def test_a_variant_is_a_work_unit_that_names_the_bullet_it_rewords() -> None:
+    """`work`, so the matcher compares it with requirements like any bullet, and
+    carrying the bullet's origin and families, so a posting matched on the
+    variant still reports the work it matched."""
+    resume = _with_variants("Owned the semantic layer.", "Modelled renewal metrics in dbt.")
+    bullet = evidence_units(resume)[0]
+
+    variants = variant_units(resume)
+
+    assert [v.unit_id for v in variants] == [f"{bullet.unit_id}:v0", f"{bullet.unit_id}:v1"]
+    assert [v.text for v in variants] == [
+        "Owned the semantic layer.",
+        "Modelled renewal metrics in dbt.",
+    ]
+    for variant in variants:
+        assert variant.variant_of == bullet.unit_id
+        assert variant.source == bullet.source
+        assert variant.evidences == bullet.evidences
+        assert variant.kind == "work"
+
+
+def test_variants_add_no_bullets_and_no_coverage() -> None:
+    """Coverage counts distinct work. A second wording of one bullet counted
+    again would hide the gap the report exists to show."""
+    plain = Resume.model_validate(VALID)
+    reworded = _with_variants("Owned the semantic layer.")
+
+    assert evidence_units(reworded) == evidence_units(plain)
+    assert all(unit.variant_of is None for unit in evidence_units(reworded))
+    assert family_coverage(evidence_units(reworded)) == family_coverage(evidence_units(plain))
+
+
+def test_a_resume_without_variants_has_no_variant_units() -> None:
+    assert variant_units(Resume.model_validate(VALID)) == []
+
+
+def test_project_variants_are_units_too() -> None:
+    project = {"name": "Side Project", "text": "A pipeline.", "variants": ["An ELT pipeline."]}
+    resume = Resume.model_validate({**VALID, "projects": [project]})
+
+    (variant,) = variant_units(resume)
+
+    assert variant.unit_id == "project:Side Project:v0"
+    assert variant.variant_of == "project:Side Project"
+    assert variant.text == "An ELT pipeline."
+
+
+def test_variant_text_is_whitespace_normalised() -> None:
+    resume = _with_variants("owned   the\n  semantic layer\n")
+    assert variant_units(resume)[0].text == "owned the semantic layer"
+
+
+def test_a_blank_variant_is_rejected() -> None:
+    """It would be embedded as an empty string and match nothing, silently."""
+    with pytest.raises(ValidationError, match="must not be blank"):
+        _with_variants("a real one", "  \n ")
+    with pytest.raises(ValidationError, match="must not be blank"):
+        Resume.model_validate(
+            {**VALID, "projects": [{"name": "P", "text": "t", "variants": [" "]}]}
+        )
 
 
 def _with_industries(*industries: str | None) -> Resume:

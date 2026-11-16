@@ -296,6 +296,8 @@ _UNITS_BQ_SCHEMA = [
     ("evidences", "STRING"),
     ("prompt_version", "STRING"),
     ("kind", "STRING"),
+    # Null on a bullet; on another wording of one, the id of that bullet.
+    ("variant_of", "STRING"),
 ]
 
 
@@ -327,6 +329,15 @@ def ensure_resume_units_table(settings: Settings) -> None:
         con.execute(f"CREATE TABLE IF NOT EXISTS resume_units ({cols})")
     finally:
         con.close()
+
+
+def landed_resume_units(settings: Settings) -> list[dict[str, object]]:
+    """The resume units as last landed, every column the table has.
+
+    `select *` on purpose: a table landed before a column was added is still
+    readable, and the caller treats a missing column as null.
+    """
+    return query_rows(f"select * from {resume_units_table(settings)}", settings=settings)
 
 
 def replace_resume_units(rows: list[dict[str, object]], *, settings: Settings) -> None:

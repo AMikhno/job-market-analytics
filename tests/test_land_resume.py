@@ -7,11 +7,12 @@ from pathlib import Path
 
 import duckdb
 import pytest
+import yaml
 
 from ingest import land_resume
 from shared import storage
 from shared.config import Settings
-from shared.resume import PROFILE_VERSION, PROMPT_VERSION
+from shared.resume import PROFILE_VERSION, PROMPT_VERSION, EvidenceUnit
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -153,7 +154,8 @@ def test_lands_work_bullets_and_industries_as_separate_kinds(tmp_path: Path) -> 
     units = _units(settings)
     industries = [text for _, kind, text in units if kind == "industry"]
     assert industries == ["B2B SaaS"]
-    assert len([u for u in units if u[1] == "work"]) == 7  # 6 bullets + 1 project
+    # 6 bullets + 1 project + the one other wording the example gives a bullet.
+    assert len([u for u in units if u[1] == "work"]) == 8
     assert {kind for _, kind, _ in units} == {"work", "industry"}
 
 
@@ -248,6 +250,264 @@ def test_warns_when_a_family_has_no_bullets(
     assert len(warnings) == 1
     assert "product-analyst" in warnings[0]
     assert "analytics-engineer" not in warnings[0]
+
+
+def _edited(
+    tmp_path: Path,
+    *,
+    bullets: list[str],
+    variants: list[str] | None = None,
+    summary: str = "Builds analytics pipelines.",
+) -> Settings:
+    """Settings over a resume written to disk: the given bullets in one role,
+    with `variants` as other wordings of the first."""
+    entries: list[dict[str, object]] = [{"text": text} for text in bullets]
+    if variants:
+        entries[0]["variants"] = variants
+    (tmp_path / "resume.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "summary": summary,
+                "seniority": "senior individual contributor",
+                "work_history": [
+                    {
+                        "org": "Example Corp",
+                        "title": "Analyst",
+                        "period": "2020 to 2024",
+                        "bullets": entries,
+                    }
+                ],
+            }
+        )
+    )
+    return Settings(
+        pipeline_target="dev",
+        duckdb_path=str(tmp_path / "jobs.duckdb"),
+        resume_yaml=str(tmp_path / "resume.yaml"),
+    )
+
+
+def _variant_rows(settings: Settings) -> list[tuple[str, str]]:
+    con = duckdb.connect(settings.duckdb_path)
+    try:
+        return [
+            (str(parent), str(text))
+            for parent, text in con.execute(
+                "select variant_of, text from resume_units where variant_of is not null"
+            ).fetchall()
+        ]
+    finally:
+        con.close()
+
+
+def test_a_variant_lands_for_the_matcher_and_moves_neither_version(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """What makes a rewording free: it reaches the embedding units, and the two
+    texts a model reads -- which version every stored result -- do not move, so
+    the next run re-scores and re-assesses nothing."""
+    land_resume.run(_edited(tmp_path, bullets=["Built one thing."]))
+
+    settings = _edited(tmp_path, bullets=["Built one thing."], variants=["Shipped a thing."])
+    with caplog.at_level(logging.INFO, logger="land_resume"):
+        assert land_resume.run(settings) == 0
+
+    assert _variant_rows(settings) == [("Example Corp:2020 to 2024:0", "Shipped a thing.")]
+    assert len(_rows(settings)) == 1
+    assert len(_profiles(settings)) == 1
+    assert "0 bullet(s) added, 0 removed; 1 variant(s) added, 0 removed" in caplog.text
+    assert "no text a model reads changed" in caplog.text
+
+
+def test_a_new_bullet_moves_both_versions_and_says_what_it_re_runs(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    land_resume.run(_edited(tmp_path, bullets=["Built one thing."]))
+
+    settings = _edited(tmp_path, bullets=["Built one thing.", "Built another."])
+    with caplog.at_level(logging.INFO, logger="land_resume"):
+        assert land_resume.run(settings) == 0
+
+    assert len(_rows(settings)) == 2
+    assert len(_profiles(settings)) == 2
+    assert "1 bullet(s) added, 0 removed" in caplog.text
+    assert "are re-scored and re-assessed on the next run" in caplog.text
+
+
+def test_an_edit_outside_the_bullets_is_named_as_one(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A changed summary re-runs every posting exactly as a new bullet does, and
+    without this line the report would say nothing changed and then bill."""
+    land_resume.run(_edited(tmp_path, bullets=["Built one thing."]))
+
+    settings = _edited(tmp_path, bullets=["Built one thing."], summary="A different summary.")
+    with caplog.at_level(logging.INFO, logger="land_resume"):
+        land_resume.run(settings)
+
+    assert "0 bullet(s) added, 0 removed" in caplog.text
+    assert "the change is outside them" in caplog.text
+
+
+def _stored_results(settings: Settings, *, scope: int, scored: int, assessed: int) -> None:
+    """The three silver relations a check counts over: `scope` posting texts a
+    re-pass may touch, of which the first `scored` and `assessed` hold a result,
+    plus one stored result outside the scope on each side."""
+    con = duckdb.connect(settings.duckdb_path)
+    try:
+        con.execute("create schema if not exists main_silver")
+        for name, rows in (
+            ("int_jobs_repass_scope", [f"h{i}" for i in range(scope)]),
+            ("int_jobs_scored", [f"h{i}" for i in range(scored)] + ["closed"]),
+            ("int_jobs_assessed", [f"h{i}" for i in range(assessed)] + ["closed"]),
+        ):
+            con.execute(f"create table main_silver.{name} (content_hash varchar)")
+            if rows:  # executemany rejects an empty batch
+                con.executemany(f"insert into main_silver.{name} values (?)", [[r] for r in rows])
+    finally:
+        con.close()
+
+
+def test_check_reports_the_re_run_and_lands_nothing(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The preview is only useful if it is the number that would be billed and
+    costs nothing to ask for: stored results inside the re-pass scope, with the
+    landed prompt, profile and units all left as they were."""
+    before = _edited(tmp_path, bullets=["Built one thing."])
+    land_resume.run(before)
+    _stored_results(before, scope=3, scored=3, assessed=2)
+    landed = (_rows(before), _profiles(before), _units(before))
+
+    settings = _edited(tmp_path, bullets=["Built one thing.", "Built another."])
+    with caplog.at_level(logging.INFO, logger="land_resume"):
+        assert land_resume.run(settings, check=True) == 0
+
+    assert "landing this would re-score 3 posting text(s)" in caplog.text
+    assert "landing this would re-assess 2 posting text(s)" in caplog.text
+    assert "check only: nothing landed" in caplog.text
+    assert (_rows(settings), _profiles(settings), _units(settings)) == landed
+
+
+def test_check_counts_only_the_pass_whose_text_moved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The scorer and the assessment read different texts, so one can move
+    without the other, and a count for the pass that will not run is a bill
+    that will not arrive."""
+    settings = _edited(tmp_path, bullets=["Built one thing."])
+    land_resume.run(settings)
+    _stored_results(settings, scope=3, scored=3, assessed=2)
+
+    monkeypatch.setattr(land_resume, "render_profile", lambda _r: "a reworded profile layout")
+    with caplog.at_level(logging.INFO, logger="land_resume"):
+        assert land_resume.run(settings, check=True) == 0
+
+    assert "landing this would re-assess 2 posting text(s)" in caplog.text
+    assert "would re-score" not in caplog.text
+
+
+def test_check_on_a_variant_only_edit_counts_nothing(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Nothing would be re-run, so there is nothing to count -- and no silver
+    table is read, which is why this passes with none built."""
+    land_resume.run(_edited(tmp_path, bullets=["Built one thing."]))
+
+    settings = _edited(tmp_path, bullets=["Built one thing."], variants=["Shipped a thing."])
+    with caplog.at_level(logging.INFO, logger="land_resume"):
+        assert land_resume.run(settings, check=True) == 0
+
+    assert "would re-score" not in caplog.text
+    assert "check only: nothing landed" in caplog.text
+    assert _variant_rows(settings) == []
+
+
+def test_check_on_a_fresh_target_provisions_the_sources_and_lands_no_rows(tmp_path: Path) -> None:
+    settings = _edited(tmp_path, bullets=["Built one thing."])
+    _stored_results(settings, scope=0, scored=0, assessed=0)
+
+    assert land_resume.run(settings, check=True) == 0
+
+    assert _rows(settings) == []
+    assert _profiles(settings) == []
+    assert _units(settings) == []
+
+
+def _unit(text: str, *, variant_of: str | None = None) -> EvidenceUnit:
+    return EvidenceUnit(
+        unit_id=text, source="a role", text=text, evidences=[], variant_of=variant_of
+    )
+
+
+def test_unit_change_counts_an_edited_bullet_as_removed_and_added() -> None:
+    """Compared by text because ids are positional: an id comparison would call
+    every bullet after an inserted one changed."""
+    landed: list[dict[str, object]] = [
+        {"unit_id": "r:0", "text": "kept", "kind": "work", "variant_of": None},
+        {"unit_id": "r:1", "text": "old wording", "kind": "work", "variant_of": None},
+        {"unit_id": "r:0:v0", "text": "dropped variant", "kind": "work", "variant_of": "r:0"},
+        {"unit_id": "industry:x", "text": "kept", "kind": "industry", "variant_of": None},
+    ]
+
+    change = land_resume.unit_change(
+        landed,
+        [_unit("inserted first"), _unit("kept"), _unit("new wording")],
+        [_unit("new variant", variant_of="kept")],
+    )
+
+    assert change == land_resume.UnitChange(
+        first_landing=False,
+        bullets_added=2,
+        bullets_removed=1,
+        variants_added=1,
+        variants_removed=1,
+    )
+
+
+def test_unit_change_reads_a_table_from_before_variants_existed() -> None:
+    """Such a table has neither `kind` nor `variant_of`, and held bullets only."""
+    landed: list[dict[str, object]] = [{"unit_id": "r:0", "text": "kept"}]
+
+    change = land_resume.unit_change(landed, [_unit("kept")], [])
+
+    assert change == land_resume.UnitChange(False, 0, 0, 0, 0)
+
+
+def test_unit_change_with_nothing_landed_is_a_first_landing() -> None:
+    assert land_resume.unit_change([], [_unit("a")], []).first_landing
+
+
+def test_report_names_only_the_pass_whose_text_moved() -> None:
+    change = land_resume.UnitChange(False, 1, 0, 0, 0)
+
+    lines = land_resume.change_report(change, prompt_changed=False, profile_changed=True)
+
+    assert any("are re-assessed on the next run" in line for line in lines)
+    assert not any("re-scored" in line for line in lines)
+
+
+def test_report_on_a_first_landing_does_not_guess_at_a_diff() -> None:
+    change = land_resume.UnitChange(True, 3, 0, 0, 0)
+
+    lines = land_resume.change_report(change, prompt_changed=True, profile_changed=True)
+
+    assert lines[0] == "resume: no earlier landing to compare with"
+    assert not any("outside them" in line for line in lines)
+
+
+def test_main_passes_the_check_flag_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[bool] = []
+
+    def fake_run(settings: Settings | None = None, *, check: bool = False) -> int:
+        seen.append(check)
+        return 0
+
+    monkeypatch.setattr(land_resume, "run", fake_run)
+
+    assert land_resume.main([]) == 0
+    assert land_resume.main(["--check"]) == 0
+    assert seen == [False, True]
 
 
 def _profiles(settings: Settings) -> list[tuple[str, str]]:
