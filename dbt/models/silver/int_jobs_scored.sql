@@ -8,6 +8,12 @@
 -- Same content_hash cost guard as extraction, widened to prompt_version and
 -- scoring_model -- changed text, reworded prompt or moved model each make an
 -- existing score incomparable, so each re-scores on its own.
+--
+-- A re-score is limited to postings that are open and outside the drop tier
+-- (ADR-0033). Closed and dropped postings keep the score they were given, under
+-- the prompt_version recorded beside it, so the column holds more than one
+-- version by design: compare scores across postings only within a version. The
+-- open, non-dropped rows share the newest one once a run has completed.
 {{
     config(
         materialized='incremental',
@@ -51,22 +57,39 @@ to_score as (
         s.content_hash,
         s.relevant_text
     from {{ ref('int_jobs_structured') }} as s
+    {% if is_incremental() %}
+        -- Both keyed on content_hash and unique on it, so neither join can
+        -- fan a posting out into two calls.
+        left join {{ this }} as prev
+            on s.content_hash = prev.content_hash
+        left join {{ ref('int_jobs_repass_scope') }} as scope
+            on s.content_hash = scope.content_hash
+    {% endif %}
     -- Only extracted rows are scorable: a null relevant_text would be rated
     -- against nothing and come back with a confident number anyway.
     where s.extract_ok
         and s.relevant_text is not null
         and s.relevant_text != ''
     {% if is_incremental() %}
-        -- All three invalidators compared rather than assumed. Mixing any of
-        -- them in one column leaves an ordering that looks fine and means
-        -- nothing.
-        and not exists (
-            select 1
-            from {{ this }} as t
-            where
-                t.content_hash = s.content_hash
-                and t.prompt_version = (select prompt_version from prompt)
-                and t.scoring_model = '{{ var("scoring_endpoint") }}'
+        and (
+            -- Never scored: every posting gets one score, whatever tier the
+            -- assessment gives it. The two rankings are graded against each
+            -- other, and a score withheld from what the tier dropped would
+            -- make them agree there by construction.
+            prev.content_hash is null
+            -- Scored, under a prompt or model that has since moved. All of the
+            -- invalidators are compared rather than assumed -- but the score is
+            -- replaced only for a posting still worth the call: open, and
+            -- outside the drop tier (int_jobs_repass_scope, ADR-0033). The rest
+            -- keep the score they have, and prompt_version says which it is.
+            or (
+                scope.content_hash is not null
+                and not coalesce(
+                    prev.prompt_version = (select prompt_version from prompt)
+                    and prev.scoring_model = '{{ var("scoring_endpoint") }}',
+                    false
+                )
+            )
         )
     {% endif %}
 ),

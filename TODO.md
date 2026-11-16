@@ -102,7 +102,13 @@ human labels, and cannot double as V2's evaluation set — see the provenance no
 - [x] The full corpus is **landed in prod**, and the invalidation worked unattended: the richer
       prompt moved `landed_version()` from a bare `2` to `2.<digest>`, `int_jobs_scored` re-scored
       its whole backfill once at the cost ADR-0025 predicted, and every scored row since carries
-      the same version. Nothing in the warehouse now mixes corpus vintages
+      the same version. A later edit no longer re-scores everything: see the ADR-0033 entry below
+- [x] A resume edit costs what it changes (ADR-0033): a bullet's `variants` are embedded and
+      never rendered, so a rewording re-runs nothing; a changed prompt or profile re-runs only
+      `int_jobs_repass_scope` — open postings outside the drop tier — and the rest keep their
+      result under the version recorded beside it; `make land-resume ARGS=--check` previews an
+      edit. The scope rule is unit-tested; the two guards that apply it are in BigQuery-only
+      branches and have not been executed, so the first prod run after a resume edit is the test
 - [x] `int_jobs_structured` — typed extraction, `content_hash` incremental guard for cost control,
       delimiter defense against untrusted posting text, dev-target stub
 - [x] `int_jobs_scored` — 1–5 fit score, resume prompt as a static cacheable prefix,

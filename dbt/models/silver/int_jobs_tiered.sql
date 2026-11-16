@@ -19,7 +19,8 @@
 -- consistently than a model summarises.
 {{ config(materialized='view') }}
 
-{%- set executive_titles = ['director', 'vp', 'vice president', 'head', 'chief', 'president'] %}
+{#- What makes a posting a drop is in macros/tier.sql, because int_jobs_assessed
+    has to recognise one too and cannot read this view. -#}
 {%- set staff_titles = ['staff', 'principal', 'distinguished'] %}
 {%- set junior_titles = ['junior', 'jr', 'intern', 'internship', 'graduate', 'entry level'] %}
 
@@ -41,10 +42,10 @@ levelled as (
         a.gap,
         a.profile_version,
         a.assessed_at,
+        ti.title,
         case
-            when coalesce({{ has_any_word('ti.title', executive_titles) }}, false)
+            when {{ tier_level_out_of_range('ti.title', 'a.people_management_years') }}
                 then 'out_of_range'
-            when a.people_management_years >= {{ var('tier_max_people_years') }} then 'out_of_range'
             when s.manages_people = 'yes' then 'lead'
             when coalesce({{ has_any_word('ti.title', staff_titles) }}, false) then 'staff'
             when s.years_experience_min >= {{ var('tier_staff_min_years') }} then 'staff'
@@ -77,7 +78,7 @@ tiered as (
         profile_version,
         assessed_at,
         case
-            when work_match = 'different' or level_band = 'out_of_range' then 'drop'
+            when {{ tier_is_drop('work_match', 'title', 'people_management_years') }} then 'drop'
             when work_match = 'adjacent' or stack_gap = 'central' then 'stretch'
             when work_match = 'close' or stack_gap = 'substitutable' then 'fit'
             when level_band != 'mid_senior' then 'fit'

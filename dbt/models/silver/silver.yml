@@ -405,8 +405,10 @@ models:
                 severity: warn
       - name: prompt_version
         description: >
-          Which rendered prompt produced the score. A bump re-scores, because a
-          score is only comparable to another from the same wording.
+          Which rendered prompt produced the score. A score is only comparable
+          to another from the same wording, so a change re-scores -- the
+          postings in int_jobs_repass_scope. A closed or dropped posting keeps
+          its score, and this column is what says it is from an earlier version.
       - name: scoring_model
         description: Pinned endpoint, not the managed default (ADR-0025).
 
@@ -459,7 +461,10 @@ models:
       - name: assess_ok
         description: False when the generation failed; such rows are retried and never tiered.
       - name: profile_version
-        description: Which rendered candidate text the posting was assessed against.
+        description: >
+          Which rendered candidate text the posting was assessed against. Not
+          the newest for every row: a closed posting, or one already judged a
+          drop, is not re-assessed when the text changes (ADR-0033).
       - name: assessment_version
         description: Which wording of the instruction produced the row.
       - name: assess_endpoint
@@ -499,7 +504,76 @@ models:
               arguments:
                 values: [junior, mid_senior, staff, lead, out_of_range]
 
+  - name: int_jobs_repass_scope
+    description: >
+      The postings whose stored score or assessment may be replaced when the
+      resume, a prompt's wording or the model changes (ADR-0033): open, and
+      outside the drop tier. A posting's first score or assessment is not
+      limited by it. Everything outside keeps the result it has, under the
+      version recorded beside it. A view, so the rule is unit-tested; setting
+      `repass_dropped` widens it to dropped postings for one run.
+    columns:
+      - name: content_hash
+        description: >
+          One row per posting text that is open on at least one board and not
+          tiered `drop`. A text no tier has been assigned to is included.
+        data_tests: [not_null, unique]
+
 unit_tests:
+  # The cost rule for a changed resume: what a re-run may replace. One row per
+  # way a posting can be in or out of it.
+  - name: repass_scope_is_open_postings_outside_the_drop_tier
+    model: int_jobs_repass_scope
+    given:
+      - input: ref('silver_jobs')
+        rows:
+          - {job_key: a, content_hash: open_best_fit, is_active: true}
+          - {job_key: b, content_hash: open_stretch, is_active: true}
+          - {job_key: c, content_hash: open_dropped, is_active: true}
+          - {job_key: d, content_hash: closed_fit, is_active: false}
+          - {job_key: e, content_hash: open_untiered, is_active: true}
+          # Identical text on three postings: one closed, two still open.
+          - {job_key: f, content_hash: reposted, is_active: false}
+          - {job_key: g, content_hash: reposted, is_active: true}
+          - {job_key: h, content_hash: reposted, is_active: true}
+      - input: ref('int_jobs_tiered')
+        rows:
+          - {content_hash: open_best_fit, fit_tier: best_fit}
+          - {content_hash: open_stretch, fit_tier: stretch}
+          - {content_hash: open_dropped, fit_tier: drop}
+          - {content_hash: closed_fit, fit_tier: fit}
+          - {content_hash: reposted, fit_tier: fit}
+    expect:
+      rows:
+        - {content_hash: open_best_fit}
+        - {content_hash: open_stretch}
+        # No tier is not a drop: with the assessment off every posting is here,
+        # and excluding them would leave a resume edit with no effect.
+        - {content_hash: open_untiered}
+        # Once, though two open postings share the text.
+        - {content_hash: reposted}
+
+  - name: repass_scope_takes_in_dropped_postings_when_asked
+    description: >
+      The one way out of the drop tier without a full refresh. Still open
+      postings only: nothing reads a closed one.
+    model: int_jobs_repass_scope
+    overrides:
+      vars:
+        repass_dropped: true
+    given:
+      - input: ref('silver_jobs')
+        rows:
+          - {job_key: c, content_hash: open_dropped, is_active: true}
+          - {job_key: d, content_hash: closed_dropped, is_active: false}
+      - input: ref('int_jobs_tiered')
+        rows:
+          - {content_hash: open_dropped, fit_tier: drop}
+          - {content_hash: closed_dropped, fit_tier: drop}
+    expect:
+      rows:
+        - {content_hash: open_dropped}
+
   # The embedding fixtures are `format: sql` because a vector column has no
   # dict spelling both warehouses accept. `1e0` is a float literal on both, and
   # every vector is an axis, so each cosine is exactly 0 or 1 and the expected

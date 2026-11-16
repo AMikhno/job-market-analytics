@@ -263,6 +263,7 @@ and its unit tests run without a model.
 | `int_jobs_matched` | `similarity`: the weighted mean of each sentence's best match among the bullets. `industry_similarity` separately |
 | `int_jobs_assessed` | How close the posting's actual work and required tooling are to the candidate's |
 | `int_jobs_tiered` | View: best fit / fit / stretch / drop, from those two judgements and a level read in SQL |
+| `int_jobs_repass_scope` | View: the postings whose stored score or assessment a re-run may replace — open, and outside the drop tier |
 
 The embedding matcher answers the same question as the fit score by different means, and runs
 beside it on purpose until labels say which is better. Embeddings take only that half: similarity
@@ -310,6 +311,16 @@ while nothing is scored, delivery is byte-for-byte the V1 ordering.
 **Cost is controlled by the incremental guard, not by sampling.** Both models key on
 `content_hash`, so the ~24 re-landings each posting accumulates are extracted once. Removing that
 guard re-bills the whole backfill.
+
+**A resume edit costs what it changes** (ADR-0033). Every stored score and assessment is versioned
+by a digest of the text its model read, so an edit takes effect with no manual refresh — and is
+re-run only where it can matter. A re-run replaces a stored result for postings that are still
+open and outside the drop tier (`int_jobs_repass_scope`); closed and dropped ones keep theirs,
+under the version recorded beside it, so those columns hold more than one version by design. A
+bullet's other wordings (`variants`) are embedded and never rendered into either text, so
+rewording re-runs nothing: `similarity` moves on the next run from stored vectors. `make
+land-resume` reports which kind an edit is, and with `ARGS=--check` how many postings it would
+re-run, before anything is landed.
 
 **The model endpoint is pinned** (ADR-0025). Left managed, an `AI.GENERATE` call answered as a
 model from a family retiring 2026-10-20 — so an unpinned call would have changed model mid-life

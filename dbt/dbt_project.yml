@@ -107,12 +107,21 @@ vars:
   #   out of range = requires at least this many years of managing people
   tier_max_people_years: 3
 
+  # What a changed resume, prompt or model is allowed to re-run (ADR-0033). A
+  # stored score or assessment is replaced only for a posting that is still open
+  # and outside the drop tier. Set true for one run to re-judge the dropped ones
+  # too -- after adding work in a discipline the resume did not cover before,
+  # the one edit that can lift a posting out of that tier:
+  #   dbt build --target prod --vars '{repass_dropped: true}'
+  repass_dropped: false
+
 # Three medallion zones = dbt staging -> intermediate -> marts.
 # Folder defaults below; per-model overrides live in-model:
 #   - int_jobs__unioned        -> view  (free; ephemeral would block unit tests)
 #   - int_posting_state        -> view  (a column projection of int_jobs__latest)
 #   - int_jobs_structured/scored/assessed (V2) -> incremental (never recompute LLM calls)
 #   - int_jobs_tiered          -> view  (the tier rule; retuned without a model call)
+#   - int_jobs_repass_scope    -> view  (which stored results a re-run may replace)
 #   - int_posting_units        -> view  (reshapes int_jobs_structured)
 #   - int_posting_unit_vectors -> incremental (never re-embed a posting sentence)
 models:

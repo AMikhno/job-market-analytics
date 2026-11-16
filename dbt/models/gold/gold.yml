@@ -79,7 +79,10 @@ models:
                 values: [1, 2, 3, 4, 5]
                 quote: false
       - name: prompt_version
-        description: Which rendered prompt produced fit_score; null when unscored.
+        description: >
+          Which rendered prompt produced fit_score; null when unscored. Not the
+          newest on a posting tiered `drop`, which is not re-scored when the
+          resume changes (ADR-0033).
         data_type: varchar
       - name: scored_at
         description: When fit_score was computed; null when unscored.

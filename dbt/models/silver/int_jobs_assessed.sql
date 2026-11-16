@@ -17,7 +17,9 @@
 --
 -- Incremental on content_hash, as a cost guard, and invalidated by any of the
 -- three things that make an old assessment incomparable: the candidate text,
--- the instruction below (`assessment_version`), and the model.
+-- the instruction below (`assessment_version`), and the model. A re-assessment
+-- is limited to postings that are open and that the stored judgement does not
+-- already drop (ADR-0033); the rest keep theirs, under the recorded versions.
 --
 -- Off until `enable_assessment` is set: a typed-null stub on every target, so
 -- gold's tier columns are null and delivery is exactly what it was.
@@ -84,10 +86,11 @@ tools as (
 
 titles as (
     -- content_hash is hash(title, clean_text), so every posting sharing a hash
-    -- shares its title.
+    -- shares its title. Identical text posted twice is open while either is.
     select
         content_hash,
-        any_value(title) as title
+        any_value(title) as title,
+        logical_or(is_active) as is_open
     from {{ ref('silver_jobs') }}
     group by content_hash
 ),
@@ -100,22 +103,41 @@ to_assess as (
     from {{ ref('int_jobs_structured') }} as s
     left join titles as ti
         on s.content_hash = ti.content_hash
+    {% if is_incremental() %}
+        -- Unique on content_hash, so the join cannot fan a posting out.
+        left join {{ this }} as prev
+            on s.content_hash = prev.content_hash
+    {% endif %}
     -- Only extracted rows: an empty text would be judged against nothing.
     where s.extract_ok
         and s.relevant_text is not null
         and s.relevant_text != ''
     {% if is_incremental() %}
-        -- A failed attempt is retried; a successful one stands only while all
-        -- three of its inputs are still the current ones.
-        and not exists (
-            select 1
-            from {{ this }} as t
-            where
-                t.content_hash = s.content_hash
-                and t.assess_ok
-                and t.profile_version = (select profile_version from profile)
-                and t.assessment_version = '{{ var("assessment_version") }}'
-                and t.assess_endpoint = '{{ var("assessment_endpoint") }}'
+        and (
+            -- Never judged, or the attempt failed: always tried. Every posting
+            -- gets one assessment, since the tier is unknown until it has one.
+            prev.content_hash is null
+            or not coalesce(prev.assess_ok, false)
+            -- Judged, and one of the three inputs has since moved. The
+            -- judgement is replaced only for a posting still worth the call:
+            -- open, and not one the stored judgement already drops (ADR-0033).
+            -- The same scope as int_jobs_repass_scope, written against this
+            -- table's own rows because that view is built from this model; the
+            -- macro is the one int_jobs_tiered assigns `drop` with, so the two
+            -- cannot drift. The rest keep the judgement they have, and
+            -- profile_version says which it is.
+            or (
+                not coalesce(
+                    prev.profile_version = (select profile_version from profile)
+                    and prev.assessment_version = '{{ var("assessment_version") }}'
+                    and prev.assess_endpoint = '{{ var("assessment_endpoint") }}',
+                    false
+                )
+                and coalesce(ti.is_open, false)
+                {% if not var('repass_dropped') %}
+                    and not {{ tier_is_drop('prev.work_match', 'ti.title', 'prev.people_management_years') }}
+                {% endif %}
+            )
         )
     {% endif %}
 ),
