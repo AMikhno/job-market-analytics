@@ -129,6 +129,96 @@ def test_reports_role_family_coverage(tmp_path: Path, caplog: pytest.LogCaptureF
     assert not [r for r in caplog.records if "no bullets tagged" in r.getMessage()]
 
 
+def _units(settings: Settings) -> list[tuple[str, str, str]]:
+    con = duckdb.connect(settings.duckdb_path)
+    try:
+        return [
+            (str(i), str(k), str(t))
+            for i, k, t in con.execute(
+                "select unit_id, kind, text from resume_units order by unit_id"
+            ).fetchall()
+        ]
+    finally:
+        con.close()
+
+
+def test_lands_work_bullets_and_industries_as_separate_kinds(tmp_path: Path) -> None:
+    """The matcher joins on `kind`: requirements against work bullets, the
+    employer sentence against industries. The example names one industry on two
+    roles, which must land once."""
+    settings = _settings(tmp_path)
+
+    assert land_resume.run(settings) == 0
+
+    units = _units(settings)
+    industries = [text for _, kind, text in units if kind == "industry"]
+    assert industries == ["B2B SaaS"]
+    assert len([u for u in units if u[1] == "work"]) == 7  # 6 bullets + 1 project
+    assert {kind for _, kind, _ in units} == {"work", "industry"}
+
+
+def test_relanding_replaces_the_units(tmp_path: Path) -> None:
+    """Replaced, never appended: a bullet removed from the resume must stop
+    being matched, and a second landing must not double every unit."""
+    settings = _settings(tmp_path)
+
+    land_resume.run(settings)
+    first = _units(settings)
+    land_resume.run(settings)
+
+    assert _units(settings) == first
+
+
+def test_a_units_table_from_before_the_kind_column_is_replaced(tmp_path: Path) -> None:
+    """A table provisioned with the earlier, narrower shape would reject every
+    insert. Landing rebuilds it instead of requiring someone to drop it by hand."""
+    settings = _settings(tmp_path)
+    con = duckdb.connect(settings.duckdb_path)
+    try:
+        con.execute(
+            "create table resume_units (unit_id varchar, source varchar, text varchar, "
+            "evidences varchar, prompt_version varchar)"
+        )
+        con.execute("insert into resume_units values ('stale', 's', 't', '', 'v0')")
+    finally:
+        con.close()
+
+    assert land_resume.run(settings) == 0
+
+    units = _units(settings)
+    assert "stale" not in [unit_id for unit_id, _, _ in units]
+    assert {kind for _, kind, _ in units} == {"work", "industry"}
+
+
+def test_warns_when_no_role_names_an_industry(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Without one, industry_similarity is null for every posting, which reads
+    exactly like the matcher being switched off."""
+    resume = tmp_path / "resume.yaml"
+    resume.write_text(
+        "summary: Builds analytics pipelines.\n"
+        "seniority: senior individual contributor\n"
+        "work_history:\n"
+        "  - org: Example Corp\n"
+        "    title: Analyst\n"
+        "    period: 2020 to 2024\n"
+        "    bullets:\n"
+        "      - text: Built one thing.\n"
+    )
+    settings = Settings(
+        pipeline_target="dev",
+        duckdb_path=str(tmp_path / "jobs.duckdb"),
+        resume_yaml=str(resume),
+    )
+
+    with caplog.at_level(logging.INFO, logger="land_resume"):
+        assert land_resume.run(settings) == 0
+
+    assert "no role names an industry" in caplog.text
+    assert [kind for _, kind, _ in _units(settings)] == ["work"]
+
+
 def test_warns_when_a_family_has_no_bullets(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

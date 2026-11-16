@@ -7,8 +7,9 @@ Three tables, for the three ways a posting is compared against the corpus:
   Append-only and versioned: a score is only comparable to another from the same
   wording, so the prompt that produced one has to stay readable.
 
-* **resume_units** — one row per work bullet, for the embedding matcher.
-  Replaced wholesale: an edited or deleted bullet must stop being matched.
+* **resume_units** — one row per work bullet and one per industry worked in,
+  for the embedding matcher. Replaced wholesale: an edited or deleted bullet
+  must stop being matched.
 
 * **assessment_profile** — the candidate text the assessment model reads: the
   same corpus without the scoring rubric. Append-only and versioned, for the
@@ -31,6 +32,7 @@ from shared.resume import (
     EvidenceUnit,
     evidence_units,
     family_coverage,
+    industry_units,
     load_resume,
     render_profile,
     render_prompt,
@@ -94,6 +96,7 @@ def _land_units(settings: Settings, units: list[EvidenceUnit], version: str) -> 
                 # warehouses, and only one of them has arrays.
                 "evidences": ", ".join(u.evidences),
                 "prompt_version": version,
+                "kind": u.kind,
             }
             for u in units
         ],
@@ -113,8 +116,16 @@ def run(settings: Settings | None = None) -> int:
     # Replaced every run whether or not the prompt moved: they are cheap, and a
     # stale unit keeps matching work the resume no longer claims.
     units = evidence_units(resume)
-    landed = _land_units(settings, units, version)
-    log.info("landed %d resume unit(s) for embedding", landed)
+    industries = industry_units(resume)
+    landed = _land_units(settings, units + industries, version)
+    log.info(
+        "landed %d resume unit(s) for embedding (%d work, %d industry)",
+        landed,
+        len(units),
+        len(industries),
+    )
+    if not industries:
+        log.warning("no role names an industry — industry_similarity will be null")
     _log_coverage(units)
 
     if _current(storage.scoring_prompt_table(settings), settings) == (version, rendered):

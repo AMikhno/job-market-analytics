@@ -58,7 +58,7 @@ docs/        decisions/, v2-plan.md, research/  (ARCHITECTURE.md at repo root)
 .github/     four workflows, split by permission scope — see ARCHITECTURE.md#automation
 ```
 
-Currently 9 ingestion sources, 27 dbt models and 31 ADRs. <!-- check:sources check:dbt_models check:adrs -->
+Currently 9 ingestion sources, 30 dbt models and 32 ADRs. <!-- check:sources check:dbt_models check:adrs -->
 
 ## Quality gates
 
@@ -97,7 +97,8 @@ GitHub Actions (twice-daily ingest, freshness gate, email digest of new postings
 **V2 (0.2.0) in production** — twice-daily ingestion to BigQuery, transform, freshness gate,
 email digest, plus AI relevance: typed extraction and a 1–5 fit score as dbt models against
 BigQuery's in-SQL AI functions, score-*ordered* (never filtered) delivery (ADR-0020), and an
-embedding matcher that reports which piece of experience a posting resembles.
+embedding matcher that scores how much of what a posting asks for the resume answers, one
+requirement at a time (ADR-0032).
 
 **Deliberately unvalidated so far.** Two rankings run side by side — the LLM score and embedding
 similarity — because choosing between them without measuring is how a project ends up carrying

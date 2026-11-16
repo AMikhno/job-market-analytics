@@ -93,3 +93,19 @@
     {%- endfor %}
     )
 {%- endmacro %}
+
+{# Cosine similarity of two embedding vectors, higher is closer. BigQuery only
+   offers the distance, so it is flipped there. Dispatched so the model that
+   compares vectors is real SQL on both warehouses, and a dbt unit test can
+   exercise its arithmetic on DuckDB, where no embedding model exists. #}
+{% macro cosine_similarity(a, b) -%}
+    {{ return(adapter.dispatch('cosine_similarity', 'job_pipeline')(a, b)) }}
+{%- endmacro %}
+
+{% macro default__cosine_similarity(a, b) -%}
+    list_cosine_similarity({{ a }}, {{ b }})
+{%- endmacro %}
+
+{% macro bigquery__cosine_similarity(a, b) -%}
+    (1 - ml.distance({{ a }}, {{ b }}, 'COSINE'))
+{%- endmacro %}

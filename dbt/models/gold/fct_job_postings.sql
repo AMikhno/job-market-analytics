@@ -47,6 +47,7 @@ select
     -- The embedding matcher's answer, beside fit_score rather than blended with
     -- it: two unvalidated rankings averaged make a bad result undiagnosable.
     m.similarity,
+    m.industry_similarity,
     m.best_match_source,
     -- The assessment's tier and the two sentences that explain it (ADR-0031).
     -- Null until a posting is assessed, like every other AI column here.
