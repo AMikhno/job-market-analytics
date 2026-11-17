@@ -314,7 +314,8 @@ guard re-bills the whole backfill.
 
 **A resume edit costs what it changes** (ADR-0033). Every stored score and assessment is versioned
 by a digest of the text its model read, so an edit takes effect with no manual refresh — and is
-re-run only where it can matter. A re-run replaces a stored result for postings that are still
+re-run only where it can matter. No model is called for a posting text that is closed on every
+board, first pass included. A re-run replaces a stored result for postings that are still
 open and outside the drop tier (`int_jobs_repass_scope`); closed and dropped ones keep theirs,
 under the version recorded beside it, so those columns hold more than one version by design. A
 bullet's other wordings (`variants`) are embedded and never rendered into either text, so

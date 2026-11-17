@@ -107,8 +107,10 @@ human labels, and cannot double as V2's evaluation set — see the provenance no
       never rendered, so a rewording re-runs nothing; a changed prompt or profile re-runs only
       `int_jobs_repass_scope` — open postings outside the drop tier — and the rest keep their
       result under the version recorded beside it; `make land-resume ARGS=--check` previews an
-      edit. The scope rule is unit-tested; the two guards that apply it are in BigQuery-only
-      branches and have not been executed, so the first prod run after a resume edit is the test
+      edit. No model is called for a text closed on every board, first pass included, so a
+      backfill covers what can still be delivered. The scope rule is unit-tested; the guards and
+      the open-posting filters are in BigQuery-only branches and have not been executed, so the
+      first prod run after the merge, and the first after a resume edit, are the test
 - [x] `int_jobs_structured` — typed extraction, `content_hash` incremental guard for cost control,
       delimiter defense against untrusted posting text, dev-target stub
 - [x] `int_jobs_scored` — 1–5 fit score, resume prompt as a static cacheable prefix,

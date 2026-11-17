@@ -115,6 +115,11 @@ with to_extract as (
         )
     {% endif %}
     group by content_hash
+    -- Open postings only (ADR-0033): a text every posting of which has closed
+    -- is not extracted, and is not re-extracted when the instruction or the
+    -- model moves. Its stored row stays as it is, under the version recorded
+    -- beside it. Identical text posted twice is open while either posting is.
+    having logical_or(is_active)
 ),
 
 generated as (

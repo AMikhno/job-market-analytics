@@ -29,10 +29,13 @@ does not is new evidence, belongs in the bullet, and is re-read.
 least one board, and outside the `drop` tier. That set is `int_jobs_repass_scope`. Everything
 outside it keeps the result it has, under the version recorded beside it.
 
-**3. A first result is never limited.** Every posting is scored and assessed once, whatever it is.
-The tier is unknown until a posting is assessed, so the assessment cannot be gated on it. The score
-could be, and is not: `fit_score` and the tier are graded against each other, and a score withheld
-from what the tier dropped would make the two rankings agree there by construction.
+**3. A first result is limited only by the posting being open.** Extraction, scoring and
+assessment all skip a text every posting of which has closed, so switching a model on, or changing
+an extraction instruction, backfills what can still be delivered and not the whole history. Within
+the open postings a first result is not limited by tier. The tier is unknown until a posting is
+assessed, so the assessment cannot be gated on it. The score could be, and is not: `fit_score` and
+the tier are graded against each other, and a score withheld from what the tier dropped would make
+the two rankings agree there by construction.
 
 **4. No tier is not a drop.** A posting no tier has been assigned to is in scope. The assessment
 can be switched off, behind, or have failed on a posting; reading that as "dropped" would leave a
@@ -67,12 +70,18 @@ cannot disagree about it.
   silver, because a label outlives its posting. A label on a posting that closed before an edit
   measures the corpus as it stood then. That is the right reading of a label made at that time, and
   the wrong one for a question about the current corpus.
+- **A posting that closed before a model was switched on has no result from it.** A label on such a
+  posting cannot grade that ranking, and the report counts it as unscored. Labels made from live
+  gold are unaffected: the posting was open, and so processed, when it was labelled.
+- **Closed postings keep their extraction when the instruction changes.** They lack any field a
+  later instruction added, so they have no per-sentence lists and no `similarity`.
 - **`drop` is sticky under a resume edit** unless `repass_dropped` is set. A posting the tier
   dropped wrongly is caught the way it already was — its title is still in the digest — and is
   re-judged by that var, not by the next edit.
 - **The rule is tested and the two guards are not.** The scope view and the drop macro are real SQL
-  on both warehouses and have dbt unit tests. The guards that apply them sit in the BigQuery-only
-  branches of two models, which have been parsed and never executed.
+  on both warehouses and have dbt unit tests. The guards that apply them, and the open-posting
+  filters, sit in the BigQuery-only branches of three models, which have been parsed and never
+  executed.
 
 ## Alternatives
 

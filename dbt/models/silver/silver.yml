@@ -508,8 +508,8 @@ models:
     description: >
       The postings whose stored score or assessment may be replaced when the
       resume, a prompt's wording or the model changes (ADR-0033): open, and
-      outside the drop tier. A posting's first score or assessment is not
-      limited by it. Everything outside keeps the result it has, under the
+      outside the drop tier. A first score or assessment is limited only by
+      the posting being open, not by this view. Everything outside keeps the result it has, under the
       version recorded beside it. A view, so the rule is unit-tested; setting
       `repass_dropped` widens it to dropped postings for one run.
     columns:

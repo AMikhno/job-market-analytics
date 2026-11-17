@@ -1,9 +1,10 @@
 -- The postings whose stored model result may be REPLACED when one of its inputs
 -- moves: the resume, the wording of a prompt, or the model (ADR-0033).
 --
--- A posting's first score or assessment is never limited by this -- every
--- posting gets one. This decides only which results are worth paying for a
--- second time, and that is the postings that are still actionable:
+-- A first score or assessment is limited only by the posting being open, not
+-- by this view: every open posting gets one, whatever its tier. This decides
+-- which results are worth paying for a second time, and that is the postings
+-- that are still actionable:
 --
 --   open         a closed posting cannot be applied to, so a better-informed
 --                score for it changes nothing anyone will read;

@@ -112,15 +112,19 @@ to_assess as (
     where s.extract_ok
         and s.relevant_text is not null
         and s.relevant_text != ''
+        -- Open postings only, first assessment and retries included
+        -- (ADR-0033): nothing delivers a closed posting, so a judgement of one
+        -- is a call nobody reads.
+        and coalesce(ti.is_open, false)
     {% if is_incremental() %}
         and (
-            -- Never judged, or the attempt failed: always tried. Every posting
-            -- gets one assessment, since the tier is unknown until it has one.
+            -- Never judged, or the attempt failed: always tried. Every open
+            -- posting gets one assessment, since its tier is unknown until then.
             prev.content_hash is null
             or not coalesce(prev.assess_ok, false)
             -- Judged, and one of the three inputs has since moved. The
             -- judgement is replaced only for a posting still worth the call:
-            -- open, and not one the stored judgement already drops (ADR-0033).
+            -- not one the stored judgement already drops (ADR-0033).
             -- The same scope as int_jobs_repass_scope, written against this
             -- table's own rows because that view is built from this model; the
             -- macro is the one int_jobs_tiered assigns `drop` with, so the two
@@ -133,7 +137,6 @@ to_assess as (
                     and prev.assess_endpoint = '{{ var("assessment_endpoint") }}',
                     false
                 )
-                and coalesce(ti.is_open, false)
                 {% if not var('repass_dropped') %}
                     and not {{ tier_is_drop('prev.work_match', 'ti.title', 'prev.people_management_years') }}
                 {% endif %}

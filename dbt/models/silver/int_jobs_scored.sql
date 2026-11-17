@@ -52,11 +52,23 @@ with prompt as (
     limit 1
 ),
 
+open_postings as (
+    -- By content_hash, the grain a score is stored at: identical text posted
+    -- twice is open while either posting is.
+    select distinct content_hash
+    from {{ ref('silver_jobs') }}
+    where is_active
+),
+
 to_score as (
     select
         s.content_hash,
         s.relevant_text
     from {{ ref('int_jobs_structured') }} as s
+    -- Open postings only, first score included (ADR-0033): nothing delivers a
+    -- closed posting, so a score for one is a call nobody reads.
+    inner join open_postings as o
+        on s.content_hash = o.content_hash
     {% if is_incremental() %}
         -- Both keyed on content_hash and unique on it, so neither join can
         -- fan a posting out into two calls.
@@ -72,8 +84,8 @@ to_score as (
         and s.relevant_text != ''
     {% if is_incremental() %}
         and (
-            -- Never scored: every posting gets one score, whatever tier the
-            -- assessment gives it. The two rankings are graded against each
+            -- Never scored: every open posting gets one score, whatever tier
+            -- the assessment gives it. The two rankings are graded against each
             -- other, and a score withheld from what the tier dropped would
             -- make them agree there by construction.
             prev.content_hash is null
