@@ -91,8 +91,14 @@ vars:
   enable_assessment: false
   # The flash tier rather than flash-lite: telling a role built around an
   # ecosystem from one that merely names a tool is the judgement keywords got
-  # wrong, and the call runs only on postings that already extracted. From the same probed allowlist as scoring_endpoint.
-  assessment_endpoint: gemini-3.5-flash
+  # wrong, and the call runs only on postings that already extracted.
+  #
+  # NOT PROBED. Unlike scoring_endpoint, this id has not been called from
+  # BigQuery, whose allowlist is not Vertex's (ADR-0025). The assessment is off,
+  # so a wrong id costs nothing until the first manual run, which is the probe:
+  # an unsupported endpoint fails that run loudly and writes no row. Record the
+  # result in ADR-0025's table when it has run.
+  assessment_endpoint: gemini-4-hydrogen
   # Bump when the instruction in int_jobs_assessed is reworded. The incremental
   # guard compares it, so a changed instruction re-assesses instead of mixing
   # two wordings in one column -- the defect the extraction prompt still has.
