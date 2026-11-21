@@ -85,7 +85,8 @@ provenance columns cannot be expressed through it.
   never the full posting.
 - Columns: `fit_score` (1–5), `model`, `prompt_version`, `scored_at`.
 - Same incremental guard; re-score is triggered by `content_hash` change or
-  `prompt_version` bump.
+  `prompt_version` bump. A re-score — not a first score — is limited to open postings outside
+  the drop tier (`int_jobs_repass_scope`, ADR-0033).
 - Workflow passes the rendered resume: a make target renders
   `config/resume.yaml` → `--vars` (add to `ingest.yml` dbt-prod step).
 - Range validation: `accepted_values` on 1–5 (out-of-range = flagged, not delivered).

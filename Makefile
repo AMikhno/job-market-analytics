@@ -54,14 +54,14 @@ dbt-deps:         ## Install dbt package dependencies (dbt_utils)
 ensure-raw:       ## Create empty raw tables so dbt can build without an ingest run
 	uv run python -c "from ingest.pipeline import ensure_raw_tables; ensure_raw_tables()"
 
-land-resume:      ## Land the private resume into BigQuery for scoring + matching
-	uv run python -m ingest.land_resume
+land-resume:      ## Land the private resume for scoring + matching. Preview an edit's cost, landing nothing: ARGS=--check
+	uv run python -m ingest.land_resume $(ARGS)
 
 labels-template:  ## Write a labelling worksheet from gold to config/labels.csv
 	uv run python -m evaluation.template
 
-evaluate:         ## Does fit_score rank better than match_score? Needs config/labels.csv
-	uv run python -m evaluation.report
+evaluate:         ## Grade the rankings against config/labels.csv. Optional: ARGS="--window 2026-01-01 2026-01-31"
+	uv run python -m evaluation.report $(ARGS)
 
 dbt-dev: dbt-deps seeds  ## Build the dbt DAG against local DuckDB
 	cd dbt && uv run dbt build --target dev

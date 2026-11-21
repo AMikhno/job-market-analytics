@@ -82,3 +82,30 @@
 {% macro bigquery__strip_html(column) -%}
     regexp_replace({{ column }}, '<[^>]+>', ' ')
 {%- endmacro %}
+
+{# True when a text column contains any of a list of literal words, whole-word
+   and case-insensitive. A Jinja list rather than a seed, for vocabularies that
+   are part of a rule and not a preference. #}
+{% macro has_any_word(column, words) -%}
+    (
+    {%- for word in words %}
+        {{ regexp_word_ci(column, "'" ~ word ~ "'") }}{% if not loop.last %} or{% endif %}
+    {%- endfor %}
+    )
+{%- endmacro %}
+
+{# Cosine similarity of two embedding vectors, higher is closer. BigQuery only
+   offers the distance, so it is flipped there. Dispatched so the model that
+   compares vectors is real SQL on both warehouses, and a dbt unit test can
+   exercise its arithmetic on DuckDB, where no embedding model exists. #}
+{% macro cosine_similarity(a, b) -%}
+    {{ return(adapter.dispatch('cosine_similarity', 'job_pipeline')(a, b)) }}
+{%- endmacro %}
+
+{% macro default__cosine_similarity(a, b) -%}
+    list_cosine_similarity({{ a }}, {{ b }})
+{%- endmacro %}
+
+{% macro bigquery__cosine_similarity(a, b) -%}
+    (1 - ml.distance({{ a }}, {{ b }}, 'COSINE'))
+{%- endmacro %}

@@ -37,43 +37,50 @@ Two rankings are *designed* to run side by side — `fit_score` (LLM, 1–5) and
 (embeddings) — because choosing between them without measuring is how a project ends up carrying
 both forever. Only the first is actually running; see the holding note below.
 
-**`make evaluate` does not yet grade `similarity`.** It compares `fit_score` against `match_score`
-and hardcodes a two-way verdict, so the embedding ranking currently ships to the digest ungraded.
-Until it is a third ranking in that report, running embeddings produces a column nothing measures.
+**`make evaluate` grades all three rankings** — the keyword score, `fit_score` and `similarity` —
+on four-grade labels, reads silver so a label outlives its posting, and names a winner only when a
+bootstrap interval on the nDCG difference excludes zero. A ranking nothing is scored under is
+reported as not running rather than graded. **It has not yet been run against prod**, so there is
+still no measured baseline for the scorer that is live.
 
 ### Next, in order
 
-1. **Human labels** → `make labels-template` writes a worksheet from live gold; fill the
-   `relevant` column with yes/no, blank to skip; then `make evaluate`. A few hundred is plenty.
-   The LLM pass in `docs/research/relevance-signals.md` cannot substitute — grading an LLM scorer
-   against LLM labels rewards reproducing its predecessor's mistakes.
+1. **Labels, then the baseline** → labels are keyed by posting URL or `job_key` and graded
+   best fit / fit / stretch / drop (`config/labels.example.csv`); `make labels-template` still writes a
+   yes/no worksheet from live gold. Then `make evaluate`, with `--window` when every posting in a
+   span was read, which is what makes recall measurable. The LLM pass in
+   `docs/research/relevance-signals.md` cannot substitute — grading an LLM scorer against labels
+   from a model reading the same trimmed text rewards reproducing its predecessor's mistakes.
    - Take the worksheet's spread sample as it is. It stratifies by score band on purpose —
      labelling only the top measures precision and can never measure recall, and a ranking that
      buries something relevant then looks perfect. The measured fact that the two rankings mostly
      agree in the keyword score's top quartile (42 of 44 high-fit postings sit there) is a reason
      to *read* the result carefully, not a reason to sample there.
-2. **Grade `similarity` in `make evaluate`** — a third `Ranking` in `evaluation/report.py` and an
-   n-way verdict in place of the two-way one. Before embeddings go on, not after: the point of
-   running both is the comparison, and an ungraded column is just cost.
+2. **Run the assessment once and grade it** (ADR-0031). It is built and off, and needs no
+   configuration beyond what scoring already has. Build `int_jobs_assessed+` on prod with
+   `--vars 'enable_assessment: true'` — the first execution of its BigQuery branch, which has only
+   been parsed — and run `make evaluate`. Turn it on for the scheduled run only if the tier beats
+   the keyword baseline and drops nothing labelled as worth applying to. If it fails that, the next candidate is assessing outside the warehouse.
 3. **Turn embeddings on**: create the CLOUD_RESOURCE connection and the remote model
    (`docs/v2-plan.md`), then set `enable_embeddings: true`. Until then `int_jobs_matched` emits an
    empty stub, so `similarity` is null and delivery falls back to the LLM score and `match_score`.
-   No `--full-refresh` is needed for this one: the stub already materialized the table with the
+   No `--full-refresh` is needed for this one: the stubs already materialized the tables with the
    right column shape and no rows, so the ordinary incremental run backfills every posting.
-4. **Full refresh to re-extract under the fixed prompt — now the weakest item on this list.**
-   `dbt build --full-refresh --select int_jobs_structured+`. The incremental guard compares text,
-   prompt version and model, none of which a changed *extraction prompt* moves, so gold mixes two
-   vintages: rows extracted under the old prompt are **32.5% `unclear` on eligibility against
-   10.5%** under the fixed one. But the stale vintage is draining on its own as postings turn over
-   — **230 gold rows** left, down from 559 six weeks earlier, roughly 55 a week
-   (`docs/research/relevance-signals.md`). Re-billing the extraction backfill (ADR-0025) to fix
-   what attrition clears in a month is the wrong trade; do this only if a changed extraction prompt
-   ever has to take effect *now*.
+   **Run it by hand the first time.** The embedding calls and the per-sentence unnest have been
+   parsed and unit-tested around, never executed against BigQuery (ADR-0032), and the first run
+   embeds every sentence of every posting at once.
+4. **The first prod run after ADR-0032 re-extracts every posting, once.** The extraction
+   instruction gained the per-sentence lists, and `extraction_version` is now part of the
+   incremental guard, so no full refresh is needed and none should be run. It re-bills the
+   extraction backfill (ADR-0025) and, as a side effect, clears the old-prompt vintage that was
+   **32.5% `unclear` on eligibility against 10.5%** (`docs/research/relevance-signals.md`).
+   `int_jobs_scored` does not re-score: its guard is the text hash and the prompt version.
 
 **Deliberately held, not pending: keep both rankings for ~a month of live runs before deleting
 either.** A single precision@k pass on one labelling session decides the question on one day's
 data; a month shows whether the winner stays the winner as the list and the market move. The
-holding cost is one embedding call per new posting, which is the cheaper half of the pair.
+holding cost is one embedding call per sentence of each new posting, which is still the cheaper
+half of the pair.
 
 **That clock has not started.** `enable_embeddings` is still `false`, so `similarity` is null on
 every one of the 1,406 gold rows — the two rankings have never run side by side at all, and the
@@ -95,16 +102,28 @@ human labels, and cannot double as V2's evaluation set — see the provenance no
 - [x] The full corpus is **landed in prod**, and the invalidation worked unattended: the richer
       prompt moved `landed_version()` from a bare `2` to `2.<digest>`, `int_jobs_scored` re-scored
       its whole backfill once at the cost ADR-0025 predicted, and every scored row since carries
-      the same version. Nothing in the warehouse now mixes corpus vintages
+      the same version. A later edit no longer re-scores everything: see the ADR-0033 entry below
+- [x] A resume edit costs what it changes (ADR-0033): a bullet's `variants` are embedded and
+      never rendered, so a rewording re-runs nothing; a changed prompt or profile re-runs only
+      `int_jobs_repass_scope` — open postings outside the drop tier — and the rest keep their
+      result under the version recorded beside it; `make land-resume ARGS=--check` previews an
+      edit. No model is called for a text closed on every board, first pass included, so a
+      backfill covers what can still be delivered. The scope rule is unit-tested; the guards and
+      the open-posting filters are in BigQuery-only branches and have not been executed, so the
+      first prod run after the merge, and the first after a resume edit, are the test
 - [x] `int_jobs_structured` — typed extraction, `content_hash` incremental guard for cost control,
       delimiter defense against untrusted posting text, dev-target stub
 - [x] `int_jobs_scored` — 1–5 fit score, resume prompt as a static cacheable prefix,
       model/prompt-version/scored-at provenance, `accepted_values` test
 - [x] Gold and digest become score-aware: the score orders delivery and never filters it
       (ADR-0020); unscored postings still ship
-- [x] `make evaluate` — precision@k of the LLM ranking against the keyword one
+- [x] `make evaluate` — tie-aware nDCG, precision and recall of each ranking against graded
+      labels, with a bootstrap interval in place of a bare verdict
 - [x] `int_jobs_matched` — embedding similarity against the resume corpus, behind
       `enable_embeddings` until its remote model exists
+- [x] The matcher compares per requirement and stores vectors apart from scores (ADR-0032):
+      `int_posting_units`, `int_posting_unit_vectors`, `int_resume_unit_vectors`, an explicit
+      task type, and `industry_similarity` as its own column
 
 ## List repair
 

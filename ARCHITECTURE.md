@@ -248,23 +248,52 @@ in a GitHub Actions variable and never in the tree.
 
 ## V2
 
-Three prod-only models inside silver, all SQL against warehouse-native AI functions (ADR-0004),
-reading from `silver_jobs` so they only ever see postings that survived filtering. On the DuckDB
-target each emits a typed-null stub with the same column shape, so the dev DAG and its unit tests
-run without a model.
+Models inside silver, all SQL against warehouse-native AI functions (ADR-0004), reading from
+`silver_jobs` so they only ever see postings that survived filtering. On the DuckDB target each
+model that calls an AI function emits a typed-null stub with the same column shape, so the dev DAG
+and its unit tests run without a model.
 
 | Model | Does |
 |---|---|
-| `int_jobs_structured` | Typed extraction: `company_type`, `geo_restriction`, `manages_people`, minimum years, required and nice-to-have techs, and `relevant_text` |
+| `int_jobs_structured` | Typed extraction: `company_type`, `geo_restriction`, `manages_people`, minimum years, required and nice-to-have techs, `relevant_text`, and the same content as per-sentence lists |
 | `int_jobs_scored` | 1–5 `fit_score` of `relevant_text` against the resume corpus |
-| `int_jobs_matched` | Embedding `similarity` of `relevant_text` to the closest single resume bullet, and which bullet it was |
+| `int_posting_units` | The posting one sentence at a time: each requirement, nice-to-have and responsibility, plus one sentence on the employer |
+| `int_posting_unit_vectors` | One stored embedding per posting sentence |
+| `int_resume_unit_vectors` | One embedding per resume bullet and per industry worked in, rebuilt every run |
+| `int_jobs_matched` | `similarity`: the weighted mean of each sentence's best match among the bullets. `industry_similarity` separately |
+| `int_jobs_assessed` | How close the posting's actual work and required tooling are to the candidate's |
+| `int_jobs_tiered` | View: best fit / fit / stretch / drop, from those two judgements and a level read in SQL |
+| `int_jobs_repass_scope` | View: the postings whose stored score or assessment a re-run may replace — open, and outside the drop tier |
 
-The third answers the same question as the second by different means, and runs beside it on
-purpose until labels say which is better. Embeddings take only that half: similarity is blind to
-polarity — "we do not sponsor visas" and "we sponsor visas" are nearly identical vectors — so
-`geo_restriction` and `manages_people` stay with the LLM and never move there. It is gated behind
-`enable_embeddings`, which stays false until its remote model exists; off, the model emits its
-stub and `similarity` is simply null.
+The embedding matcher answers the same question as the fit score by different means, and runs
+beside it on purpose until labels say which is better. Embeddings take only that half: similarity
+is blind to polarity — "we do not sponsor visas" and "we sponsor visas" are nearly identical
+vectors — so `geo_restriction` and `manages_people` stay with the LLM and never move there. It is
+gated behind `enable_embeddings`, which stays false until its remote model exists; off, the vector
+models emit stubs and `similarity` is simply null.
+
+**The matcher compares sentence with sentence, and stores vectors apart from scores** (ADR-0032).
+A posting embedded whole is an average of its topics compared with bullets a tenth of its length,
+which rewards resembling one thing the candidate did. Each posting sentence instead keeps its
+nearest bullet and the score is their mean, so a requirement the resume does not answer lowers
+it. Only the posting vectors are incremental; `int_jobs_matched` is arithmetic over them and is
+rebuilt each run, which is why a resume edit needs no model call and cannot leave a stale score.
+
+**The assessment asks the model for two judgements and computes the rest** (ADR-0031). A keyword
+seed counts one mention of a tool and a role built around its whole ecosystem as the same hit, and
+a title names the org chart rather than the work. So `int_jobs_assessed` returns `work_match` — is
+the described work the candidate's, close to it, a neighbouring discipline, or something else — and
+`stack_gap` — are the required tools theirs, direct equivalents, or central to the role.
+`int_jobs_tiered` reads the level from existing columns (title words, required years, whether the
+seat manages people) and turns all of it into best fit / fit / stretch / drop with an ordered SQL
+rule. Each branch of that rule is unit-tested, its thresholds are vars, and because the tier is a
+view over stored judgements a rule change re-tiers every posting without a model call. It reads
+only the resume corpus and the `desired_tech` seed, and is gated behind `enable_assessment`, false
+until the tier has been graded against labels.
+
+Where a tier exists the digest is banded by it, and dropped postings are collapsed to one line of
+titles rather than listed. Nothing is deleted, and with nothing assessed the digest is the flat
+list it always was.
 
 **Scoring reads the requirements, not the posting.** Extraction drops the responsibilities blurb
 and the boilerplate, which measured 570 characters out of 6,854 — about 8% of the text. Every
@@ -283,6 +312,17 @@ while nothing is scored, delivery is byte-for-byte the V1 ordering.
 `content_hash`, so the ~24 re-landings each posting accumulates are extracted once. Removing that
 guard re-bills the whole backfill.
 
+**A resume edit costs what it changes** (ADR-0033). Every stored score and assessment is versioned
+by a digest of the text its model read, so an edit takes effect with no manual refresh — and is
+re-run only where it can matter. No model is called for a posting text that is closed on every
+board, first pass included. A re-run replaces a stored result for postings that are still
+open and outside the drop tier (`int_jobs_repass_scope`); closed and dropped ones keep theirs,
+under the version recorded beside it, so those columns hold more than one version by design. A
+bullet's other wordings (`variants`) are embedded and never rendered into either text, so
+rewording re-runs nothing: `similarity` moves on the next run from stored vectors. `make
+land-resume` reports which kind an edit is, and with `ARGS=--check` how many postings it would
+re-run, before anything is landed.
+
 **The model endpoint is pinned** (ADR-0025). Left managed, an `AI.GENERATE` call answered as a
 model from a family retiring 2026-10-20 — so an unpinned call would have changed model mid-life
 with nothing recording that it had.
@@ -291,6 +331,8 @@ Untrusted posting text is delimited and framed as data rather than instructions 
 the output is type-constrained, so a posting cannot instruct the scorer.
 
 **Whether any of this beats the keyword score is an open question**, and deliberately so: `make
-evaluate` scores a ranking by precision@k over human labels. Labels from an LLM cannot settle it —
+evaluate` grades each ranking against four-grade human labels — tie-aware, because a 1–5 score
+leaves most of an ordering undecided, and with a bootstrap interval so a handful of labels cannot
+produce a verdict by chance. Labels from an LLM cannot settle it —
 grading a scorer against its predecessor's judgements rewards reproducing that predecessor's
-mistakes. Until those labels exist, all three orderings are carried and none is trusted.
+mistakes. Until those labels exist, every ordering is carried and none is trusted.

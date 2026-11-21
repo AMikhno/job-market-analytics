@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -26,6 +26,9 @@ EXAMPLE_RESUME: Final = ROOT / "config" / "resume.example.yaml"
 # a bump is what triggers re-scoring; forgetting it mixes two rubrics in one
 # column (docs/v2-plan.md).
 PROMPT_VERSION: Final = "2"
+
+# The same contract for render_profile: bump when its wording or layout changes.
+PROFILE_VERSION: Final = "1"
 
 # The role families a bullet can be evidence for: work SHAPES, deliberately
 # fewer than the titles they cover, because a family exists to group bullets and
@@ -86,13 +89,32 @@ under. The candidate's own titles are frequently a poor description of it.
 """
 
 
+def _clean_variants(values: list[str]) -> list[str]:
+    """Variants as single lines, none of them blank (same rule as bullet text)."""
+    cleaned = [" ".join(value.split()) for value in values]
+    if not all(cleaned):
+        raise ValueError("a variant must not be blank")
+    return cleaned
+
+
 class Bullet(BaseModel):
-    """One piece of evidence: something built, for whom, and what changed."""
+    """One piece of evidence: something built, for whom, and what changed.
+
+    `variants` are other wordings of the SAME work. They are embedded and never
+    rendered into a prompt: an embedding is sensitive to vocabulary, while a
+    model reading the bullet is not, so a second wording gives the matcher
+    another chance at a posting's phrasing and gives the scorer nothing but
+    tokens. Keeping them out of the rendered text is also what makes adding one
+    free -- the text an LLM reads is unchanged, so nothing is re-scored
+    (ADR-0033). A wording that states something `text` does not is new evidence,
+    not a variant, and belongs in `text`.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     text: str = Field(min_length=1)
     evidences: list[str] = Field(default_factory=list)
+    variants: list[str] = Field(default_factory=list)
 
     @field_validator("evidences")
     @classmethod
@@ -101,6 +123,11 @@ class Bullet(BaseModel):
         if unknown:
             raise ValueError(f"unknown role families {unknown}; expected {sorted(ROLE_FAMILIES)}")
         return values
+
+    @field_validator("variants")
+    @classmethod
+    def _variants_not_blank(cls, values: list[str]) -> list[str]:
+        return _clean_variants(values)
 
     @field_validator("text")
     @classmethod
@@ -133,6 +160,8 @@ class Project(BaseModel):
     name: str = Field(min_length=1)
     text: str = Field(min_length=1)
     evidences: list[str] = Field(default_factory=list)
+    # Other wordings of the same project; see Bullet.variants.
+    variants: list[str] = Field(default_factory=list)
 
     @field_validator("evidences")
     @classmethod
@@ -141,6 +170,11 @@ class Project(BaseModel):
         if unknown:
             raise ValueError(f"unknown role families {unknown}; expected {sorted(ROLE_FAMILIES)}")
         return values
+
+    @field_validator("variants")
+    @classmethod
+    def _variants_not_blank(cls, values: list[str]) -> list[str]:
+        return _clean_variants(values)
 
 
 class EvidenceUnit(BaseModel):
@@ -157,6 +191,13 @@ class EvidenceUnit(BaseModel):
     source: str
     text: str
     evidences: list[str]
+    # What a unit is compared with: a `work` bullet answers a posting's
+    # requirements, an `industry` answers its description of the employer.
+    kind: Literal["work", "industry"] = "work"
+    # Set on an alternative wording: the id of the bullet it rewords. A variant
+    # is a `work` unit like any other to the matcher; this only records that no
+    # prompt carries it.
+    variant_of: str | None = None
 
 
 class Resume(BaseModel):
@@ -173,33 +214,83 @@ class Resume(BaseModel):
     education: list[str] = Field(default_factory=list)
 
 
+def _units_with_variants(resume: Resume) -> list[tuple[EvidenceUnit, list[str]]]:
+    """Each bullet as a unit, paired with its other wordings, in document order."""
+    pairs: list[tuple[EvidenceUnit, list[str]]] = []
+    for role in resume.work_history:
+        for i, bullet in enumerate(role.bullets):
+            unit = EvidenceUnit(
+                unit_id=f"{role.org}:{role.period}:{i}",
+                source=f"{role.title} at {role.org} ({role.period})",
+                text=bullet.text,
+                evidences=bullet.evidences,
+            )
+            pairs.append((unit, bullet.variants))
+    for project in resume.projects:
+        unit = EvidenceUnit(
+            unit_id=f"project:{project.name}",
+            source=f"Personal project: {project.name}",
+            text=project.text,
+            evidences=project.evidences,
+        )
+        pairs.append((unit, project.variants))
+    return pairs
+
+
 def evidence_units(resume: Resume) -> list[EvidenceUnit]:
     """Every bullet as a standalone, embeddable unit, in document order.
 
     Bullet-level rather than whole-resume (ADR-0027). Ordering is the file's, so
-    ids are stable across runs unless the file changes.
+    ids are stable across runs unless the file changes. One unit per bullet,
+    whatever its variants: this is what the prompts render and what coverage
+    counts.
     """
-    units: list[EvidenceUnit] = []
-    for role in resume.work_history:
-        for i, bullet in enumerate(role.bullets):
-            units.append(
-                EvidenceUnit(
-                    unit_id=f"{role.org}:{role.period}:{i}",
-                    source=f"{role.title} at {role.org} ({role.period})",
-                    text=bullet.text,
-                    evidences=bullet.evidences,
-                )
-            )
-    for project in resume.projects:
-        units.append(
-            EvidenceUnit(
-                unit_id=f"project:{project.name}",
-                source=f"Personal project: {project.name}",
-                text=project.text,
-                evidences=project.evidences,
-            )
+    return [unit for unit, _ in _units_with_variants(resume)]
+
+
+def variant_units(resume: Resume) -> list[EvidenceUnit]:
+    """Every alternative wording of a bullet, as an embeddable unit of its own.
+
+    For the embedding matcher only. Each carries the origin and families of the
+    bullet it rewords, so a posting that matched on a variant still reports the
+    work it matched, and `variant_of` names that bullet.
+    """
+    return [
+        EvidenceUnit(
+            unit_id=f"{unit.unit_id}:v{j}",
+            source=unit.source,
+            text=text,
+            evidences=unit.evidences,
+            variant_of=unit.unit_id,
         )
-    return units
+        for unit, variants in _units_with_variants(resume)
+        for j, text in enumerate(variants)
+    ]
+
+
+def industry_units(resume: Resume) -> list[EvidenceUnit]:
+    """Each distinct industry worked in, as its own embeddable unit.
+
+    Separate from the work bullets because it answers a different question: a
+    posting's description of its employer is compared with these, and its
+    requirements with the bullets, so a sector match and a work match are never
+    one number. First mention wins the order, so ids are stable across runs.
+    """
+    seen: dict[str, str] = {}
+    for role in resume.work_history:
+        if role.industry and role.industry.strip():
+            label = " ".join(role.industry.split())
+            seen.setdefault(label.casefold(), label)
+    return [
+        EvidenceUnit(
+            unit_id=f"industry:{label}",
+            source=f"Industry: {label}",
+            text=label,
+            evidences=[],
+            kind="industry",
+        )
+        for label in seen.values()
+    ]
 
 
 def family_coverage(units: list[EvidenceUnit]) -> dict[str, int]:
@@ -241,6 +332,29 @@ def render_prompt(resume: Resume) -> str:
             parts.append(f"  {group}: {', '.join(items)}")
         parts.append("")
     parts.append("Work done (match against this, not against titles):")
+    for unit in evidence_units(resume):
+        parts.append(f"- [{unit.source}] {unit.text}")
+    if resume.education:
+        parts.append(f"\nEducation:\n{_bullets(resume.education)}")
+    return "\n".join(parts) + "\n"
+
+
+def render_profile(resume: Resume) -> str:
+    """The candidate text the assessment model reads. Deterministic.
+
+    The same corpus the scorer gets, without its rubric: summary, skills and the
+    work bullets. Nothing here says how to judge -- the instruction lives beside
+    the model call in int_jobs_assessed and the tier is computed in SQL -- and
+    nothing is added that the resume does not already hold, so the assessment
+    needs no configuration of its own.
+    """
+    parts = [f"Summary:\n{resume.summary}\n"]
+    if resume.skills:
+        parts.append("Skills:")
+        for group, items in resume.skills.items():
+            parts.append(f"  {group}: {', '.join(items)}")
+        parts.append("")
+    parts.append("Work done:")
     for unit in evidence_units(resume):
         parts.append(f"- [{unit.source}] {unit.text}")
     if resume.education:

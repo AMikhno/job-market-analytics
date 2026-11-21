@@ -9,6 +9,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+import shared.resume as resume_mod
 from shared.resume import (
     EXAMPLE_RESUME,
     PROMPT_VERSION,
@@ -16,8 +17,10 @@ from shared.resume import (
     Resume,
     evidence_units,
     family_coverage,
+    industry_units,
     load_resume,
     render_prompt,
+    variant_units,
 )
 
 VALID: dict[str, object] = {
@@ -191,6 +194,133 @@ def test_evidence_unit_carries_its_origin() -> None:
     assert units[-1].source.startswith("Personal project")
 
 
+def _with_variants(*variants: str) -> Resume:
+    """VALID with the given other wordings on its first bullet."""
+    base = VALID["work_history"]
+    assert isinstance(base, list)
+    first, second = base[0]["bullets"]
+    role = {**base[0], "bullets": [{**first, "variants": list(variants)}, second]}
+    return Resume.model_validate({**VALID, "work_history": [role]})
+
+
+def test_a_variant_never_reaches_a_prompt() -> None:
+    """The property the whole field rests on: the two rendered texts are what a
+    model is billed to read and what versions every stored result, so a variant
+    appearing in either would re-run every posting to add a second wording of
+    something the model already read."""
+    plain = Resume.model_validate(VALID)
+    reworded = _with_variants("Owned the semantic layer renewals were forecast from.")
+
+    assert render_prompt(reworded) == render_prompt(plain)
+    assert resume_mod.render_profile(reworded) == resume_mod.render_profile(plain)
+    assert "semantic layer" not in render_prompt(reworded)
+
+
+def test_a_variant_is_a_work_unit_that_names_the_bullet_it_rewords() -> None:
+    """`work`, so the matcher compares it with requirements like any bullet, and
+    carrying the bullet's origin and families, so a posting matched on the
+    variant still reports the work it matched."""
+    resume = _with_variants("Owned the semantic layer.", "Modelled renewal metrics in dbt.")
+    bullet = evidence_units(resume)[0]
+
+    variants = variant_units(resume)
+
+    assert [v.unit_id for v in variants] == [f"{bullet.unit_id}:v0", f"{bullet.unit_id}:v1"]
+    assert [v.text for v in variants] == [
+        "Owned the semantic layer.",
+        "Modelled renewal metrics in dbt.",
+    ]
+    for variant in variants:
+        assert variant.variant_of == bullet.unit_id
+        assert variant.source == bullet.source
+        assert variant.evidences == bullet.evidences
+        assert variant.kind == "work"
+
+
+def test_variants_add_no_bullets_and_no_coverage() -> None:
+    """Coverage counts distinct work. A second wording of one bullet counted
+    again would hide the gap the report exists to show."""
+    plain = Resume.model_validate(VALID)
+    reworded = _with_variants("Owned the semantic layer.")
+
+    assert evidence_units(reworded) == evidence_units(plain)
+    assert all(unit.variant_of is None for unit in evidence_units(reworded))
+    assert family_coverage(evidence_units(reworded)) == family_coverage(evidence_units(plain))
+
+
+def test_a_resume_without_variants_has_no_variant_units() -> None:
+    assert variant_units(Resume.model_validate(VALID)) == []
+
+
+def test_project_variants_are_units_too() -> None:
+    project = {"name": "Side Project", "text": "A pipeline.", "variants": ["An ELT pipeline."]}
+    resume = Resume.model_validate({**VALID, "projects": [project]})
+
+    (variant,) = variant_units(resume)
+
+    assert variant.unit_id == "project:Side Project:v0"
+    assert variant.variant_of == "project:Side Project"
+    assert variant.text == "An ELT pipeline."
+
+
+def test_variant_text_is_whitespace_normalised() -> None:
+    resume = _with_variants("owned   the\n  semantic layer\n")
+    assert variant_units(resume)[0].text == "owned the semantic layer"
+
+
+def test_a_blank_variant_is_rejected() -> None:
+    """It would be embedded as an empty string and match nothing, silently."""
+    with pytest.raises(ValidationError, match="must not be blank"):
+        _with_variants("a real one", "  \n ")
+    with pytest.raises(ValidationError, match="must not be blank"):
+        Resume.model_validate(
+            {**VALID, "projects": [{"name": "P", "text": "t", "variants": [" "]}]}
+        )
+
+
+def _with_industries(*industries: str | None) -> Resume:
+    """VALID with one role per given industry (None leaves the field out)."""
+    base = VALID["work_history"]
+    assert isinstance(base, list)
+    roles = []
+    for i, industry in enumerate(industries):
+        role = {**base[0], "period": f"period {i}"}
+        if industry is not None:
+            role["industry"] = industry
+        roles.append(role)
+    return Resume.model_validate({**VALID, "work_history": roles})
+
+
+def test_work_bullets_and_industries_are_different_kinds() -> None:
+    """The matcher compares requirements with `work` and the employer sentence
+    with `industry`. A bullet landing as the wrong kind would be compared with
+    the wrong half of every posting."""
+    resume = _with_industries("B2B SaaS")
+    assert {u.kind for u in evidence_units(resume)} == {"work"}
+    assert [u.kind for u in industry_units(resume)] == ["industry"]
+
+
+def test_industry_units_are_distinct_and_in_first_mention_order() -> None:
+    """Two roles in one sector are one unit, however the label was typed, or the
+    same industry would be embedded twice under two ids."""
+    units = industry_units(_with_industries("B2B SaaS", "Banking", "b2b  saas"))
+    assert [u.text for u in units] == ["B2B SaaS", "Banking"]
+    assert [u.unit_id for u in units] == ["industry:B2B SaaS", "industry:Banking"]
+
+
+def test_a_role_without_an_industry_contributes_no_unit() -> None:
+    assert industry_units(_with_industries(None, "  ")) == []
+    assert [u.text for u in industry_units(_with_industries(None, "Banking"))] == ["Banking"]
+
+
+def test_industries_never_reach_the_prompt_or_the_coverage_report() -> None:
+    """They are a second corpus for the embedding matcher only. In the scoring
+    prompt they would be a new signal under an unchanged PROMPT_VERSION."""
+    resume = _with_industries("Banking")
+    assert "Banking" not in render_prompt(resume)
+    assert family_coverage(industry_units(resume)) == family_coverage([])
+
+
 def test_render_is_deterministic() -> None:
     resume = Resume.model_validate(VALID)
     assert render_prompt(resume) == render_prompt(resume)
@@ -279,3 +409,45 @@ def test_committed_example_is_valid() -> None:
     resume = load_resume(str(EXAMPLE_RESUME))
     assert evidence_units(resume)
     assert render_prompt(resume)
+
+
+def _profile_resume(**overrides: object) -> resume_mod.Resume:
+    base = resume_mod.load_resume("config/resume.example.yaml").model_dump()
+    return resume_mod.Resume.model_validate({**base, **overrides})
+
+
+def test_profile_is_the_corpus_without_the_rubric() -> None:
+    """Summary, skills and bullets -- what the work was. How to judge it lives
+    beside the model call, so a rubric here would be a second, unversioned copy."""
+    text = resume_mod.render_profile(_profile_resume())
+    assert text.startswith("Summary:")
+    assert "Skills:" in text
+    assert "Work done:\n- [" in text
+    assert "Score 1 to 5" not in text
+    assert "rules" not in text.lower()
+
+
+def test_profile_needs_nothing_the_resume_did_not_already_have() -> None:
+    """The assessment adds no configuration: a resume that scores also assesses."""
+    assert set(resume_mod.Resume.model_fields) == {
+        "summary",
+        "seniority",
+        "constraints",
+        "skills",
+        "work_history",
+        "projects",
+        "education",
+    }
+
+
+def test_profile_is_deterministic_and_moves_with_the_bullets() -> None:
+    plain = _profile_resume()
+    edited = _profile_resume(summary="A different summary.")
+    assert resume_mod.render_profile(plain) == resume_mod.render_profile(plain)
+    assert resume_mod.render_profile(plain) != resume_mod.render_profile(edited)
+
+
+def test_profile_without_skills_or_education_omits_those_sections() -> None:
+    text = resume_mod.render_profile(_profile_resume(skills={}, education=[]))
+    assert "Skills:" not in text
+    assert "Education:" not in text

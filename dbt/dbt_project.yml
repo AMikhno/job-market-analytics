@@ -56,25 +56,80 @@ vars:
   # 3.5-flash-lite does answer on Vertex's global endpoint; the in-SQL functions
   # cannot reach it. Re-probe before assuming this list still holds.
   scoring_endpoint: gemini-3.1-flash-lite
+  # Bump when the instruction or output schema in int_jobs_structured changes.
+  # The incremental guard compares it, so a changed instruction re-extracts
+  # every posting instead of mixing two wordings in one column.
+  extraction_version: "1"
 
-  # The embedding matcher (int_jobs_matched). Unlike AI.GENERATE/AI.SCORE, which
-  # are managed and take an endpoint name, ML.GENERATE_EMBEDDING needs a remote
-  # MODEL object created once by DDL over a CLOUD_RESOURCE connection -- see the
-  # preconditions in docs/v2-plan.md. Two vars because the SQL needs the
-  # unquoted reference and the provenance column needs the quoted name.
+  # The embedding matcher (int_posting_unit_vectors, int_resume_unit_vectors,
+  # int_jobs_matched). Unlike AI.GENERATE/AI.SCORE, which are managed and take
+  # an endpoint name, ML.GENERATE_EMBEDDING needs a remote MODEL object created
+  # once by DDL over a CLOUD_RESOURCE connection. Two vars because the SQL needs
+  # the unquoted reference and the provenance column needs the quoted name.
   embedding_model: jobs_silver.text_embedding
   embedding_model_name: "'text-embedding-005'"
-  # False until the connection and remote model exist. With it off,
-  # int_jobs_matched emits its empty stub on every target, so similarity is null
-  # and delivery falls back to the LLM score and match_score — the same degraded
-  # state as before embeddings were written, rather than a failed build.
+  # What the embedding is for, which changes the vector the model returns.
+  # SEMANTIC_SIMILARITY because both sides are one sentence each and the
+  # question is whether they describe the same thing; the retrieval types are
+  # for a short query against a long document. Stated rather than left to the
+  # default, and recorded beside every vector: changing it re-embeds.
+  embedding_task_type: SEMANTIC_SIMILARITY
+  # A nice-to-have counts for this much of a requirement in `similarity`.
+  # int_jobs_matched is rebuilt every run, so a change applies on the next one
+  # at no model cost.
+  embedding_nice_to_have_weight: 0.5
+  # False until the connection and remote model exist. With it off, the vector
+  # models emit empty stubs on every target, so similarity is null and delivery
+  # falls back to the LLM score and match_score — the same degraded state as
+  # before embeddings were written, rather than a failed build.
   enable_embeddings: false
+
+  # The assessment (int_jobs_assessed, ADR-0031): how close a posting's work and
+  # tooling are to the candidate's. False until
+  # it has been run once by hand and graded with `make evaluate`: off, the model
+  # is an empty stub on every target and delivery is unchanged.
+  enable_assessment: false
+  # The flash tier rather than flash-lite: telling a role built around an
+  # ecosystem from one that merely names a tool is the judgement keywords got
+  # wrong, and the call runs only on postings that already extracted.
+  #
+  # NOT PROBED. Unlike scoring_endpoint, this id has not been called from
+  # BigQuery, whose allowlist is not Vertex's (ADR-0025). The assessment is off,
+  # so a wrong id costs nothing until the first manual run, which is the probe:
+  # an unsupported endpoint fails that run loudly and writes no row. Record the
+  # result in ADR-0025's table when it has run.
+  assessment_endpoint: gemini-4-hydrogen
+  # Bump when the instruction in int_jobs_assessed is reworded. The incremental
+  # guard compares it, so a changed instruction re-assesses instead of mixing
+  # two wordings in one column -- the defect the extraction prompt still has.
+  assessment_version: "1"
+  # The level bands in the tier rule (int_jobs_tiered). A view reads these, so
+  # changing one re-tiers every posting on the next run at no model cost.
+  # Integers, compared with the years a posting requires.
+  #   staff  = requires at least this many years
+  tier_staff_min_years: 10
+  #   junior = requires at most this many years
+  tier_junior_max_years: 1
+  #   out of range = requires at least this many years of managing people
+  tier_max_people_years: 3
+
+  # What a changed resume, prompt or model is allowed to re-run (ADR-0033). A
+  # stored score or assessment is replaced only for a posting that is still open
+  # and outside the drop tier. Set true for one run to re-judge the dropped ones
+  # too -- after adding work in a discipline the resume did not cover before,
+  # the one edit that can lift a posting out of that tier:
+  #   dbt build --target prod --vars '{repass_dropped: true}'
+  repass_dropped: false
 
 # Three medallion zones = dbt staging -> intermediate -> marts.
 # Folder defaults below; per-model overrides live in-model:
 #   - int_jobs__unioned        -> view  (free; ephemeral would block unit tests)
 #   - int_posting_state        -> view  (a column projection of int_jobs__latest)
-#   - int_jobs_structured/scored (V2) -> incremental (never recompute LLM calls)
+#   - int_jobs_structured/scored/assessed (V2) -> incremental (never recompute LLM calls)
+#   - int_jobs_tiered          -> view  (the tier rule; retuned without a model call)
+#   - int_jobs_repass_scope    -> view  (which stored results a re-run may replace)
+#   - int_posting_units        -> view  (reshapes int_jobs_structured)
+#   - int_posting_unit_vectors -> incremental (never re-embed a posting sentence)
 models:
   job_pipeline:
     # Push model + column descriptions into the warehouse so BigQuery tables/views

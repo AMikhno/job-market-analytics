@@ -177,7 +177,10 @@ references like "§5.6" are unverifiable by construction and were wrong within o
 - Current state, priorities, open decisions → `TODO.md`
 - How the system works today → `ARCHITECTURE.md` (no roadmap and no history: those are `TODO.md`
   and git respectively)
-- Decision records (why, not what) → `docs/decisions/` — newest first: 0030 posting history is an
+- Decision records (why, not what) → `docs/decisions/` — newest first: 0033 a resume edit
+  re-runs only open postings outside the drop tier and a rewording re-runs nothing, 0032 embeddings
+  compare per requirement and store vectors apart from scores, 0031 the model judges work and tooling and
+  SQL assigns the tier, 0030 posting history is an
   SCD2 snapshot and a run reads description history once, 0029 the site's market
   charts publish suppressed aggregates, 0028 the filter-rule seeds are private config, 0027 score
   against a resume corpus, 0026 warehouse in us-central1, 0025 V2 model + its global-only endpoint (supersedes 0009), 0024 one match_score orders the

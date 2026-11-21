@@ -79,7 +79,10 @@ models:
                 values: [1, 2, 3, 4, 5]
                 quote: false
       - name: prompt_version
-        description: Which rendered prompt produced fit_score; null when unscored.
+        description: >
+          Which rendered prompt produced fit_score; null when unscored. Not the
+          newest on a posting tiered `drop`, which is not re-scored when the
+          resume changes (ADR-0033).
         data_type: varchar
       - name: scored_at
         description: When fit_score was computed; null when unscored.
@@ -98,15 +101,53 @@ models:
         data_type: varchar
       - name: similarity
         description: >
-          Cosine similarity (higher is closer) between the posting's relevant
-          text and the nearest resume bullet. Carried beside fit_score, not
-          blended with it: two unvalidated rankings averaged together make a bad
-          result undiagnosable. `make evaluate` compares them.
+          How much of what the posting asks for has a resume bullet behind it:
+          the weighted mean, over its requirements, nice-to-haves and
+          responsibilities, of each one's cosine similarity to its nearest
+          bullet (int_jobs_matched). Higher is closer. Carried beside fit_score,
+          not blended with it: two unvalidated rankings averaged together make a
+          bad result undiagnosable. `make evaluate` compares them.
+        data_type: double
+      - name: industry_similarity
+        description: >
+          Cosine similarity between the posting's one-sentence description of
+          the employer and the nearest industry in the resume. Its own column
+          rather than part of `similarity`, so a high score says whether the
+          work fits or the sector does. Null when the resume names no industry.
         data_type: double
       - name: best_match_source
         description: >
-          Which role or project the nearest bullet came from — the thing an
-          embedding can say and a 1-5 score cannot.
+          Which role or project the bullet behind the posting's strongest single
+          match came from — the thing an embedding can say and a 1-5 score
+          cannot.
+        data_type: varchar
+      - name: fit_tier
+        description: >
+          best_fit / fit / stretch / drop, computed in int_jobs_tiered
+          (ADR-0031); null when the posting has not been assessed. `drop` is the
+          only tier delivery collapses to a count.
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [best_fit, fit, stretch, drop]
+      - name: tier_rank
+        description: The tier as a number, 3 (best_fit) to 0 (drop); null when not assessed.
+        data_type: bigint
+      - name: work_match
+        description: same / close / adjacent / different; null when not assessed.
+        data_type: varchar
+      - name: stack_gap
+        description: none / substitutable / central; null when not assessed.
+        data_type: varchar
+      - name: level_band
+        description: junior / mid_senior / staff / lead / out_of_range; null when not assessed.
+        data_type: varchar
+      - name: fit_why
+        description: One sentence naming the strongest overlap; null when not assessed.
+        data_type: varchar
+      - name: fit_gap
+        description: One sentence naming the most important thing not shown; empty when none.
         data_type: varchar
       - name: recency_rank
         description: 1 = most recent by posted_or_updated_at; dense unique ordering for the digest.
@@ -130,6 +171,8 @@ unit_tests:
       - input: ref('int_jobs_structured')
         rows: []
       - input: ref('int_jobs_matched')
+        rows: []
+      - input: ref('int_jobs_tiered')
         rows: []
     expect:
       rows:
@@ -155,6 +198,8 @@ unit_tests:
         rows:
           - {content_hash: h1, company_type: B2B SaaS, geo_restriction: canada_ok, manages_people: no}
       - input: ref('int_jobs_matched')
+        rows: []
+      - input: ref('int_jobs_tiered')
         rows: []
     expect:
       rows:
@@ -184,6 +229,8 @@ unit_tests:
       - input: ref('int_jobs_structured')
         rows: []
       - input: ref('int_jobs_matched')
+        rows: []
+      - input: ref('int_jobs_tiered')
         rows: []
     expect:
       rows:

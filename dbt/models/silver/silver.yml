@@ -248,10 +248,128 @@ models:
                 severity: warn
       - name: nice_to_have_techs
         description: Comma-joined; kept because in this market they are rarely optional.
+      - name: requirements
+        description: >
+          What the posting demands, one sentence per item, as a JSON array in
+          text. With nice_to_haves and responsibilities it restates
+          relevant_text item by item, for int_posting_units to unnest.
+      - name: nice_to_haves
+        description: >
+          What the posting marks as optional, as a JSON array in text. Sorted by
+          how the posting qualifies an item (preferred, a plus, an asset…), not
+          by heading: that section has no standard name and often does not exist.
+      - name: responsibilities
+        description: What the person will do in the role, as a JSON array in text.
+      - name: company_summary
+        description: >
+          One sentence on the employer's industry, what it sells and to whom.
+          The posting side of industry_similarity.
       - name: extract_ok
         description: False when the generation failed; such rows are retried, never scored.
       - name: extract_model
         description: Model that produced the extraction, read back from the API response.
+      - name: extraction_version
+        description: >
+          Which wording of the instruction produced the row. Part of the
+          incremental guard, so a reworded instruction re-extracts.
+
+  - name: int_posting_units
+    description: >
+      A posting one sentence at a time: each requirement, nice-to-have and
+      responsibility int_jobs_structured listed, plus one sentence on the
+      employer. The unit the embedding matcher compares, because the resume it
+      is compared with is a list of single bullets. Prod-only; an empty stub on
+      DuckDB.
+    columns:
+      - name: unit_key
+        description: >
+          Surrogate of (content_hash, unit_text). Built from the text rather than a
+          position, so a re-extracted sentence never inherits the vector stored
+          for the sentence it replaced.
+        data_tests: [not_null, unique]
+      - name: content_hash
+        data_tests: [not_null]
+      - name: kind
+        description: >
+          How the posting framed the sentence. A sentence listed under two kinds
+          keeps the strongest claim.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [required, nice_to_have, responsibility, company]
+      - name: unit_text
+        description: The sentence itself, trimmed; what gets embedded.
+        data_tests: [not_null]
+
+  - name: int_posting_unit_vectors
+    description: >
+      One embedding per posting sentence. Incremental on unit_key: the only part
+      of the matcher that calls a model per posting. Invalidated by the
+      embedding model and the task type, both recorded per row; not by the
+      resume, which a posting's vector does not depend on. Behind
+      `enable_embeddings`; an empty stub otherwise.
+    columns:
+      - name: unit_key
+        data_tests: [not_null, unique]
+      - name: vec
+        description: The embedding. Failed calls are not stored, so they are retried.
+        data_tests: [not_null]
+      - name: embedding_model
+        data_tests: [not_null]
+      - name: task_type
+        description: >
+          The task type the vector was requested for. Set explicitly, because a
+          provider default can change the vectors without a change here.
+        data_tests: [not_null]
+
+  - name: int_resume_unit_vectors
+    description: >
+      One embedding per resume unit — a work bullet or an industry worked in.
+      Rebuilt in full every run, which is what makes an edited or deleted
+      bullet stop matching. Behind `enable_embeddings`; an empty stub otherwise.
+    columns:
+      - name: unit_id
+        data_tests: [not_null, unique]
+      - name: kind
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [work, industry]
+      - name: resume_version
+        description: Which landing of the resume the unit came from.
+
+  - name: int_jobs_matched
+    description: >
+      Embedding match per posting text: each requirement, nice-to-have and
+      responsibility keeps its most similar work bullet, and `similarity` is the
+      weighted mean of those best matches. A table rebuilt every run from stored
+      vectors, so a resume edit, a changed weight or a re-extracted posting is
+      reflected on the next run with no model call and no staleness check.
+    columns:
+      - name: content_hash
+        description: Grain — one row per distinct posting text with at least one matched sentence.
+        data_tests: [not_null, unique]
+      - name: similarity
+        description: >
+          Weighted mean of each sentence's best cosine similarity to a work
+          bullet; a nice-to-have weighs embedding_nice_to_have_weight of a
+          requirement or responsibility.
+        data_tests: [not_null]
+      - name: industry_similarity
+        description: >
+          Best cosine similarity between the employer sentence and an industry
+          in the resume. Null when either side has none.
+      - name: units_matched
+        description: How many of the posting's sentences `similarity` averages over.
+        data_tests: [not_null]
+      - name: best_match_source
+        description: The role or project behind the posting's single strongest sentence match.
+      - name: resume_version
+        description: Which landing of the resume the row was compared against.
+      - name: task_type
+        description: Task type shared by both sides of every comparison in the row.
 
   - name: int_jobs_scored
     description: >
@@ -287,12 +405,276 @@ models:
                 severity: warn
       - name: prompt_version
         description: >
-          Which rendered prompt produced the score. A bump re-scores, because a
-          score is only comparable to another from the same wording.
+          Which rendered prompt produced the score. A score is only comparable
+          to another from the same wording, so a change re-scores -- the
+          postings in int_jobs_repass_scope. A closed or dropped posting keeps
+          its score, and this column is what says it is from an earlier version.
       - name: scoring_model
         description: Pinned endpoint, not the managed default (ADR-0025).
 
+  - name: int_jobs_assessed
+    description: >
+      How close a posting's actual work and tooling are to the candidate's
+      (ADR-0031). Two judgements a keyword cannot make, returned as facts — the
+      tier is computed from them in int_jobs_tiered. Off until
+      `enable_assessment` is set, and a typed-null stub on DuckDB either way.
+    columns:
+      - name: content_hash
+        description: >
+          Assessment key and grain — one row per distinct posting text. Part of
+          the incremental guard, with profile_version, assessment_version and
+          assess_endpoint.
+        data_tests: [not_null, unique]
+      - name: work_match
+        description: >
+          Whether the described day-to-day work is the candidate's (same), mostly
+          so (close), a neighbouring discipline (adjacent) or something else
+          (different). Judged from responsibilities and requirements; the title
+          is passed as a hint only, because a title often names the wrong work.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [same, close, adjacent, different]
+              config:
+                severity: warn
+      - name: stack_gap
+        description: >
+          Whether the required tools are the candidate's (none), direct
+          equivalents of them (substitutable), or an ecosystem the role is built
+          around (central). The distinction a keyword list flattens: naming a
+          tool and requiring years in its whole vendor stack are both one hit.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [none, substitutable, central]
+              config:
+                severity: warn
+      - name: people_management_years
+        description: >
+          Years of managing people the posting requires; null when none. Kept
+          apart from manages_people, which says a seat has reports and not how
+          much experience of that it demands.
+      - name: why
+        description: One sentence naming the strongest overlap with the candidate's bullets.
+      - name: gap
+        description: One sentence naming the most important thing not shown; empty when none.
+      - name: assess_ok
+        description: False when the generation failed; such rows are retried and never tiered.
+      - name: profile_version
+        description: >
+          Which rendered candidate text the posting was assessed against. Not
+          the newest for every row: a closed posting, or one already judged a
+          drop, is not re-assessed when the text changes (ADR-0033).
+      - name: assessment_version
+        description: Which wording of the instruction produced the row.
+      - name: assess_endpoint
+        description: Pinned endpoint, not the managed default (ADR-0025).
+
+  - name: int_jobs_tiered
+    description: >
+      The tier each assessed posting falls in (ADR-0031), from the assessment's
+      two judgements and a level read from existing columns. A view, so a rule
+      or threshold change re-tiers every posting without a model call.
+    columns:
+      - name: content_hash
+        description: One row per assessed posting text.
+        data_tests: [not_null, unique]
+      - name: fit_tier
+        description: >
+          best_fit / fit / stretch / drop. First match wins, worst first: a
+          different kind of work or a far-off level drops; a neighbouring
+          discipline or a central ecosystem is a stretch; anything short of the
+          candidate's own work, tools and level is a fit.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [best_fit, fit, stretch, drop]
+      - name: tier_rank
+        description: The tier as a number, 3 (best_fit) to 0 (drop).
+        data_tests: [not_null]
+      - name: level_band
+        description: >
+          junior / mid_senior / staff / lead / out_of_range, read from the
+          title's seniority words, the years the posting requires and whether
+          it manages people — not asked of the model.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [junior, mid_senior, staff, lead, out_of_range]
+
+  - name: int_jobs_repass_scope
+    description: >
+      The postings whose stored score or assessment may be replaced when the
+      resume, a prompt's wording or the model changes (ADR-0033): open, and
+      outside the drop tier. A first score or assessment is limited only by
+      the posting being open, not by this view. Everything outside keeps the result it has, under the
+      version recorded beside it. A view, so the rule is unit-tested; setting
+      `repass_dropped` widens it to dropped postings for one run.
+    columns:
+      - name: content_hash
+        description: >
+          One row per posting text that is open on at least one board and not
+          tiered `drop`. A text no tier has been assigned to is included.
+        data_tests: [not_null, unique]
+
 unit_tests:
+  # The cost rule for a changed resume: what a re-run may replace. One row per
+  # way a posting can be in or out of it.
+  - name: repass_scope_is_open_postings_outside_the_drop_tier
+    model: int_jobs_repass_scope
+    given:
+      - input: ref('silver_jobs')
+        rows:
+          - {job_key: a, content_hash: open_best_fit, is_active: true}
+          - {job_key: b, content_hash: open_stretch, is_active: true}
+          - {job_key: c, content_hash: open_dropped, is_active: true}
+          - {job_key: d, content_hash: closed_fit, is_active: false}
+          - {job_key: e, content_hash: open_untiered, is_active: true}
+          # Identical text on three postings: one closed, two still open.
+          - {job_key: f, content_hash: reposted, is_active: false}
+          - {job_key: g, content_hash: reposted, is_active: true}
+          - {job_key: h, content_hash: reposted, is_active: true}
+      - input: ref('int_jobs_tiered')
+        rows:
+          - {content_hash: open_best_fit, fit_tier: best_fit}
+          - {content_hash: open_stretch, fit_tier: stretch}
+          - {content_hash: open_dropped, fit_tier: drop}
+          - {content_hash: closed_fit, fit_tier: fit}
+          - {content_hash: reposted, fit_tier: fit}
+    expect:
+      rows:
+        - {content_hash: open_best_fit}
+        - {content_hash: open_stretch}
+        # No tier is not a drop: with the assessment off every posting is here,
+        # and excluding them would leave a resume edit with no effect.
+        - {content_hash: open_untiered}
+        # Once, though two open postings share the text.
+        - {content_hash: reposted}
+
+  - name: repass_scope_takes_in_dropped_postings_when_asked
+    description: >
+      The one way out of the drop tier without a full refresh. Still open
+      postings only: nothing reads a closed one.
+    model: int_jobs_repass_scope
+    overrides:
+      vars:
+        repass_dropped: true
+    given:
+      - input: ref('silver_jobs')
+        rows:
+          - {job_key: c, content_hash: open_dropped, is_active: true}
+          - {job_key: d, content_hash: closed_dropped, is_active: false}
+      - input: ref('int_jobs_tiered')
+        rows:
+          - {content_hash: open_dropped, fit_tier: drop}
+          - {content_hash: closed_dropped, fit_tier: drop}
+    expect:
+      rows:
+        - {content_hash: open_dropped}
+
+  # The embedding fixtures are `format: sql` because a vector column has no
+  # dict spelling both warehouses accept. `1e0` is a float literal on both, and
+  # every vector is an axis, so each cosine is exactly 0 or 1 and the expected
+  # means are exact too.
+  - name: similarity_is_the_weighted_mean_of_each_sentences_best_bullet
+    description: >
+      Each sentence keeps its own nearest bullet: the requirement matches b2
+      and the nice-to-have matches b1, so no single bullet explains the
+      posting. The responsibility matches nothing and pulls the mean down. With
+      the nice-to-have at half weight: (1 + 0 + 0.5) / 2.5 = 0.6. The employer
+      sentence is compared with industries only — it shares a direction with
+      b2 and the responsibility shares one with the second industry, and
+      neither crossing is counted.
+    model: int_jobs_matched
+    given:
+      - input: ref('int_posting_units')
+        format: sql
+        rows: |
+          select 'req' as unit_key, 'p1' as content_hash, 'required' as kind
+          union all select 'resp', 'p1', 'responsibility'
+          union all select 'nice', 'p1', 'nice_to_have'
+          union all select 'co', 'p1', 'company'
+      - input: ref('int_posting_unit_vectors')
+        format: sql
+        rows: |
+          select 'req' as unit_key, [1e0, 0e0, 0e0] as vec, 'm' as embedding_model, 't' as task_type
+          union all select 'resp', [0e0, 0e0, 1e0], 'm', 't'
+          union all select 'nice', [0e0, 1e0, 0e0], 'm', 't'
+          union all select 'co', [1e0, 0e0, 0e0], 'm', 't'
+      - input: ref('int_resume_unit_vectors')
+        format: sql
+        rows: |
+          select 'b1' as unit_id, 'work' as kind, 'Role one' as unit_source, 'fam' as evidences,
+                 'v1' as resume_version, [0e0, 1e0, 0e0] as vec, 'm' as embedding_model, 't' as task_type
+          union all select 'b2', 'work', 'Role two', 'fam', 'v1', [1e0, 0e0, 0e0], 'm', 't'
+          union all select 'i1', 'industry', 'Industry: one', '', 'v1', [1e0, 0e0, 0e0], 'm', 't'
+          union all select 'i2', 'industry', 'Industry: two', '', 'v1', [0e0, 0e0, 1e0], 'm', 't'
+    expect:
+      rows:
+        - {content_hash: p1, similarity: 0.6, industry_similarity: 1.0, units_matched: 3,
+           best_match_unit_id: b1, best_match_source: Role one, resume_version: v1}
+
+  - name: nice_to_have_weight_is_a_var
+    description: >
+      At weight 0 a nice-to-have no longer counts, so a posting whose one
+      requirement is unanswered scores 0 however well its nice-to-have matches.
+      The weight changes the score on the next run with nothing re-embedded.
+    model: int_jobs_matched
+    overrides:
+      vars:
+        embedding_nice_to_have_weight: 0
+    given:
+      - input: ref('int_posting_units')
+        format: sql
+        rows: |
+          select 'req' as unit_key, 'p1' as content_hash, 'required' as kind
+          union all select 'nice', 'p1', 'nice_to_have'
+      - input: ref('int_posting_unit_vectors')
+        format: sql
+        rows: |
+          select 'req' as unit_key, [1e0, 0e0] as vec, 'm' as embedding_model, 't' as task_type
+          union all select 'nice', [0e0, 1e0], 'm', 't'
+      - input: ref('int_resume_unit_vectors')
+        format: sql
+        rows: |
+          select 'b1' as unit_id, 'work' as kind, 'Role one' as unit_source, 'fam' as evidences,
+                 'v1' as resume_version, [0e0, 1e0] as vec, 'm' as embedding_model, 't' as task_type
+    expect:
+      rows:
+        - {content_hash: p1, similarity: 0.0, units_matched: 2}
+
+  - name: stale_vectors_are_not_matched
+    description: >
+      Three ways a stored posting vector stops being comparable, and none of
+      them may reach a score: it was embedded under another task type, by
+      another model, or for a sentence a re-extraction has since replaced (no
+      longer in int_posting_units). Only the current posting gets a row.
+    model: int_jobs_matched
+    given:
+      - input: ref('int_posting_units')
+        format: sql
+        rows: |
+          select 'ok' as unit_key, 'current' as content_hash, 'required' as kind
+          union all select 'task', 'other_task', 'required'
+          union all select 'model', 'other_model', 'required'
+      - input: ref('int_posting_unit_vectors')
+        format: sql
+        rows: |
+          select 'ok' as unit_key, [1e0, 0e0] as vec, 'm' as embedding_model, 't' as task_type
+          union all select 'task', [1e0, 0e0], 'm', 'old_task'
+          union all select 'model', [1e0, 0e0], 'old_model', 't'
+          union all select 'replaced', [1e0, 0e0], 'm', 't'
+      - input: ref('int_resume_unit_vectors')
+        format: sql
+        rows: |
+          select 'b1' as unit_id, 'work' as kind, 'Role one' as unit_source, 'fam' as evidences,
+                 'v1' as resume_version, [1e0, 0e0] as vec, 'm' as embedding_model, 't' as task_type
+    expect:
+      rows:
+        - {content_hash: current, similarity: 1.0, units_matched: 1}
+
   - name: dedup_keeps_the_most_recently_ingested_row
     description: >
       Lever re-ingests tie on posted_or_updated_at (createdAt never changes);
@@ -678,3 +1060,93 @@ unit_tests:
         - {job_key: b1, is_board_wide_edit: false}
         - {job_key: c1, is_board_wide_edit: false}
         - {job_key: c2, is_board_wide_edit: false}
+
+  # The tier rule, one row per branch. It lives in SQL so that it can be pinned
+  # like this: a model asked for a 1-5 has no rule to test.
+  - name: tier_rule_reads_work_then_stack_then_level
+    model: int_jobs_tiered
+    given:
+      - input: ref('int_jobs_assessed')
+        rows:
+          - {content_hash: own_work, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: senior_title, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: equivalent_tool, assess_ok: true, work_match: same, stack_gap: substitutable, people_management_years: null}
+          - {content_hash: mostly_own_work, assess_ok: true, work_match: close, stack_gap: none, people_management_years: null}
+          - {content_hash: built_on_other_stack, assess_ok: true, work_match: same, stack_gap: central, people_management_years: null}
+          - {content_hash: neighbouring, assess_ok: true, work_match: adjacent, stack_gap: none, people_management_years: null}
+          - {content_hash: misleading_title, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: other_profession, assess_ok: true, work_match: different, stack_gap: none, people_management_years: null}
+          - {content_hash: junior_by_title, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: junior_by_years, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: staff_by_title, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: staff_by_years, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: team_lead, assess_ok: true, work_match: same, stack_gap: none, people_management_years: 1}
+          - {content_hash: manager_in_name_only, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: career_manager, assess_ok: true, work_match: same, stack_gap: none, people_management_years: 5}
+          - {content_hash: executive, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: word_inside_a_word, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: years_unstated, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: failed, assess_ok: false, work_match: same, stack_gap: none}
+          - {content_hash: off_vocabulary, assess_ok: true, work_match: related, stack_gap: none}
+      - input: ref('int_jobs_structured')
+        rows:
+          - {content_hash: own_work, manages_people: "no", years_experience_min: 4}
+          - {content_hash: senior_title, manages_people: "no", years_experience_min: 5}
+          - {content_hash: equivalent_tool, manages_people: "no", years_experience_min: 4}
+          - {content_hash: mostly_own_work, manages_people: "no", years_experience_min: 4}
+          - {content_hash: built_on_other_stack, manages_people: "no", years_experience_min: 4}
+          - {content_hash: neighbouring, manages_people: "no", years_experience_min: 4}
+          - {content_hash: misleading_title, manages_people: "no", years_experience_min: 4}
+          - {content_hash: other_profession, manages_people: "no", years_experience_min: 4}
+          - {content_hash: junior_by_title, manages_people: "no", years_experience_min: 3}
+          - {content_hash: junior_by_years, manages_people: "no", years_experience_min: 1}
+          - {content_hash: staff_by_title, manages_people: "no", years_experience_min: 6}
+          - {content_hash: staff_by_years, manages_people: "no", years_experience_min: 10}
+          - {content_hash: team_lead, manages_people: "yes", years_experience_min: 6}
+          - {content_hash: manager_in_name_only, manages_people: "no", years_experience_min: 5}
+          - {content_hash: career_manager, manages_people: "yes", years_experience_min: 8}
+          - {content_hash: executive, manages_people: "yes", years_experience_min: 8}
+          - {content_hash: word_inside_a_word, manages_people: "no", years_experience_min: 4}
+          - {content_hash: years_unstated, manages_people: "no", years_experience_min: null}
+      - input: ref('silver_jobs')
+        rows:
+          - {content_hash: own_work, title: "Data Analyst"}
+          - {content_hash: senior_title, title: "Senior Analytics Engineer"}
+          - {content_hash: equivalent_tool, title: "Data Analyst"}
+          - {content_hash: mostly_own_work, title: "Analyst"}
+          - {content_hash: built_on_other_stack, title: "Data Analyst"}
+          - {content_hash: neighbouring, title: "Data Engineer"}
+          - {content_hash: misleading_title, title: "Data Engineer"}
+          - {content_hash: other_profession, title: "Nurse Practitioner"}
+          - {content_hash: junior_by_title, title: "Junior Data Analyst"}
+          - {content_hash: junior_by_years, title: "Data Analyst"}
+          - {content_hash: staff_by_title, title: "Staff Analytics Engineer"}
+          - {content_hash: staff_by_years, title: "Analytics Engineer"}
+          - {content_hash: team_lead, title: "Analytics Lead"}
+          - {content_hash: manager_in_name_only, title: "Insights Manager"}
+          - {content_hash: career_manager, title: "Analytics Manager"}
+          - {content_hash: executive, title: "Director of Analytics"}
+          - {content_hash: word_inside_a_word, title: "Headcount Analyst"}
+          - {content_hash: years_unstated, title: "Data Analyst"}
+    expect:
+      rows:
+        - {content_hash: own_work, level_band: mid_senior, fit_tier: best_fit, tier_rank: 3}
+        - {content_hash: senior_title, level_band: mid_senior, fit_tier: best_fit, tier_rank: 3}
+        - {content_hash: equivalent_tool, level_band: mid_senior, fit_tier: fit, tier_rank: 2}
+        - {content_hash: mostly_own_work, level_band: mid_senior, fit_tier: fit, tier_rank: 2}
+        - {content_hash: built_on_other_stack, level_band: mid_senior, fit_tier: stretch, tier_rank: 1}
+        - {content_hash: neighbouring, level_band: mid_senior, fit_tier: stretch, tier_rank: 1}
+        - {content_hash: misleading_title, level_band: mid_senior, fit_tier: best_fit, tier_rank: 3}
+        - {content_hash: other_profession, level_band: mid_senior, fit_tier: drop, tier_rank: 0}
+        - {content_hash: junior_by_title, level_band: junior, fit_tier: fit, tier_rank: 2}
+        - {content_hash: junior_by_years, level_band: junior, fit_tier: fit, tier_rank: 2}
+        - {content_hash: staff_by_title, level_band: staff, fit_tier: fit, tier_rank: 2}
+        - {content_hash: staff_by_years, level_band: staff, fit_tier: fit, tier_rank: 2}
+        - {content_hash: team_lead, level_band: lead, fit_tier: fit, tier_rank: 2}
+        - {content_hash: manager_in_name_only, level_band: mid_senior, fit_tier: best_fit, tier_rank: 3}
+        - {content_hash: career_manager, level_band: out_of_range, fit_tier: drop, tier_rank: 0}
+        - {content_hash: executive, level_band: out_of_range, fit_tier: drop, tier_rank: 0}
+        - {content_hash: word_inside_a_word, level_band: mid_senior, fit_tier: best_fit, tier_rank: 3}
+        - {content_hash: years_unstated, level_band: mid_senior, fit_tier: best_fit, tier_rank: 3}
+        # `failed` and `off_vocabulary` are absent: with no readable judgement a
+        # posting stays untiered rather than landing in a tier by default.
