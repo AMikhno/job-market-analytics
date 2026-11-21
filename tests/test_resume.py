@@ -16,6 +16,7 @@ from shared.resume import (
     Resume,
     evidence_units,
     family_coverage,
+    industry_units,
     load_resume,
     render_prompt,
 )
@@ -189,6 +190,49 @@ def test_evidence_unit_carries_its_origin() -> None:
     units = evidence_units(Resume.model_validate(VALID))
     assert "Senior Analyst at Example Corp" in units[0].source
     assert units[-1].source.startswith("Personal project")
+
+
+def _with_industries(*industries: str | None) -> Resume:
+    """VALID with one role per given industry (None leaves the field out)."""
+    base = VALID["work_history"]
+    assert isinstance(base, list)
+    roles = []
+    for i, industry in enumerate(industries):
+        role = {**base[0], "period": f"period {i}"}
+        if industry is not None:
+            role["industry"] = industry
+        roles.append(role)
+    return Resume.model_validate({**VALID, "work_history": roles})
+
+
+def test_work_bullets_and_industries_are_different_kinds() -> None:
+    """The matcher compares requirements with `work` and the employer sentence
+    with `industry`. A bullet landing as the wrong kind would be compared with
+    the wrong half of every posting."""
+    resume = _with_industries("B2B SaaS")
+    assert {u.kind for u in evidence_units(resume)} == {"work"}
+    assert [u.kind for u in industry_units(resume)] == ["industry"]
+
+
+def test_industry_units_are_distinct_and_in_first_mention_order() -> None:
+    """Two roles in one sector are one unit, however the label was typed, or the
+    same industry would be embedded twice under two ids."""
+    units = industry_units(_with_industries("B2B SaaS", "Banking", "b2b  saas"))
+    assert [u.text for u in units] == ["B2B SaaS", "Banking"]
+    assert [u.unit_id for u in units] == ["industry:B2B SaaS", "industry:Banking"]
+
+
+def test_a_role_without_an_industry_contributes_no_unit() -> None:
+    assert industry_units(_with_industries(None, "  ")) == []
+    assert [u.text for u in industry_units(_with_industries(None, "Banking"))] == ["Banking"]
+
+
+def test_industries_never_reach_the_prompt_or_the_coverage_report() -> None:
+    """They are a second corpus for the embedding matcher only. In the scoring
+    prompt they would be a new signal under an unchanged PROMPT_VERSION."""
+    resume = _with_industries("Banking")
+    assert "Banking" not in render_prompt(resume)
+    assert family_coverage(industry_units(resume)) == family_coverage([])
 
 
 def test_render_is_deterministic() -> None:

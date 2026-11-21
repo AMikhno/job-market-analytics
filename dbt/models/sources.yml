@@ -100,5 +100,7 @@ sources:
       # deleted bullet must stop being matched against.
       - name: resume_units
         description: >
-          One row per resume work bullet (unit_id, source, text, evidences),
-          embedded by int_jobs_matched and compared against each posting.
+          One row per resume unit (unit_id, source, text, evidences,
+          prompt_version, kind): a `work` bullet or an `industry` worked in.
+          Embedded by int_resume_unit_vectors and compared against each
+          posting's sentences in int_jobs_matched.

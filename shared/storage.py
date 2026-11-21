@@ -279,14 +279,16 @@ def ensure_digest_table(settings: Settings) -> None:
         con.close()
 
 
-# One row per resume bullet, for the embedding model to read. Landed rather than
-# embedded from Python: BigQuery cannot join vectors held in a client.
+# One row per resume unit -- a work bullet or an industry worked in -- for the
+# embedding model to read. Landed rather than embedded from Python: BigQuery
+# cannot join vectors held in a client.
 _UNITS_BQ_SCHEMA = [
     ("unit_id", "STRING"),
     ("source", "STRING"),
     ("text", "STRING"),
     ("evidences", "STRING"),
     ("prompt_version", "STRING"),
+    ("kind", "STRING"),
 ]
 
 
@@ -326,6 +328,9 @@ def replace_resume_units(rows: list[dict[str, object]], *, settings: Settings) -
     The one place the append-only rule does not apply: an edited or deleted
     bullet must stop being matched against. The corpus's history lives in the
     resume file, not here.
+
+    The table is replaced, not just its rows, on both targets: a table
+    provisioned before a column was added would otherwise reject every load.
     """
     if settings.is_prod:
         from google.cloud import bigquery
@@ -344,11 +349,17 @@ def replace_resume_units(rows: list[dict[str, object]], *, settings: Settings) -
 
     con = duckdb.connect(settings.duckdb_path)
     try:
-        con.execute("DELETE FROM resume_units")
+        cols = ", ".join(f"{name} VARCHAR" for name, _ in _UNITS_BQ_SCHEMA)
+        con.execute(f"CREATE OR REPLACE TABLE resume_units ({cols})")
         placeholders = ", ".join("?" for _ in _UNITS_BQ_SCHEMA)
         con.executemany(
             f"INSERT INTO resume_units VALUES ({placeholders})",
-            [[None if v is None else str(v) for v in r.values()] for r in rows],
+            # By column name, not dict order: the table's column order is the
+            # schema's, and a caller's dict need not agree with it.
+            [
+                [None if r.get(name) is None else str(r[name]) for name, _ in _UNITS_BQ_SCHEMA]
+                for r in rows
+            ],
         )
     finally:
         con.close()

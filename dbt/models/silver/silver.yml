@@ -248,10 +248,128 @@ models:
                 severity: warn
       - name: nice_to_have_techs
         description: Comma-joined; kept because in this market they are rarely optional.
+      - name: requirements
+        description: >
+          What the posting demands, one sentence per item, as a JSON array in
+          text. With nice_to_haves and responsibilities it restates
+          relevant_text item by item, for int_posting_units to unnest.
+      - name: nice_to_haves
+        description: >
+          What the posting marks as optional, as a JSON array in text. Sorted by
+          how the posting qualifies an item (preferred, a plus, an asset…), not
+          by heading: that section has no standard name and often does not exist.
+      - name: responsibilities
+        description: What the person will do in the role, as a JSON array in text.
+      - name: company_summary
+        description: >
+          One sentence on the employer's industry, what it sells and to whom.
+          The posting side of industry_similarity.
       - name: extract_ok
         description: False when the generation failed; such rows are retried, never scored.
       - name: extract_model
         description: Model that produced the extraction, read back from the API response.
+      - name: extraction_version
+        description: >
+          Which wording of the instruction produced the row. Part of the
+          incremental guard, so a reworded instruction re-extracts.
+
+  - name: int_posting_units
+    description: >
+      A posting one sentence at a time: each requirement, nice-to-have and
+      responsibility int_jobs_structured listed, plus one sentence on the
+      employer. The unit the embedding matcher compares, because the resume it
+      is compared with is a list of single bullets. Prod-only; an empty stub on
+      DuckDB.
+    columns:
+      - name: unit_key
+        description: >
+          Surrogate of (content_hash, unit_text). Built from the text rather than a
+          position, so a re-extracted sentence never inherits the vector stored
+          for the sentence it replaced.
+        data_tests: [not_null, unique]
+      - name: content_hash
+        data_tests: [not_null]
+      - name: kind
+        description: >
+          How the posting framed the sentence. A sentence listed under two kinds
+          keeps the strongest claim.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [required, nice_to_have, responsibility, company]
+      - name: unit_text
+        description: The sentence itself, trimmed; what gets embedded.
+        data_tests: [not_null]
+
+  - name: int_posting_unit_vectors
+    description: >
+      One embedding per posting sentence. Incremental on unit_key: the only part
+      of the matcher that calls a model per posting. Invalidated by the
+      embedding model and the task type, both recorded per row; not by the
+      resume, which a posting's vector does not depend on. Behind
+      `enable_embeddings`; an empty stub otherwise.
+    columns:
+      - name: unit_key
+        data_tests: [not_null, unique]
+      - name: vec
+        description: The embedding. Failed calls are not stored, so they are retried.
+        data_tests: [not_null]
+      - name: embedding_model
+        data_tests: [not_null]
+      - name: task_type
+        description: >
+          The task type the vector was requested for. Set explicitly, because a
+          provider default can change the vectors without a change here.
+        data_tests: [not_null]
+
+  - name: int_resume_unit_vectors
+    description: >
+      One embedding per resume unit — a work bullet or an industry worked in.
+      Rebuilt in full every run, which is what makes an edited or deleted
+      bullet stop matching. Behind `enable_embeddings`; an empty stub otherwise.
+    columns:
+      - name: unit_id
+        data_tests: [not_null, unique]
+      - name: kind
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [work, industry]
+      - name: resume_version
+        description: Which landing of the resume the unit came from.
+
+  - name: int_jobs_matched
+    description: >
+      Embedding match per posting text: each requirement, nice-to-have and
+      responsibility keeps its most similar work bullet, and `similarity` is the
+      weighted mean of those best matches. A table rebuilt every run from stored
+      vectors, so a resume edit, a changed weight or a re-extracted posting is
+      reflected on the next run with no model call and no staleness check.
+    columns:
+      - name: content_hash
+        description: Grain — one row per distinct posting text with at least one matched sentence.
+        data_tests: [not_null, unique]
+      - name: similarity
+        description: >
+          Weighted mean of each sentence's best cosine similarity to a work
+          bullet; a nice-to-have weighs embedding_nice_to_have_weight of a
+          requirement or responsibility.
+        data_tests: [not_null]
+      - name: industry_similarity
+        description: >
+          Best cosine similarity between the employer sentence and an industry
+          in the resume. Null when either side has none.
+      - name: units_matched
+        description: How many of the posting's sentences `similarity` averages over.
+        data_tests: [not_null]
+      - name: best_match_source
+        description: The role or project behind the posting's single strongest sentence match.
+      - name: resume_version
+        description: Which landing of the resume the row was compared against.
+      - name: task_type
+        description: Task type shared by both sides of every comparison in the row.
 
   - name: int_jobs_scored
     description: >
@@ -293,6 +411,107 @@ models:
         description: Pinned endpoint, not the managed default (ADR-0025).
 
 unit_tests:
+  # The embedding fixtures are `format: sql` because a vector column has no
+  # dict spelling both warehouses accept. `1e0` is a float literal on both, and
+  # every vector is an axis, so each cosine is exactly 0 or 1 and the expected
+  # means are exact too.
+  - name: similarity_is_the_weighted_mean_of_each_sentences_best_bullet
+    description: >
+      Each sentence keeps its own nearest bullet: the requirement matches b2
+      and the nice-to-have matches b1, so no single bullet explains the
+      posting. The responsibility matches nothing and pulls the mean down. With
+      the nice-to-have at half weight: (1 + 0 + 0.5) / 2.5 = 0.6. The employer
+      sentence is compared with industries only — it shares a direction with
+      b2 and the responsibility shares one with the second industry, and
+      neither crossing is counted.
+    model: int_jobs_matched
+    given:
+      - input: ref('int_posting_units')
+        format: sql
+        rows: |
+          select 'req' as unit_key, 'p1' as content_hash, 'required' as kind
+          union all select 'resp', 'p1', 'responsibility'
+          union all select 'nice', 'p1', 'nice_to_have'
+          union all select 'co', 'p1', 'company'
+      - input: ref('int_posting_unit_vectors')
+        format: sql
+        rows: |
+          select 'req' as unit_key, [1e0, 0e0, 0e0] as vec, 'm' as embedding_model, 't' as task_type
+          union all select 'resp', [0e0, 0e0, 1e0], 'm', 't'
+          union all select 'nice', [0e0, 1e0, 0e0], 'm', 't'
+          union all select 'co', [1e0, 0e0, 0e0], 'm', 't'
+      - input: ref('int_resume_unit_vectors')
+        format: sql
+        rows: |
+          select 'b1' as unit_id, 'work' as kind, 'Role one' as unit_source, 'fam' as evidences,
+                 'v1' as resume_version, [0e0, 1e0, 0e0] as vec, 'm' as embedding_model, 't' as task_type
+          union all select 'b2', 'work', 'Role two', 'fam', 'v1', [1e0, 0e0, 0e0], 'm', 't'
+          union all select 'i1', 'industry', 'Industry: one', '', 'v1', [1e0, 0e0, 0e0], 'm', 't'
+          union all select 'i2', 'industry', 'Industry: two', '', 'v1', [0e0, 0e0, 1e0], 'm', 't'
+    expect:
+      rows:
+        - {content_hash: p1, similarity: 0.6, industry_similarity: 1.0, units_matched: 3,
+           best_match_unit_id: b1, best_match_source: Role one, resume_version: v1}
+
+  - name: nice_to_have_weight_is_a_var
+    description: >
+      At weight 0 a nice-to-have no longer counts, so a posting whose one
+      requirement is unanswered scores 0 however well its nice-to-have matches.
+      The weight changes the score on the next run with nothing re-embedded.
+    model: int_jobs_matched
+    overrides:
+      vars:
+        embedding_nice_to_have_weight: 0
+    given:
+      - input: ref('int_posting_units')
+        format: sql
+        rows: |
+          select 'req' as unit_key, 'p1' as content_hash, 'required' as kind
+          union all select 'nice', 'p1', 'nice_to_have'
+      - input: ref('int_posting_unit_vectors')
+        format: sql
+        rows: |
+          select 'req' as unit_key, [1e0, 0e0] as vec, 'm' as embedding_model, 't' as task_type
+          union all select 'nice', [0e0, 1e0], 'm', 't'
+      - input: ref('int_resume_unit_vectors')
+        format: sql
+        rows: |
+          select 'b1' as unit_id, 'work' as kind, 'Role one' as unit_source, 'fam' as evidences,
+                 'v1' as resume_version, [0e0, 1e0] as vec, 'm' as embedding_model, 't' as task_type
+    expect:
+      rows:
+        - {content_hash: p1, similarity: 0.0, units_matched: 2}
+
+  - name: stale_vectors_are_not_matched
+    description: >
+      Three ways a stored posting vector stops being comparable, and none of
+      them may reach a score: it was embedded under another task type, by
+      another model, or for a sentence a re-extraction has since replaced (no
+      longer in int_posting_units). Only the current posting gets a row.
+    model: int_jobs_matched
+    given:
+      - input: ref('int_posting_units')
+        format: sql
+        rows: |
+          select 'ok' as unit_key, 'current' as content_hash, 'required' as kind
+          union all select 'task', 'other_task', 'required'
+          union all select 'model', 'other_model', 'required'
+      - input: ref('int_posting_unit_vectors')
+        format: sql
+        rows: |
+          select 'ok' as unit_key, [1e0, 0e0] as vec, 'm' as embedding_model, 't' as task_type
+          union all select 'task', [1e0, 0e0], 'm', 'old_task'
+          union all select 'model', [1e0, 0e0], 'old_model', 't'
+          union all select 'replaced', [1e0, 0e0], 'm', 't'
+      - input: ref('int_resume_unit_vectors')
+        format: sql
+        rows: |
+          select 'b1' as unit_id, 'work' as kind, 'Role one' as unit_source, 'fam' as evidences,
+                 'v1' as resume_version, [1e0, 0e0] as vec, 'm' as embedding_model, 't' as task_type
+    expect:
+      rows:
+        - {content_hash: current, similarity: 1.0, units_matched: 1}
+
   - name: dedup_keeps_the_most_recently_ingested_row
     description: >
       Lever re-ingests tie on posted_or_updated_at (createdAt never changes);

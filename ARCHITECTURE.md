@@ -248,23 +248,33 @@ in a GitHub Actions variable and never in the tree.
 
 ## V2
 
-Three prod-only models inside silver, all SQL against warehouse-native AI functions (ADR-0004),
-reading from `silver_jobs` so they only ever see postings that survived filtering. On the DuckDB
-target each emits a typed-null stub with the same column shape, so the dev DAG and its unit tests
-run without a model.
+Models inside silver, all SQL against warehouse-native AI functions (ADR-0004), reading from
+`silver_jobs` so they only ever see postings that survived filtering. On the DuckDB target each
+model that calls an AI function emits a typed-null stub with the same column shape, so the dev DAG
+and its unit tests run without a model.
 
 | Model | Does |
 |---|---|
-| `int_jobs_structured` | Typed extraction: `company_type`, `geo_restriction`, `manages_people`, minimum years, required and nice-to-have techs, and `relevant_text` |
+| `int_jobs_structured` | Typed extraction: `company_type`, `geo_restriction`, `manages_people`, minimum years, required and nice-to-have techs, `relevant_text`, and the same content as per-sentence lists |
 | `int_jobs_scored` | 1–5 `fit_score` of `relevant_text` against the resume corpus |
-| `int_jobs_matched` | Embedding `similarity` of `relevant_text` to the closest single resume bullet, and which bullet it was |
+| `int_posting_units` | The posting one sentence at a time: each requirement, nice-to-have and responsibility, plus one sentence on the employer |
+| `int_posting_unit_vectors` | One stored embedding per posting sentence |
+| `int_resume_unit_vectors` | One embedding per resume bullet and per industry worked in, rebuilt every run |
+| `int_jobs_matched` | `similarity`: the weighted mean of each sentence's best match among the bullets. `industry_similarity` separately |
 
-The third answers the same question as the second by different means, and runs beside it on
-purpose until labels say which is better. Embeddings take only that half: similarity is blind to
-polarity — "we do not sponsor visas" and "we sponsor visas" are nearly identical vectors — so
-`geo_restriction` and `manages_people` stay with the LLM and never move there. It is gated behind
-`enable_embeddings`, which stays false until its remote model exists; off, the model emits its
-stub and `similarity` is simply null.
+The embedding matcher answers the same question as the fit score by different means, and runs
+beside it on purpose until labels say which is better. Embeddings take only that half: similarity
+is blind to polarity — "we do not sponsor visas" and "we sponsor visas" are nearly identical
+vectors — so `geo_restriction` and `manages_people` stay with the LLM and never move there. It is
+gated behind `enable_embeddings`, which stays false until its remote model exists; off, the vector
+models emit stubs and `similarity` is simply null.
+
+**The matcher compares sentence with sentence, and stores vectors apart from scores** (ADR-0032).
+A posting embedded whole is an average of its topics compared with bullets a tenth of its length,
+which rewards resembling one thing the candidate did. Each posting sentence instead keeps its
+nearest bullet and the score is their mean, so a requirement the resume does not answer lowers
+it. Only the posting vectors are incremental; `int_jobs_matched` is arithmetic over them and is
+rebuilt each run, which is why a resume edit needs no model call and cannot leave a stale score.
 
 **Scoring reads the requirements, not the posting.** Extraction drops the responsibilities blurb
 and the boilerplate, which measured 570 characters out of 6,854 — about 8% of the text. Every

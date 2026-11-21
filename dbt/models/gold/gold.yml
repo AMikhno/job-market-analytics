@@ -98,15 +98,25 @@ models:
         data_type: varchar
       - name: similarity
         description: >
-          Cosine similarity (higher is closer) between the posting's relevant
-          text and the nearest resume bullet. Carried beside fit_score, not
-          blended with it: two unvalidated rankings averaged together make a bad
-          result undiagnosable. `make evaluate` compares them.
+          How much of what the posting asks for has a resume bullet behind it:
+          the weighted mean, over its requirements, nice-to-haves and
+          responsibilities, of each one's cosine similarity to its nearest
+          bullet (int_jobs_matched). Higher is closer. Carried beside fit_score,
+          not blended with it: two unvalidated rankings averaged together make a
+          bad result undiagnosable. `make evaluate` compares them.
+        data_type: double
+      - name: industry_similarity
+        description: >
+          Cosine similarity between the posting's one-sentence description of
+          the employer and the nearest industry in the resume. Its own column
+          rather than part of `similarity`, so a high score says whether the
+          work fits or the sector does. Null when the resume names no industry.
         data_type: double
       - name: best_match_source
         description: >
-          Which role or project the nearest bullet came from — the thing an
-          embedding can say and a 1-5 score cannot.
+          Which role or project the bullet behind the posting's strongest single
+          match came from — the thing an embedding can say and a 1-5 score
+          cannot.
         data_type: varchar
       - name: recency_rank
         description: 1 = most recent by posted_or_updated_at; dense unique ordering for the digest.
