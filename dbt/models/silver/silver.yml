@@ -292,6 +292,95 @@ models:
       - name: scoring_model
         description: Pinned endpoint, not the managed default (ADR-0025).
 
+  - name: int_jobs_assessed
+    description: >
+      How close a posting's actual work and tooling are to the candidate's
+      (ADR-0031). Two judgements a keyword cannot make, returned as facts — the
+      tier is computed from them in int_jobs_tiered. Off until
+      `enable_assessment` is set, and a typed-null stub on DuckDB either way.
+    columns:
+      - name: content_hash
+        description: >
+          Assessment key and grain — one row per distinct posting text. Part of
+          the incremental guard, with profile_version, assessment_version and
+          assess_endpoint.
+        data_tests: [not_null, unique]
+      - name: work_match
+        description: >
+          Whether the described day-to-day work is the candidate's (same), mostly
+          so (close), a neighbouring discipline (adjacent) or something else
+          (different). Judged from responsibilities and requirements; the title
+          is passed as a hint only, because a title often names the wrong work.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [same, close, adjacent, different]
+              config:
+                severity: warn
+      - name: stack_gap
+        description: >
+          Whether the required tools are the candidate's (none), direct
+          equivalents of them (substitutable), or an ecosystem the role is built
+          around (central). The distinction a keyword list flattens: naming a
+          tool and requiring years in its whole vendor stack are both one hit.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [none, substitutable, central]
+              config:
+                severity: warn
+      - name: people_management_years
+        description: >
+          Years of managing people the posting requires; null when none. Kept
+          apart from manages_people, which says a seat has reports and not how
+          much experience of that it demands.
+      - name: why
+        description: One sentence naming the strongest overlap with the candidate's bullets.
+      - name: gap
+        description: One sentence naming the most important thing not shown; empty when none.
+      - name: assess_ok
+        description: False when the generation failed; such rows are retried and never tiered.
+      - name: profile_version
+        description: Which rendered candidate text the posting was assessed against.
+      - name: assessment_version
+        description: Which wording of the instruction produced the row.
+      - name: assess_endpoint
+        description: Pinned endpoint, not the managed default (ADR-0025).
+
+  - name: int_jobs_tiered
+    description: >
+      The tier each assessed posting falls in (ADR-0031), from the assessment's
+      two judgements and a level read from existing columns. A view, so a rule
+      or threshold change re-tiers every posting without a model call.
+    columns:
+      - name: content_hash
+        description: One row per assessed posting text.
+        data_tests: [not_null, unique]
+      - name: fit_tier
+        description: >
+          best_fit / fit / stretch / drop. First match wins, worst first: a
+          different kind of work or a far-off level drops; a neighbouring
+          discipline or a central ecosystem is a stretch; anything short of the
+          candidate's own work, tools and level is a fit.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [best_fit, fit, stretch, drop]
+      - name: tier_rank
+        description: The tier as a number, 3 (best_fit) to 0 (drop).
+        data_tests: [not_null]
+      - name: level_band
+        description: >
+          junior / mid_senior / staff / lead / out_of_range, read from the
+          title's seniority words, the years the posting requires and whether
+          it manages people — not asked of the model.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [junior, mid_senior, staff, lead, out_of_range]
+
 unit_tests:
   - name: dedup_keeps_the_most_recently_ingested_row
     description: >
@@ -678,3 +767,93 @@ unit_tests:
         - {job_key: b1, is_board_wide_edit: false}
         - {job_key: c1, is_board_wide_edit: false}
         - {job_key: c2, is_board_wide_edit: false}
+
+  # The tier rule, one row per branch. It lives in SQL so that it can be pinned
+  # like this: a model asked for a 1-5 has no rule to test.
+  - name: tier_rule_reads_work_then_stack_then_level
+    model: int_jobs_tiered
+    given:
+      - input: ref('int_jobs_assessed')
+        rows:
+          - {content_hash: own_work, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: senior_title, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: equivalent_tool, assess_ok: true, work_match: same, stack_gap: substitutable, people_management_years: null}
+          - {content_hash: mostly_own_work, assess_ok: true, work_match: close, stack_gap: none, people_management_years: null}
+          - {content_hash: built_on_other_stack, assess_ok: true, work_match: same, stack_gap: central, people_management_years: null}
+          - {content_hash: neighbouring, assess_ok: true, work_match: adjacent, stack_gap: none, people_management_years: null}
+          - {content_hash: misleading_title, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: other_profession, assess_ok: true, work_match: different, stack_gap: none, people_management_years: null}
+          - {content_hash: junior_by_title, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: junior_by_years, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: staff_by_title, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: staff_by_years, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: team_lead, assess_ok: true, work_match: same, stack_gap: none, people_management_years: 1}
+          - {content_hash: manager_in_name_only, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: career_manager, assess_ok: true, work_match: same, stack_gap: none, people_management_years: 5}
+          - {content_hash: executive, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: word_inside_a_word, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: years_unstated, assess_ok: true, work_match: same, stack_gap: none, people_management_years: null}
+          - {content_hash: failed, assess_ok: false, work_match: same, stack_gap: none}
+          - {content_hash: off_vocabulary, assess_ok: true, work_match: related, stack_gap: none}
+      - input: ref('int_jobs_structured')
+        rows:
+          - {content_hash: own_work, manages_people: "no", years_experience_min: 4}
+          - {content_hash: senior_title, manages_people: "no", years_experience_min: 5}
+          - {content_hash: equivalent_tool, manages_people: "no", years_experience_min: 4}
+          - {content_hash: mostly_own_work, manages_people: "no", years_experience_min: 4}
+          - {content_hash: built_on_other_stack, manages_people: "no", years_experience_min: 4}
+          - {content_hash: neighbouring, manages_people: "no", years_experience_min: 4}
+          - {content_hash: misleading_title, manages_people: "no", years_experience_min: 4}
+          - {content_hash: other_profession, manages_people: "no", years_experience_min: 4}
+          - {content_hash: junior_by_title, manages_people: "no", years_experience_min: 3}
+          - {content_hash: junior_by_years, manages_people: "no", years_experience_min: 1}
+          - {content_hash: staff_by_title, manages_people: "no", years_experience_min: 6}
+          - {content_hash: staff_by_years, manages_people: "no", years_experience_min: 10}
+          - {content_hash: team_lead, manages_people: "yes", years_experience_min: 6}
+          - {content_hash: manager_in_name_only, manages_people: "no", years_experience_min: 5}
+          - {content_hash: career_manager, manages_people: "yes", years_experience_min: 8}
+          - {content_hash: executive, manages_people: "yes", years_experience_min: 8}
+          - {content_hash: word_inside_a_word, manages_people: "no", years_experience_min: 4}
+          - {content_hash: years_unstated, manages_people: "no", years_experience_min: null}
+      - input: ref('silver_jobs')
+        rows:
+          - {content_hash: own_work, title: "Data Analyst"}
+          - {content_hash: senior_title, title: "Senior Analytics Engineer"}
+          - {content_hash: equivalent_tool, title: "Data Analyst"}
+          - {content_hash: mostly_own_work, title: "Analyst"}
+          - {content_hash: built_on_other_stack, title: "Data Analyst"}
+          - {content_hash: neighbouring, title: "Data Engineer"}
+          - {content_hash: misleading_title, title: "Data Engineer"}
+          - {content_hash: other_profession, title: "Nurse Practitioner"}
+          - {content_hash: junior_by_title, title: "Junior Data Analyst"}
+          - {content_hash: junior_by_years, title: "Data Analyst"}
+          - {content_hash: staff_by_title, title: "Staff Analytics Engineer"}
+          - {content_hash: staff_by_years, title: "Analytics Engineer"}
+          - {content_hash: team_lead, title: "Analytics Lead"}
+          - {content_hash: manager_in_name_only, title: "Insights Manager"}
+          - {content_hash: career_manager, title: "Analytics Manager"}
+          - {content_hash: executive, title: "Director of Analytics"}
+          - {content_hash: word_inside_a_word, title: "Headcount Analyst"}
+          - {content_hash: years_unstated, title: "Data Analyst"}
+    expect:
+      rows:
+        - {content_hash: own_work, level_band: mid_senior, fit_tier: best_fit, tier_rank: 3}
+        - {content_hash: senior_title, level_band: mid_senior, fit_tier: best_fit, tier_rank: 3}
+        - {content_hash: equivalent_tool, level_band: mid_senior, fit_tier: fit, tier_rank: 2}
+        - {content_hash: mostly_own_work, level_band: mid_senior, fit_tier: fit, tier_rank: 2}
+        - {content_hash: built_on_other_stack, level_band: mid_senior, fit_tier: stretch, tier_rank: 1}
+        - {content_hash: neighbouring, level_band: mid_senior, fit_tier: stretch, tier_rank: 1}
+        - {content_hash: misleading_title, level_band: mid_senior, fit_tier: best_fit, tier_rank: 3}
+        - {content_hash: other_profession, level_band: mid_senior, fit_tier: drop, tier_rank: 0}
+        - {content_hash: junior_by_title, level_band: junior, fit_tier: fit, tier_rank: 2}
+        - {content_hash: junior_by_years, level_band: junior, fit_tier: fit, tier_rank: 2}
+        - {content_hash: staff_by_title, level_band: staff, fit_tier: fit, tier_rank: 2}
+        - {content_hash: staff_by_years, level_band: staff, fit_tier: fit, tier_rank: 2}
+        - {content_hash: team_lead, level_band: lead, fit_tier: fit, tier_rank: 2}
+        - {content_hash: manager_in_name_only, level_band: mid_senior, fit_tier: best_fit, tier_rank: 3}
+        - {content_hash: career_manager, level_band: out_of_range, fit_tier: drop, tier_rank: 0}
+        - {content_hash: executive, level_band: out_of_range, fit_tier: drop, tier_rank: 0}
+        - {content_hash: word_inside_a_word, level_band: mid_senior, fit_tier: best_fit, tier_rank: 3}
+        - {content_hash: years_unstated, level_band: mid_senior, fit_tier: best_fit, tier_rank: 3}
+        # `failed` and `off_vocabulary` are absent: with no readable judgement a
+        # posting stays untiered rather than landing in a tier by default.

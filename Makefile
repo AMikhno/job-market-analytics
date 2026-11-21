@@ -60,8 +60,8 @@ land-resume:      ## Land the private resume into BigQuery for scoring + matchin
 labels-template:  ## Write a labelling worksheet from gold to config/labels.csv
 	uv run python -m evaluation.template
 
-evaluate:         ## Does fit_score rank better than match_score? Needs config/labels.csv
-	uv run python -m evaluation.report
+evaluate:         ## Grade the rankings against config/labels.csv. Optional: ARGS="--window 2026-01-01 2026-01-31"
+	uv run python -m evaluation.report $(ARGS)
 
 dbt-dev: dbt-deps seeds  ## Build the dbt DAG against local DuckDB
 	cd dbt && uv run dbt build --target dev

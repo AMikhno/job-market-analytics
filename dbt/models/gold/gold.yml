@@ -108,6 +108,34 @@ models:
           Which role or project the nearest bullet came from — the thing an
           embedding can say and a 1-5 score cannot.
         data_type: varchar
+      - name: fit_tier
+        description: >
+          best_fit / fit / stretch / drop, computed in int_jobs_tiered
+          (ADR-0031); null when the posting has not been assessed. `drop` is the
+          only tier delivery collapses to a count.
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [best_fit, fit, stretch, drop]
+      - name: tier_rank
+        description: The tier as a number, 3 (best_fit) to 0 (drop); null when not assessed.
+        data_type: bigint
+      - name: work_match
+        description: same / close / adjacent / different; null when not assessed.
+        data_type: varchar
+      - name: stack_gap
+        description: none / substitutable / central; null when not assessed.
+        data_type: varchar
+      - name: level_band
+        description: junior / mid_senior / staff / lead / out_of_range; null when not assessed.
+        data_type: varchar
+      - name: fit_why
+        description: One sentence naming the strongest overlap; null when not assessed.
+        data_type: varchar
+      - name: fit_gap
+        description: One sentence naming the most important thing not shown; empty when none.
+        data_type: varchar
       - name: recency_rank
         description: 1 = most recent by posted_or_updated_at; dense unique ordering for the digest.
         data_type: bigint
@@ -130,6 +158,8 @@ unit_tests:
       - input: ref('int_jobs_structured')
         rows: []
       - input: ref('int_jobs_matched')
+        rows: []
+      - input: ref('int_jobs_tiered')
         rows: []
     expect:
       rows:
@@ -155,6 +185,8 @@ unit_tests:
         rows:
           - {content_hash: h1, company_type: B2B SaaS, geo_restriction: canada_ok, manages_people: no}
       - input: ref('int_jobs_matched')
+        rows: []
+      - input: ref('int_jobs_tiered')
         rows: []
     expect:
       rows:
@@ -184,6 +216,8 @@ unit_tests:
       - input: ref('int_jobs_structured')
         rows: []
       - input: ref('int_jobs_matched')
+        rows: []
+      - input: ref('int_jobs_tiered')
         rows: []
     expect:
       rows:
