@@ -162,7 +162,7 @@ permission sets on the union of both triggers.
 | Ingest | twice-daily cron + manual dispatch | `id-token: write`, prod environment | The pipeline: fetch → land → transform → deliver → export the market snapshot |
 | CI | every push and PR | nothing | Lint, tests, the DuckDB DAG, a prod-target parse, the site build, gitleaks |
 | Docs | push to `main`, and a completed Ingest run | `pages: write`, `actions: read` | Publishes the Pages site: landing page with market charts, rendered docs, dbt lineage |
-| Tag release | push to `main` touching `pyproject.toml` | `contents: write` | Publishes `v<version>` if it does not exist yet |
+| Release | push to `main` | `contents: write`, `pull-requests: write` | Keeps one release PR open (next version from conventional commits, `CHANGELOG.md`); merging it tags `v<version>` and publishes the GitHub release |
 
 Only Ingest can reach the warehouse: `id-token: write` is what mints the OIDC token that Workload
 Identity Federation exchanges for GCP credentials, and no other workflow has it. That is also why

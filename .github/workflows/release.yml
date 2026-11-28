@@ -1,0 +1,55 @@
+name: Release
+
+# Versioning from conventional commits (release-please). Every push to main
+# updates one open release PR: the next version in pyproject.toml and uv.lock,
+# and CHANGELOG.md from the feat/fix commits since the last release. Merging that
+# PR tags `v<version>` and publishes the GitHub release with the same notes.
+# Nothing is bumped or tagged by hand; .release-please-manifest.json records the
+# last released version and moves only when a release PR merges.
+#
+# Replaces the tag-only workflow, which tagged whatever version a human had
+# typed into pyproject.toml -- so a forgotten bump meant no release at all.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write        # tag, publish the release, push the lockfile sync
+  pull-requests: write   # open and update the release PR
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # release-please rewrites the version in pyproject.toml but knows nothing
+      # about uv.lock, which records the project's own version too. Left alone,
+      # the release PR would merge a lockfile CI's `uv sync --locked` rejects.
+      - if: steps.release.outputs.pr
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+      - if: steps.release.outputs.pr
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: Sync uv.lock on the release PR
+        if: steps.release.outputs.pr
+        run: |
+          set -euo pipefail
+          uv lock
+          if git diff --quiet -- uv.lock; then
+            echo "uv.lock already matches the release version."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: sync uv.lock with the release version" -- uv.lock
+          git push
